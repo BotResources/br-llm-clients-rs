@@ -1,0 +1,9 @@
+[workspace]
+resolver = "3"
+members = ["crates/br-llm-clients-contract", "crates/br-llm-clients"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.89"
+license = "Apache-2.0"
+repository = "https://github.com/BotResources/br-llm-clients-rs"
