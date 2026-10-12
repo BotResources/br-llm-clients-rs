@@ -27,10 +27,6 @@ impl Rule {
         }
     }
 
-    pub fn always(reply: impl Into<ReplySource>) -> Self {
-        Self::new(|_| true, reply)
-    }
-
     pub fn with_limit(mut self, uses: usize) -> Result<Self, MockBuildError> {
         if uses == 0 {
             return Err(MockBuildError::RuleLimitZero);

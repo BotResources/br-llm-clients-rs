@@ -4,7 +4,6 @@ use std::task::Poll;
 use br_llm_clients_core::{CacheRequirement, Client, ClientError, OutputMode, ReasoningLevel};
 
 use crate::call_log::{CallState, Served, StateKind};
-use crate::capabilities::Capabilities;
 use crate::gate::Gate;
 use crate::mock_client::MockClient;
 use crate::recording_sink::RecordingSink;
@@ -129,7 +128,7 @@ fn given_a_call_dropped_at_a_gate_when_logged_then_the_entry_stays_taken_and_sta
 
 #[test]
 fn given_a_refusal_and_an_exhausted_script_when_logged_then_each_shows_how_it_was_served() {
-    let client = MockClient::new(settings(), Capabilities::everything());
+    let client = MockClient::new(settings(), everything_caps());
     let bad = request_of(vec![assistant_text("x")], vec![], OutputMode::Plain);
     assert!(
         br_llm_clients_core::ClientRequest::new(

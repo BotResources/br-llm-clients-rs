@@ -103,3 +103,67 @@ fn given_a_usage_that_overflows_when_summed_then_it_is_refused_without_panic() {
         MockBuildError::UsageBreaksCounting
     );
 }
+
+#[test]
+fn given_cache_tokens_whose_real_sum_is_one_above_the_maximal_input_when_built_then_refused() {
+    let usage_value = Usage {
+        input_tokens: u64::MAX,
+        output_tokens: 1,
+        cache_read_tokens: Some(u64::MAX),
+        cache_write_tokens: Some(1),
+        thinking_tokens: None,
+    };
+    assert_eq!(
+        Reply::success(step_with_usage("hi", usage_value))
+            .build()
+            .unwrap_err(),
+        MockBuildError::UsageBreaksCounting
+    );
+}
+
+#[test]
+fn given_cache_tokens_whose_sum_is_exactly_the_maximal_input_when_built_then_accepted() {
+    let usage_value = Usage {
+        input_tokens: u64::MAX,
+        output_tokens: 1,
+        cache_read_tokens: Some(u64::MAX - 1),
+        cache_write_tokens: Some(1),
+        thinking_tokens: None,
+    };
+    assert!(
+        Reply::success(step_with_usage("hi", usage_value))
+            .build()
+            .is_ok()
+    );
+}
+
+#[test]
+fn given_thinking_tokens_one_above_the_maximal_output_when_built_then_refused() {
+    let usage_value = Usage {
+        input_tokens: 1,
+        output_tokens: u64::MAX - 1,
+        thinking_tokens: Some(u64::MAX),
+        ..Usage::default()
+    };
+    assert_eq!(
+        Reply::success(step_with_usage("hi", usage_value))
+            .build()
+            .unwrap_err(),
+        MockBuildError::UsageBreaksCounting
+    );
+}
+
+#[test]
+fn given_thinking_tokens_equal_to_the_maximal_output_when_built_then_accepted() {
+    let usage_value = Usage {
+        input_tokens: 1,
+        output_tokens: u64::MAX,
+        thinking_tokens: Some(u64::MAX),
+        ..Usage::default()
+    };
+    assert!(
+        Reply::success(step_with_usage("hi", usage_value))
+            .build()
+            .is_ok()
+    );
+}

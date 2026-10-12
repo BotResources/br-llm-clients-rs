@@ -6,7 +6,7 @@ use serde_json::json;
 
 use crate::accepted::Accepted;
 use crate::call_log::{CallState, Served};
-use crate::capabilities::{Capabilities, CapabilitiesSpec};
+use crate::capabilities::CapabilitiesSpec;
 use crate::chunking::Chunking;
 use crate::codes::{CODE_INVALID_REPLY, CODE_SCRIPT_EXHAUSTED};
 use crate::derive_events::derive_events;
@@ -41,7 +41,7 @@ fn given_a_refused_call_when_made_then_no_entry_and_no_use_is_taken() {
     let client = strict_mock(|spec| spec.tools = false);
     client.push_reply(Reply::success(text_step("kept")).build().unwrap());
     client.push_rule(
-        Rule::always(Reply::failure(ClientError::Transport).build().unwrap())
+        always_rule(Reply::failure(ClientError::Transport).build().unwrap())
             .with_limit(2)
             .unwrap(),
     );
@@ -97,7 +97,7 @@ fn given_a_rule_that_matches_the_settings_when_a_pair_is_refused_then_the_log_sh
 
 #[test]
 fn given_an_empty_set_of_levels_when_any_call_is_made_then_reasoning_not_supported() {
-    let client = strict_mock(|spec| spec.reasoning_levels = Accepted::only([]));
+    let client = strict_mock(|spec| spec.reasoning_levels = Accepted::Only(vec![]));
     let (outcome, _) = run(&client, &request());
     assert!(matches!(
         error_of(&outcome),
@@ -196,7 +196,7 @@ fn given_the_codes_when_listed_then_they_start_with_mock_and_exhaustion_is_not_r
 #[test]
 fn given_the_everything_capabilities_when_a_complete_call_is_made_then_the_request_is_not_changed()
 {
-    let client = MockClient::new(settings(), Capabilities::everything());
+    let client = MockClient::new(settings(), everything_caps());
     client.push_reply(Reply::success(text_step("ok")).build().unwrap());
     let request_value = request();
     let before = request_value.clone();

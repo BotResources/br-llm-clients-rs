@@ -6,7 +6,6 @@ use std::task::Poll;
 use br_llm_clients_core::Client;
 
 use crate::call_log::StateKind;
-use crate::capabilities::Capabilities;
 use crate::gate::Gate;
 use crate::mock_client::MockClient;
 use crate::recording_sink::RecordingSink;
@@ -98,7 +97,7 @@ fn given_one_gate_given_to_several_mocks_when_released_then_the_count_runs_acros
  {
     let gate = Gate::new();
     let first = mock();
-    let second = MockClient::new(settings(), Capabilities::everything());
+    let second = MockClient::new(settings(), everything_caps());
     first.set_fallback(gated(&[(0, &gate)]));
     second.set_fallback(gated(&[(0, &gate)]));
     let request_value = request();

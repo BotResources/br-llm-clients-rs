@@ -34,14 +34,6 @@ impl MockClient {
         Self { shared, settings }
     }
 
-    pub fn settings(&self) -> &ClientSettings {
-        &self.settings
-    }
-
-    pub fn capabilities(&self) -> &Capabilities {
-        self.shared.capabilities()
-    }
-
     #[must_use = "the new handle is the only result"]
     pub fn with_settings(&self, settings: ClientSettings) -> MockClient {
         MockClient {

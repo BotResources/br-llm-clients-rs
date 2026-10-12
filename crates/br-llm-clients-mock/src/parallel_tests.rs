@@ -7,7 +7,6 @@ use std::task::Poll;
 use br_llm_clients_core::{CallOutcome, Client, ClientError};
 
 use crate::call_log::{CallState, Served, StateKind};
-use crate::capabilities::Capabilities;
 use crate::gate::Gate;
 use crate::mock_client::MockClient;
 use crate::recording_sink::RecordingSink;
@@ -115,7 +114,7 @@ fn given_one_shared_mock_called_by_a_thousand_threads_when_run_then_every_entry_
 fn given_one_shared_mock_with_a_limited_rule_when_called_in_parallel_then_the_limit_is_never_exceeded()
  {
     let client = mock();
-    client.push_rule(Rule::always(says("limited")).with_limit(100).unwrap());
+    client.push_rule(always_rule(says("limited")).with_limit(100).unwrap());
     client.set_fallback(says("fallback"));
     let handles: Vec<_> = (0..PARALLEL)
         .map(|_| {
@@ -151,7 +150,7 @@ fn given_two_calls_that_both_match_the_last_use_when_they_claim_together_then_on
         .with_limit(1)
         .unwrap(),
     );
-    client.push_rule(Rule::always(says("second rule")));
+    client.push_rule(always_rule(says("second rule")));
     let handles: Vec<_> = (0..2)
         .map(|_| {
             let client = client.clone();
@@ -237,7 +236,7 @@ fn given_the_same_mock_and_the_same_calls_in_the_same_order_when_repeated_then_t
 #[test]
 fn given_many_sequential_calls_on_a_mock_without_log_when_made_then_all_complete_and_counts_stay_exact()
  {
-    let client = MockClient::builder(settings(), Capabilities::everything())
+    let client = MockClient::builder(settings(), everything_caps())
         .log(false)
         .fallback(says("again"))
         .build();

@@ -27,7 +27,7 @@ fn answer_of(client: &MockClient) -> String {
 fn given_a_matching_rule_when_called_then_the_rule_serves_and_the_script_is_untouched() {
     let client = mock();
     client.push_reply(says("entry"));
-    client.push_rule(Rule::always(says("rule")));
+    client.push_rule(always_rule(says("rule")));
     assert_eq!(answer_of(&client), "rule");
     assert_eq!(client.unused_entries(), 1);
     assert_eq!(client.log()[0].served(), &Served::Rule { position: 0 });
@@ -37,8 +37,8 @@ fn given_a_matching_rule_when_called_then_the_rule_serves_and_the_script_is_unto
 fn given_rules_when_tried_then_the_first_matching_in_the_order_added_wins() {
     let client = mock();
     client.push_rule(Rule::new(|_| false, says("never")));
-    client.push_rule(Rule::always(says("second")));
-    client.push_rule(Rule::always(says("third")));
+    client.push_rule(always_rule(says("second")));
+    client.push_rule(always_rule(says("third")));
     assert_eq!(answer_of(&client), "second");
     assert_eq!(client.log()[0].served(), &Served::Rule { position: 1 });
 }
@@ -69,7 +69,7 @@ fn given_a_rule_with_a_limit_when_it_is_used_up_then_it_is_skipped_and_its_match
 #[test]
 fn given_a_limit_of_zero_when_a_rule_is_built_then_the_builder_returns_rule_limit_zero() {
     assert_eq!(
-        Rule::always(says("x")).with_limit(0).unwrap_err(),
+        always_rule(says("x")).with_limit(0).unwrap_err(),
         MockBuildError::RuleLimitZero
     );
 }
@@ -77,7 +77,7 @@ fn given_a_limit_of_zero_when_a_rule_is_built_then_the_builder_returns_rule_limi
 #[test]
 fn given_rules_with_limits_when_counted_then_unused_uses_is_the_sum_of_what_is_left() {
     let client = mock();
-    client.push_rule(Rule::always(says("a")).with_limit(3).unwrap());
+    client.push_rule(always_rule(says("a")).with_limit(3).unwrap());
     client.push_rule(Rule::new(|_| false, says("b")).with_limit(4).unwrap());
     client.push_rule(Rule::new(|_| false, says("unlimited")));
     assert_eq!(client.unused_uses(), 7);
@@ -92,7 +92,7 @@ fn given_a_rule_added_while_a_call_runs_its_matchers_when_the_call_claims_then_t
     let adder = client.clone();
     client.push_rule(Rule::new(
         move |_| {
-            adder.push_rule(Rule::always(says("late rule")));
+            adder.push_rule(always_rule(says("late rule")));
             false
         },
         says("never"),
@@ -164,7 +164,6 @@ fn given_a_handle_with_other_settings_when_used_then_it_shares_script_rules_fall
     let log = other.log();
     assert_eq!(log[0].settings().max_output_tokens().get(), 7);
     assert_eq!(log[1].settings().max_output_tokens().get(), 1000);
-    assert_eq!(other.capabilities(), client.capabilities());
 }
 
 #[test]

@@ -5,7 +5,6 @@ use std::task::Poll;
 use br_llm_clients_core::{Client, ClientError, OutputMode};
 
 use crate::call_log::StateKind;
-use crate::capabilities::Capabilities;
 use crate::gate::Gate;
 use crate::log_disabled::LogDisabled;
 use crate::mock_client::MockClient;
@@ -25,7 +24,7 @@ fn gated(gate: &Gate) -> Reply {
 }
 
 fn unlogged() -> MockClient {
-    MockClient::builder(settings(), Capabilities::everything())
+    MockClient::builder(settings(), everything_caps())
         .log(false)
         .build()
 }

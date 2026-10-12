@@ -23,6 +23,14 @@ impl Wake for Unparker {
     }
 }
 
+fn everything() -> Capabilities {
+    Capabilities::new(CapabilitiesSpec::everything()).unwrap()
+}
+
+fn always(reply: Reply) -> Rule {
+    Rule::new(|_| true, reply)
+}
+
 fn block_on<F: Future>(future: F) -> F::Output {
     let waker = Waker::from(Arc::new(Unparker(std::thread::current())));
     let mut context = Context::from_waker(&waker);
@@ -68,7 +76,7 @@ fn answer(value: &str) -> Step {
 #[test]
 fn given_the_public_surface_when_a_test_writes_a_script_then_the_code_under_test_gets_the_answers()
 {
-    let client = MockClient::builder(settings(), Capabilities::everything())
+    let client = MockClient::builder(settings(), everything())
         .reply(Reply::success(answer("scripted")).build().unwrap())
         .build();
     let shared: Arc<dyn Client> = Arc::new(client.clone());
@@ -90,7 +98,7 @@ fn given_the_public_surface_when_a_test_writes_a_script_then_the_code_under_test
 fn given_capabilities_built_from_everything_when_changed_then_strictness_refuses_like_a_real_client()
  {
     let spec = CapabilitiesSpec {
-        reasoning_levels: Accepted::only([ReasoningLevel::Low]),
+        reasoning_levels: Accepted::Only(vec![ReasoningLevel::Low]),
         ..CapabilitiesSpec::everything()
     };
     let client = MockClient::new(settings(), Capabilities::new(spec).unwrap());
@@ -106,7 +114,7 @@ fn given_capabilities_built_from_everything_when_changed_then_strictness_refuses
 #[test]
 fn given_a_reply_function_and_a_helper_when_a_tool_call_is_scripted_then_ids_are_distinct_per_call()
 {
-    let client = MockClient::new(settings(), Capabilities::everything());
+    let client = MockClient::new(settings(), everything());
     client.set_fallback(ReplySource::function(|call| {
         let call = ToolCall {
             id: tool_call_id("call", call.sequence(), None),
@@ -144,8 +152,8 @@ fn given_a_reply_function_and_a_helper_when_a_tool_call_is_scripted_then_ids_are
 fn given_a_rule_and_a_gate_when_a_test_drives_a_call_by_hand_then_the_gate_decides_when_it_goes_on()
 {
     let gate = Gate::new();
-    let client = MockClient::new(settings(), Capabilities::everything());
-    client.push_rule(Rule::always(
+    let client = MockClient::new(settings(), everything());
+    client.push_rule(always(
         Reply::success(answer("held"))
             .gate_at(1, &gate)
             .chunking(Chunking::none().text(2))
@@ -171,8 +179,8 @@ fn given_a_step_when_events_are_derived_then_the_list_ends_with_the_finish_event
 #[test]
 fn given_a_call_waiting_at_a_gate_when_another_thread_opens_it_then_the_parked_caller_goes_on() {
     let gate = Gate::new();
-    let client = MockClient::new(settings(), Capabilities::everything());
-    client.push_rule(Rule::always(
+    let client = MockClient::new(settings(), everything());
+    client.push_rule(always(
         Reply::success(answer("released"))
             .gate_at(0, &gate)
             .build()

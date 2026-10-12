@@ -3,7 +3,6 @@ use br_llm_messages::{MessageError, Step, StreamEvent};
 
 use crate::call_context::CallContext;
 use crate::chunking::Chunking;
-use crate::codes;
 use crate::derive_events::derive_events;
 use crate::gate::Gate;
 use crate::outcomes;
@@ -25,7 +24,7 @@ pub(crate) struct Plan {
 }
 
 fn internal(cause: &impl std::fmt::Display) -> Box<CallOutcome> {
-    Box::new(outcomes::refused(codes::invalid_reply("the reply", cause)))
+    Box::new(outcomes::refused(outcomes::inconsistent(cause)))
 }
 
 fn renamed(

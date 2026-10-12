@@ -24,7 +24,7 @@ fn answer_of(client: &MockClient) -> String {
 
 #[test]
 fn given_a_script_when_calls_are_made_in_order_then_entries_are_used_in_order() {
-    let client = MockClient::builder(settings(), crate::Capabilities::everything())
+    let client = MockClient::builder(settings(), everything_caps())
         .reply(says("one"))
         .reply(says("two"))
         .reply(says("three"))
@@ -78,7 +78,7 @@ fn given_a_fallback_when_set_replaced_and_removed_then_the_next_call_sees_the_ch
 
 #[test]
 fn given_replies_added_after_build_when_called_then_they_go_at_the_end() {
-    let client = MockClient::builder(settings(), crate::Capabilities::everything())
+    let client = MockClient::builder(settings(), everything_caps())
         .reply(says("first"))
         .build();
     client.push_reply(says("second"));

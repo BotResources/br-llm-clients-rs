@@ -154,7 +154,7 @@ fn given_invalid_replies_from_a_rule_and_the_fallback_when_called_then_the_body_
         || crate::reply_source::ReplySource::function(|_| Reply::hang(text_step("x"), 99).build());
     let client = mock();
     client.push_rule(Rule::new(|_| false, bad()));
-    client.push_rule(Rule::always(bad()).with_limit(1).unwrap());
+    client.push_rule(always_rule(bad()).with_limit(1).unwrap());
     client.set_fallback(bad());
     let (from_rule, _) = run(&client, &request());
     let (from_fallback, _) = run(&client, &request());

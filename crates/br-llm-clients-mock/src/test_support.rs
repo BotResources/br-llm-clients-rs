@@ -17,6 +17,8 @@ use br_llm_messages::{
 use crate::capabilities::{Capabilities, CapabilitiesSpec};
 use crate::mock_client::MockClient;
 use crate::recording_sink::RecordingSink;
+use crate::reply_source::ReplySource;
+use crate::rule::Rule;
 
 struct Unparker(Thread);
 
@@ -206,8 +208,16 @@ pub(crate) fn request() -> ClientRequest {
     request_of(vec![user_text("hello")], vec![], OutputMode::Plain)
 }
 
+pub(crate) fn everything_caps() -> Capabilities {
+    Capabilities::new(CapabilitiesSpec::everything()).unwrap()
+}
+
+pub(crate) fn always_rule(reply: impl Into<ReplySource>) -> Rule {
+    Rule::new(|_| true, reply)
+}
+
 pub(crate) fn mock() -> MockClient {
-    MockClient::new(settings(), Capabilities::everything())
+    MockClient::new(settings(), everything_caps())
 }
 
 pub(crate) fn run(client: &MockClient, request: &ClientRequest) -> (CallOutcome, RecordingSink) {

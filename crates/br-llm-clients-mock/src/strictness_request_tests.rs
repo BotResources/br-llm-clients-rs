@@ -2,7 +2,6 @@ use br_llm_clients_core::{ClientError, OutputMode};
 use br_llm_messages::ImageMime;
 
 use crate::accepted::Accepted;
-use crate::capabilities::Capabilities;
 use crate::strictness::{ModeClass, check, check_request, classify_mode};
 use crate::test_support::*;
 
@@ -15,7 +14,7 @@ fn given_the_known_output_modes_when_classified_then_none_is_unknown() {
 #[test]
 fn given_an_output_mode_unknown_to_the_mock_when_checked_then_it_is_refused_at_the_structured_position()
  {
-    let capabilities = Capabilities::everything();
+    let capabilities = everything_caps();
     let unknown = check_request(&capabilities, &request(), ModeClass::Unknown).unwrap_err();
     assert!(is_unknown_value(&unknown, "OutputMode"));
     let no_tools = caps(|spec| spec.tools = false);
@@ -46,7 +45,7 @@ fn given_invalid_messages_when_checked_then_the_check_of_core_decides_and_comes_
 
 #[test]
 fn given_the_rules_of_core_when_checked_then_the_examples_of_the_intent_hold() {
-    let capabilities = Capabilities::everything();
+    let capabilities = everything_caps();
     let accepted = request_of(
         vec![
             user_text("go"),
@@ -129,10 +128,7 @@ fn given_the_name_of_a_tool_call_that_is_not_declared_when_checked_then_nothing_
         vec![],
         OutputMode::Plain,
     );
-    assert_eq!(
-        check(&Capabilities::everything(), &settings(), &undeclared),
-        Ok(())
-    );
+    assert_eq!(check(&everything_caps(), &settings(), &undeclared), Ok(()));
 }
 
 #[test]
@@ -150,10 +146,7 @@ fn given_a_structured_mode_when_checked_then_each_missing_capability_is_its_own_
         Err(ClientError::StructuredOutputWithToolsNotSupported)
     );
     assert_eq!(check(&not_together, &settings(), &structured), Ok(()));
-    assert_eq!(
-        check(&Capabilities::everything(), &settings(), &with_tools),
-        Ok(())
-    );
+    assert_eq!(check(&everything_caps(), &settings(), &with_tools), Ok(()));
 }
 
 #[test]
@@ -183,7 +176,7 @@ fn given_an_image_on_a_model_without_images_when_checked_then_image_not_supporte
 #[test]
 fn given_images_of_several_types_when_one_is_refused_then_the_first_such_image_is_named() {
     let capabilities = caps(|spec| {
-        spec.image_media_types = Accepted::only([ImageMime::Png]);
+        spec.image_media_types = Accepted::Only(vec![ImageMime::Png]);
     });
     let messages = vec![
         user_image(ImageMime::Png),
@@ -203,7 +196,7 @@ fn given_images_of_several_types_when_one_is_refused_then_the_first_such_image_i
 #[test]
 fn given_two_images_in_one_message_when_the_second_is_refused_then_the_second_is_named() {
     let capabilities = caps(|spec| {
-        spec.image_media_types = Accepted::only([ImageMime::Png]);
+        spec.image_media_types = Accepted::Only(vec![ImageMime::Png]);
     });
     let message = br_llm_messages::WireMessage::User {
         content: vec![

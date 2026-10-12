@@ -5,10 +5,6 @@ pub enum Accepted<T> {
 }
 
 impl<T: PartialEq> Accepted<T> {
-    pub fn only(values: impl IntoIterator<Item = T>) -> Self {
-        Accepted::Only(values.into_iter().collect())
-    }
-
     pub(crate) fn accepts(&self, value: &T) -> bool {
         match self {
             Accepted::Any => true,

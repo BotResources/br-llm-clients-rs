@@ -2,7 +2,6 @@ use br_llm_clients_core::{ClientError, ClientRequest, OutputMode};
 use br_llm_messages::{AssistantBlock, RedactedThinking, Step, StopReason, Thinking};
 use serde_json::json;
 
-use crate::capabilities::Capabilities;
 use crate::step_check::check;
 use crate::strictness::ModeClass;
 use crate::test_support::*;
@@ -51,7 +50,7 @@ fn verdict(
     mode: ModeClass,
     step_value: &Step,
 ) -> Result<(), ClientError> {
-    check(&Capabilities::everything(), request_value, mode, step_value)
+    check(&everything_caps(), request_value, mode, step_value)
 }
 
 fn awaiting(content: Vec<AssistantBlock>) -> Step {

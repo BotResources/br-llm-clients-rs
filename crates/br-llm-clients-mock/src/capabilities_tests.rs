@@ -4,10 +4,11 @@ use br_llm_messages::ImageMime;
 use crate::accepted::Accepted;
 use crate::capabilities::{Capabilities, CapabilitiesSpec};
 use crate::capabilities_error::CapabilitiesError;
+use crate::test_support::everything_caps;
 
 #[test]
 fn given_everything_when_built_then_it_accepts_any_level_the_largest_tokens_and_every_feature() {
-    let capabilities = Capabilities::everything();
+    let capabilities = everything_caps();
     let spec = capabilities.spec();
     assert_eq!(spec.reasoning_levels, Accepted::Any);
     assert_eq!(spec.max_output_tokens.get(), u32::MAX);
@@ -23,7 +24,7 @@ fn given_everything_when_built_then_it_accepts_any_level_the_largest_tokens_and_
 fn given_the_everything_spec_when_built_then_it_equals_the_everything_capabilities() {
     assert_eq!(
         Capabilities::new(CapabilitiesSpec::everything()).unwrap(),
-        Capabilities::everything()
+        everything_caps()
     );
 }
 
@@ -44,7 +45,7 @@ fn given_everything_with_changed_fields_when_built_then_only_those_fields_differ
 fn given_images_with_an_empty_set_of_media_types_when_built_then_inconsistent() {
     let spec = CapabilitiesSpec {
         images: true,
-        image_media_types: Accepted::only([]),
+        image_media_types: Accepted::Only(vec![]),
         ..CapabilitiesSpec::everything()
     };
     assert_eq!(
@@ -57,7 +58,7 @@ fn given_images_with_an_empty_set_of_media_types_when_built_then_inconsistent() 
 fn given_no_images_with_an_empty_set_of_media_types_when_built_then_the_set_is_ignored() {
     let spec = CapabilitiesSpec {
         images: false,
-        image_media_types: Accepted::only([]),
+        image_media_types: Accepted::Only(vec![]),
         ..CapabilitiesSpec::everything()
     };
     assert!(Capabilities::new(spec).is_ok());
@@ -66,7 +67,7 @@ fn given_no_images_with_an_empty_set_of_media_types_when_built_then_the_set_is_i
 #[test]
 fn given_an_empty_set_of_levels_when_built_then_it_is_legal() {
     let spec = CapabilitiesSpec {
-        reasoning_levels: Accepted::only([]),
+        reasoning_levels: Accepted::Only(vec![]),
         ..CapabilitiesSpec::everything()
     };
     assert!(Capabilities::new(spec).is_ok());
@@ -74,10 +75,10 @@ fn given_an_empty_set_of_levels_when_built_then_it_is_legal() {
 
 #[test]
 fn given_a_set_holding_off_when_asked_then_off_is_a_member_like_any_other() {
-    let only_off = Accepted::only([ReasoningLevel::Off]);
+    let only_off = Accepted::Only(vec![ReasoningLevel::Off]);
     assert!(only_off.accepts(&ReasoningLevel::Off));
     assert!(!only_off.accepts(&ReasoningLevel::Low));
-    let without_off = Accepted::only([ReasoningLevel::Low]);
+    let without_off = Accepted::Only(vec![ReasoningLevel::Low]);
     assert!(!without_off.accepts(&ReasoningLevel::Off));
 }
 
@@ -98,7 +99,7 @@ fn given_any_when_asked_then_every_value_is_accepted() {
 
 #[test]
 fn given_a_set_of_media_types_when_asked_then_only_its_members_are_accepted() {
-    let set = Accepted::only([ImageMime::Png, ImageMime::Jpeg]);
+    let set = Accepted::Only(vec![ImageMime::Png, ImageMime::Jpeg]);
     assert!(set.accepts(&ImageMime::Png));
     assert!(!set.accepts(&ImageMime::Gif));
 }
@@ -115,5 +116,5 @@ fn given_tools_or_structured_output_missing_when_asked_then_the_combination_fiel
         .unwrap();
         assert!(!capabilities.accepts_structured_output_with_tools());
     }
-    assert!(Capabilities::everything().accepts_structured_output_with_tools());
+    assert!(everything_caps().accepts_structured_output_with_tools());
 }

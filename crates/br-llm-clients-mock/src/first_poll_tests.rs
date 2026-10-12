@@ -4,7 +4,6 @@ use std::task::{Context, Poll};
 use br_llm_clients_core::{BoxFuture, Client, ClientError, StreamSink};
 use br_llm_messages::StreamEvent;
 
-use crate::capabilities::Capabilities;
 use crate::gate::Gate;
 use crate::mock_client::MockClient;
 use crate::recording_sink::RecordingSink;
@@ -52,7 +51,7 @@ fn calls_step_reply() -> Reply {
 
 #[test]
 fn given_a_refused_call_when_polled_once_with_a_no_op_waker_then_it_is_complete() {
-    let client = MockClient::new(settings(), Capabilities::everything());
+    let client = MockClient::new(settings(), everything_caps());
     let bad = request_of(
         vec![assistant_text("x")],
         vec![],

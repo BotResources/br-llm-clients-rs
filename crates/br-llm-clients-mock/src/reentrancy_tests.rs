@@ -228,7 +228,7 @@ fn given_a_panic_in_a_reply_function_when_the_call_is_polled_then_the_entry_stay
 fn given_a_panic_in_a_rule_reply_function_when_the_call_is_polled_then_the_use_stays_taken() {
     let client = mock();
     client.push_rule(
-        Rule::always(ReplySource::function(|_| panic!("the function failed")))
+        always_rule(ReplySource::function(|_| panic!("the function failed")))
             .with_limit(2)
             .unwrap(),
     );

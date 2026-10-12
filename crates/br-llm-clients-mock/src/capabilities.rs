@@ -44,12 +44,6 @@ impl Capabilities {
         Ok(Self { spec })
     }
 
-    pub fn everything() -> Self {
-        Self {
-            spec: CapabilitiesSpec::everything(),
-        }
-    }
-
     #[cfg(test)]
     pub(crate) fn spec(&self) -> &CapabilitiesSpec {
         &self.spec

@@ -18,7 +18,8 @@ fn refusal(
 
 #[test]
 fn given_a_level_outside_the_set_when_checked_then_reasoning_not_supported_names_it() {
-    let capabilities = caps(|spec| spec.reasoning_levels = Accepted::only([ReasoningLevel::Low]));
+    let capabilities =
+        caps(|spec| spec.reasoning_levels = Accepted::Only(vec![ReasoningLevel::Low]));
     let error = refusal(
         &capabilities,
         settings_with(ReasoningLevel::High, CacheRequirement::NotRequired, 10),
@@ -32,7 +33,7 @@ fn given_a_level_outside_the_set_when_checked_then_reasoning_not_supported_names
 
 #[test]
 fn given_an_empty_set_of_levels_when_checked_then_every_level_is_refused_even_off() {
-    let capabilities = caps(|spec| spec.reasoning_levels = Accepted::only([]));
+    let capabilities = caps(|spec| spec.reasoning_levels = Accepted::Only(vec![]));
     for level in [ReasoningLevel::Off, ReasoningLevel::Max] {
         let error = refusal(
             &capabilities,
@@ -45,7 +46,7 @@ fn given_an_empty_set_of_levels_when_checked_then_every_level_is_refused_even_of
 
 #[test]
 fn given_any_level_when_checked_then_every_level_passes() {
-    let capabilities = Capabilities::everything();
+    let capabilities = everything_caps();
     for level in [
         ReasoningLevel::Off,
         ReasoningLevel::Extra,
@@ -88,7 +89,7 @@ fn given_tokens_above_the_capability_when_checked_then_the_limit_is_carried() {
 #[test]
 fn given_several_failing_settings_when_checked_then_the_first_in_the_listed_order_is_returned() {
     let capabilities = caps(|spec| {
-        spec.reasoning_levels = Accepted::only([]);
+        spec.reasoning_levels = Accepted::Only(vec![]);
         spec.caching = false;
         spec.max_output_tokens = MaxOutputTokens::new(1).unwrap();
     });
@@ -126,10 +127,9 @@ fn given_failing_settings_and_failing_request_when_checked_then_the_settings_com
 fn given_a_cache_requirement_unknown_to_the_mock_when_checked_then_it_is_refused_at_the_cache_position()
  {
     let settings = settings_with(ReasoningLevel::Off, CacheRequirement::NotRequired, 5);
-    let unknown =
-        check_settings(&Capabilities::everything(), &settings, CacheClass::Unknown).unwrap_err();
+    let unknown = check_settings(&everything_caps(), &settings, CacheClass::Unknown).unwrap_err();
     assert!(is_unknown_value(&unknown, "CacheRequirement"));
-    let wrong_level = caps(|spec| spec.reasoning_levels = Accepted::only([]));
+    let wrong_level = caps(|spec| spec.reasoning_levels = Accepted::Only(vec![]));
     assert!(matches!(
         check_settings(&wrong_level, &settings, CacheClass::Unknown),
         Err(ClientError::ReasoningNotSupported { .. })
