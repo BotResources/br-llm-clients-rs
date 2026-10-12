@@ -90,12 +90,12 @@ PY
 python3 -c '
 import json, sys
 raw = json.load(open(sys.argv[1]))
-json.dump({"p": raw["external"], "pid": sys.argv[3] or None}, open(sys.argv[2], "w"))
-' "$WORK/raw.json" "$WORK/lookup-vars.json" "${BR_REGISTRY_PROJECT_ID:-}"
+json.dump({"p": raw["external"]}, open(sys.argv[2], "w"))
+' "$WORK/raw.json" "$WORK/lookup-vars.json"
 
 echo '{"data":{"librariesLookupPackages":[]}}' >"$WORK/lookup.json"
 if [[ "$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["external"]))' "$WORK/raw.json")" -gt 0 ]]; then
-    registry_post 'query($p: [LibrariesPackageRef!]!, $pid: UUID) { librariesLookupPackages(packages: $p, projectId: $pid) { found packageName version line lineStatus library { id name } } }' \
+    registry_post 'query($p: [LibrariesPackageRef!]!) { librariesLookupPackages(packages: $p) { found packageName version line lineStatus library { id name } } }' \
         "$WORK/lookup-vars.json" "$WORK/lookup.json"
     read -r VERDICT REASON MESSAGE <<<"$(registry_verdict "$WORK/lookup.json")"
     if [[ "$VERDICT" != "OK" ]]; then
