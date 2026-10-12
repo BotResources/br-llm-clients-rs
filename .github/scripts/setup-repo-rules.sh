@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DECL="$ROOT/.github/required-checks.json"
 DRY_RUN=false
+VERIFY_ONLY=false
 
 if [[ -z "${REPO:-}" ]]; then
     origin="$(git -C "$ROOT" remote get-url origin 2>/dev/null || true)"
@@ -12,9 +13,10 @@ fi
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --dry-run) DRY_RUN=true; shift ;;
+        --dry-run)     DRY_RUN=true; shift ;;
+        --verify-only) VERIFY_ONLY=true; shift ;;
         -h|--help)
-            echo "usage: [REPO=owner/name] $0 [--dry-run]"
+            echo "usage: [REPO=owner/name] $0 [--dry-run | --verify-only]"
             exit 0
             ;;
         *)
@@ -71,7 +73,17 @@ tag_ruleset='{
     "rules": [{"type": "deletion"}, {"type": "non_fast_forward"}, {"type": "update"}]
 }'
 
-main_checks="$(jq -c '{strict: true, contexts: .}' <<<"$CONTEXTS")"
+main_checks="$(jq -c '{strict: true, contexts: (. | sort)}' <<<"$CONTEXTS")"
+
+RULESET_SHAPE='{
+    target,
+    enforcement,
+    bypass: (.bypass_actors | length),
+    include: .conditions.ref_name.include,
+    exclude: .conditions.ref_name.exclude,
+    rules: ([.rules[].type] | sort),
+    checks: ([.rules[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context] | sort)
+}'
 
 echo "repo: ${REPO}"
 echo "required checks:"
@@ -103,17 +115,77 @@ upsert_ruleset() {
     fi
 }
 
-upsert_ruleset release-lines "$branch_ruleset"
-upsert_ruleset release-tags "$tag_ruleset"
+apply_rules() {
+    upsert_ruleset release-lines "$branch_ruleset"
+    upsert_ruleset release-tags "$tag_ruleset"
+    gh api -X PATCH --input - "repos/${REPO}/branches/main/protection/required_status_checks" <<<"$main_checks" >/dev/null
+    gh api -X PATCH --input - "repos/${REPO}" >/dev/null <<<'{"security_and_analysis":{"secret_scanning":{"status":"enabled"},"secret_scanning_push_protection":{"status":"enabled"}}}'
+    gh api -X PUT --input - "repos/${REPO}/actions/permissions/fork-pr-contributor-approval" >/dev/null <<<'{"approval_policy":"all_external_contributors"}'
+    gh api -X PUT --input - "repos/${REPO}/actions/permissions" >/dev/null <<<'{"enabled":true,"allowed_actions":"all","sha_pinning_required":true}'
+    echo "applied"
+}
 
-gh api -X PATCH --input - "repos/${REPO}/branches/main/protection/required_status_checks" <<<"$main_checks" >/dev/null
-echo "main: required status checks updated"
+read_main_checks() {
+    gh api "repos/${REPO}/branches/main/protection/required_status_checks" --jq '{strict, contexts: (.contexts | sort)}'
+}
 
-gh api -X PATCH --input - "repos/${REPO}" >/dev/null <<<'{"security_and_analysis":{"secret_scanning":{"status":"enabled"},"secret_scanning_push_protection":{"status":"enabled"}}}'
-echo "security: secret scanning and push protection enabled"
+read_ruleset() {
+    local id
+    id="$(gh api "repos/${REPO}/rulesets" --jq ".[] | select(.name == \"$1\") | .id")"
+    if [[ -z "$id" ]]; then
+        echo null
+        return
+    fi
+    gh api "repos/${REPO}/rulesets/${id}" --jq "$RULESET_SHAPE"
+}
 
-gh api -X PUT --input - "repos/${REPO}/actions/permissions/fork-pr-contributor-approval" >/dev/null <<<'{"approval_policy":"all_external_contributors"}'
-echo "actions: fork PR approval set to all outside contributors"
+read_security() {
+    gh api "repos/${REPO}" --jq '{secret_scanning: .security_and_analysis.secret_scanning.status, push_protection: .security_and_analysis.secret_scanning_push_protection.status}'
+}
 
-gh api -X PUT --input - "repos/${REPO}/actions/permissions" >/dev/null <<<'{"enabled":true,"allowed_actions":"all","sha_pinning_required":true}'
-echo "actions: SHA pinning enforced"
+read_fork_approval() {
+    gh api "repos/${REPO}/actions/permissions/fork-pr-contributor-approval" --jq '{approval_policy}'
+}
+
+read_sha_pinning() {
+    gh api "repos/${REPO}/actions/permissions" --jq '{sha_pinning_required}'
+}
+
+FAILURES=0
+
+expect() {
+    local label="$1" expected actual
+    expected="$(jq -cS . <<<"$2")"
+    shift 2
+    for _ in 1 2 3; do
+        actual="$("$@" 2>/dev/null | jq -cS . 2>/dev/null || true)"
+        if [[ "$actual" == "$expected" ]]; then
+            echo "verified  ${label}"
+            return 0
+        fi
+        sleep 2
+    done
+    echo "MISMATCH  ${label}"
+    echo "  expected: ${expected}"
+    echo "  actual  : ${actual:-unreadable}"
+    FAILURES=$((FAILURES + 1))
+}
+
+verify_rules() {
+    expect "main required status checks" "$main_checks" read_main_checks
+    expect "ruleset release-lines" "$(jq -c "$RULESET_SHAPE" <<<"$branch_ruleset")" read_ruleset release-lines
+    expect "ruleset release-tags" "$(jq -c "$RULESET_SHAPE" <<<"$tag_ruleset")" read_ruleset release-tags
+    expect "secret scanning and push protection" '{"secret_scanning":"enabled","push_protection":"enabled"}' read_security
+    expect "fork PR approval" '{"approval_policy":"all_external_contributors"}' read_fork_approval
+    expect "SHA pinning" '{"sha_pinning_required":true}' read_sha_pinning
+    if [[ "$FAILURES" -gt 0 ]]; then
+        echo "${FAILURES} setting(s) differ from the declared state" >&2
+        exit 1
+    fi
+    echo "all settings match the declared state"
+}
+
+if [[ "${VERIFY_ONLY}" != "true" ]]; then
+    apply_rules
+fi
+verify_rules
