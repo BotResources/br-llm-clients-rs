@@ -16,7 +16,7 @@ if [ ! -f "$readme" ]; then
   exit 1
 fi
 
-expected_tag="${crate}-v${version}"
+expected_tag="${crate}/v${version}"
 expected_pin="package = \"${crate}\", tag = \"${expected_tag}\", version = \"${version}\""
 
 if ! grep -qF "${expected_pin}" "$readme"; then
