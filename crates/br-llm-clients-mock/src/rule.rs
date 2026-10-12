@@ -8,6 +8,7 @@ use crate::reply_source::ReplySource;
 pub(crate) type Matcher = dyn Fn(&MatchContext<'_>) -> bool + Send + Sync + 'static;
 
 #[derive(Clone)]
+#[must_use = "a rule does nothing until it is pushed to a mock"]
 pub struct Rule {
     pub(crate) matcher: Arc<Matcher>,
     pub(crate) reply: ReplySource,

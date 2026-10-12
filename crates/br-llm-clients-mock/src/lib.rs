@@ -1,6 +1,11 @@
 #![cfg_attr(
     not(test),
-    deny(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)
+    deny(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::arithmetic_side_effects
+    )
 )]
 
 mod accepted;
@@ -91,6 +96,8 @@ mod step_check_tests;
 mod strictness_request_tests;
 #[cfg(test)]
 mod strictness_settings_tests;
+#[cfg(test)]
+mod sync_tests;
 #[cfg(test)]
 mod test_support;
 #[cfg(test)]

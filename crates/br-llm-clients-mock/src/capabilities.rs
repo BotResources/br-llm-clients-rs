@@ -50,7 +50,8 @@ impl Capabilities {
         }
     }
 
-    pub fn spec(&self) -> &CapabilitiesSpec {
+    #[cfg(test)]
+    pub(crate) fn spec(&self) -> &CapabilitiesSpec {
         &self.spec
     }
 

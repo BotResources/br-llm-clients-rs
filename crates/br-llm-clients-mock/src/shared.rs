@@ -6,7 +6,7 @@ use crate::capabilities::Capabilities;
 use crate::log::LogState;
 use crate::script::ScriptState;
 use crate::sync::{lock, wake_all};
-use crate::tracker::CallTracker;
+use crate::tracker::{CallTracker, DropGuard};
 
 pub(crate) struct State {
     pub(crate) script: ScriptState,
@@ -21,6 +21,7 @@ pub(crate) struct Shared {
 
 pub(crate) struct Begun {
     pub(crate) tracker: CallTracker,
+    pub(crate) guard: DropGuard,
     pub(crate) rules_at_start: usize,
 }
 
@@ -65,9 +66,12 @@ impl Shared {
             let (sequence, wakers) = state.log.begin(copies);
             (sequence, rules_at_start, wakers)
         });
+        let tracker = CallTracker::new(Arc::clone(self), sequence);
+        let guard = DropGuard::new(tracker.clone());
         wake_all(wakers);
         Begun {
-            tracker: CallTracker::new(Arc::clone(self), sequence),
+            tracker,
+            guard,
             rules_at_start,
         }
     }

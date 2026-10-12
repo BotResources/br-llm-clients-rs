@@ -43,7 +43,7 @@ impl Waiters {
             return Some(std::mem::replace(&mut entry.1, waker));
         }
         let id = self.next;
-        self.next += 1;
+        self.next = self.next.saturating_add(1);
         self.slots.push((id, waker));
         *slot = Some(id);
         None

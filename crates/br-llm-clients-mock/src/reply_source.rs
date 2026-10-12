@@ -15,6 +15,7 @@ pub(crate) enum Repr {
 }
 
 #[derive(Clone)]
+#[must_use = "a reply source does nothing until it is given to a mock"]
 pub struct ReplySource {
     pub(crate) repr: Repr,
 }

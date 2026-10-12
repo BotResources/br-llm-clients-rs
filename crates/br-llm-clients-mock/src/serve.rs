@@ -37,7 +37,7 @@ async fn stream(
             break;
         };
         call.sink.send(event).await;
-        position += 1;
+        position = position.saturating_add(1);
     }
 }
 

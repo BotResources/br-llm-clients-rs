@@ -42,6 +42,7 @@ impl MockClient {
         self.shared.capabilities()
     }
 
+    #[must_use = "the new handle is the only result"]
     pub fn with_settings(&self, settings: ClientSettings) -> MockClient {
         MockClient {
             shared: Arc::clone(&self.shared),

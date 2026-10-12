@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::test_support::*;
-use crate::waker_support::{probing_waker, subjects, within_deadline};
+use crate::waker_support::{cloning_waker, probing_waker, subjects, within_deadline};
 
 #[test]
 fn given_a_pending_future_when_dropped_then_its_waker_is_released() {
@@ -91,6 +91,23 @@ fn given_a_waker_whose_destructor_uses_the_same_object_when_the_wake_runs_then_t
             let reentrant = probing_waker(Arc::clone(&subject.touch));
             assert!(poll_with(&mut subject.future.as_mut(), &reentrant).is_pending());
             drop(reentrant);
+            (subject.fire)();
+        });
+    }
+}
+
+#[test]
+fn given_a_waker_whose_clone_uses_the_same_object_when_the_future_is_polled_then_there_is_no_deadlock()
+ {
+    for subject in subjects() {
+        within_deadline(move || {
+            let mut subject = subject;
+            let reentrant = cloning_waker(Arc::clone(&subject.touch));
+            assert!(poll_with(&mut subject.future.as_mut(), &reentrant).is_pending());
+            assert!(poll_with(&mut subject.future.as_mut(), &reentrant).is_pending());
+            let counter = Arc::new(WakeCount::default());
+            assert!(poll_with(&mut subject.future.as_mut(), &counter.waker()).is_pending());
+            assert!(poll_with(&mut subject.future.as_mut(), &reentrant).is_pending());
             (subject.fire)();
         });
     }

@@ -28,7 +28,7 @@ pub(crate) fn rename_tool_calls(
                     name: call.name.clone(),
                     arguments: call.arguments.clone(),
                 };
-                position += 1;
+                position = position.saturating_add(1);
                 AssistantBlock::ToolCall(renamed)
             }
             other => other.clone(),

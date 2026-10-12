@@ -28,7 +28,7 @@ impl LogState {
         copies: Option<(ClientRequest, ClientSettings)>,
     ) -> (usize, Vec<Waker>) {
         let sequence = self.began;
-        self.began += 1;
+        self.began = self.began.saturating_add(1);
         if let Some((request, settings)) = copies {
             self.calls
                 .push(LoggedCall::new(sequence, request, settings));

@@ -14,7 +14,6 @@ use crate::script::Claimed;
 use crate::serve::serve;
 use crate::shared::Shared;
 use crate::strictness;
-use crate::tracker::DropGuard;
 
 pub(crate) async fn drive(
     shared: &Arc<Shared>,
@@ -23,7 +22,7 @@ pub(crate) async fn drive(
     sink: &mut dyn StreamSink,
 ) -> CallOutcome {
     let begun = shared.begin(request, settings);
-    let _guard = DropGuard::new(begun.tracker.clone());
+    let _guard = begun.guard;
     let mut call = CallContext {
         tracker: &begun.tracker,
         settings,

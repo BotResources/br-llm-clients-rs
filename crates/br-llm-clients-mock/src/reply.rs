@@ -25,6 +25,7 @@ pub(crate) enum Shape {
 }
 
 #[derive(Debug, Clone)]
+#[must_use = "a reply does nothing until it is given to a mock"]
 pub struct Reply {
     pub(crate) shape: Shape,
     pub(crate) report: ReportValues,

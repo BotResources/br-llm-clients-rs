@@ -68,7 +68,7 @@ impl ScriptState {
             return None;
         }
         let claimed_before = slot.used;
-        slot.used += 1;
+        slot.used = slot.used.saturating_add(1);
         Some(Claimed {
             served: Served::Rule { position },
             source: slot.reply.clone(),
@@ -79,7 +79,7 @@ impl ScriptState {
     pub(crate) fn claim_remaining(&mut self) -> Option<Claimed> {
         if let Some(source) = self.entries.get(self.next_entry) {
             let position = self.next_entry;
-            self.next_entry += 1;
+            self.next_entry = self.next_entry.saturating_add(1);
             return Some(Claimed {
                 served: Served::Entry { position },
                 source: source.clone(),
@@ -88,7 +88,7 @@ impl ScriptState {
         }
         let source = self.fallback.clone()?;
         let claimed_before = self.fallback_claims;
-        self.fallback_claims += 1;
+        self.fallback_claims = self.fallback_claims.saturating_add(1);
         Some(Claimed {
             served: Served::Fallback,
             source,

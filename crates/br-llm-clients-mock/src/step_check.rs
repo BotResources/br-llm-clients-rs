@@ -12,6 +12,12 @@ struct Counts {
     tool_calls: usize,
 }
 
+impl Counts {
+    fn is_empty(&self) -> bool {
+        self.text == 0 && self.structured == 0 && self.tool_calls == 0
+    }
+}
+
 fn count(step: &Step) -> Counts {
     let mut counts = Counts {
         text: 0,
@@ -20,9 +26,11 @@ fn count(step: &Step) -> Counts {
     };
     for block in step.content() {
         match block {
-            AssistantBlock::Text { .. } => counts.text += 1,
-            AssistantBlock::Structured { .. } => counts.structured += 1,
-            AssistantBlock::ToolCall(_) => counts.tool_calls += 1,
+            AssistantBlock::Text { .. } => counts.text = counts.text.saturating_add(1),
+            AssistantBlock::Structured { .. } => {
+                counts.structured = counts.structured.saturating_add(1)
+            }
+            AssistantBlock::ToolCall(_) => counts.tool_calls = counts.tool_calls.saturating_add(1),
             AssistantBlock::Thinking(_) | AssistantBlock::RedactedThinking(_) => {}
         }
     }
@@ -41,7 +49,7 @@ pub(crate) fn check(
 ) -> Result<(), ClientError> {
     let counts = count(step);
     let stop_reason = step.stop_reason();
-    if counts.text + counts.structured + counts.tool_calls == 0 {
+    if counts.is_empty() {
         return Err(if blocked(stop_reason) {
             ClientError::ContentBlocked
         } else {
@@ -51,7 +59,10 @@ pub(crate) fn check(
         });
     }
     let structured = mode == ModeClass::Structured;
-    if structured && counts.structured + counts.tool_calls == 0 && blocked(stop_reason) {
+    if structured
+        && counts.structured.saturating_add(counts.tool_calls) == 0
+        && blocked(stop_reason)
+    {
         return Err(ClientError::ContentBlocked);
     }
     if structured {

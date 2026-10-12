@@ -60,7 +60,12 @@ form to decide whether a version ships.
   `WaitForEvents`) are `Send`, `Sync`, `Unpin` and `'static`, and `#[must_use]`
   like `MockBuilder`, `ReplyBuilder` and `Chunking`. A waker is released when it
   is replaced or when its future is dropped, and is never cloned, dropped or
-  woken under a lock; a waker that panics on wake does not stop the others.
+  woken under a lock. A waker that panics on wake does not stop the others:
+  every waker is woken first, then the first panic is re-raised from `open`,
+  `release`, a poll, and also from a drop (the end of a call, a gate pass)
+  unless the thread is already panicking, in which case the panic is dropped so
+  that the process does not abort. A call that is begun when a waker panics is
+  logged as dropped once its future is dropped, never as running forever.
 - A call that meets no gate, no hang and no sink that is not ready is complete
   at its first poll. No lock is held while a sink, a matcher or a reply
   function runs; a panic in user code leaves the mock usable.

@@ -2,7 +2,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
-use std::task::{Wake, Waker};
+use std::task::{RawWaker, RawWakerVTable, Wake, Waker};
 use std::time::Duration;
 
 use br_llm_clients_core::Client;
@@ -51,6 +51,33 @@ pub(crate) fn probing_waker(probe: Probe) -> Waker {
 
 pub(crate) fn panicking_waker() -> Waker {
     Waker::from(Arc::new(Panicking))
+}
+
+static CLONING: RawWakerVTable =
+    RawWakerVTable::new(clone_hook, release_hook, ignore_hook, release_hook);
+
+fn clone_hook(data: *const ()) -> RawWaker {
+    let data = data.cast::<Probe>();
+    // SAFETY: data comes from Arc::into_raw in cloning_waker and the strong count is at least one while a waker holds it.
+    let probe = unsafe {
+        Arc::increment_strong_count(data);
+        Arc::from_raw(data)
+    };
+    (*probe)();
+    RawWaker::new(Arc::into_raw(probe).cast::<()>(), &CLONING)
+}
+
+fn release_hook(data: *const ()) {
+    // SAFETY: data comes from Arc::into_raw in cloning_waker and each waker releases exactly one strong count.
+    unsafe { Arc::decrement_strong_count(data.cast::<Probe>()) };
+}
+
+fn ignore_hook(_data: *const ()) {}
+
+pub(crate) fn cloning_waker(probe: Probe) -> Waker {
+    let data = Arc::into_raw(Arc::new(probe)).cast::<()>();
+    // SAFETY: the vtable hooks keep the Arc strong count equal to the number of live wakers made from data.
+    unsafe { Waker::from_raw(RawWaker::new(data, &CLONING)) }
 }
 
 pub(crate) fn within_deadline(work: impl FnOnce() + Send + 'static) {

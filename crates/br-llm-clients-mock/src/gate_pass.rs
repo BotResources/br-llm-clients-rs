@@ -54,7 +54,7 @@ fn arrive(
     waker: Waker,
 ) -> Advance {
     let id = state.next_ticket;
-    state.next_ticket += 1;
+    state.next_ticket = state.next_ticket.saturating_add(1);
     let mut wakers = tracker.set(CallState::WaitingAtGate);
     state.queue.push_back(Ticket {
         id,
