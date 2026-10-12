@@ -36,6 +36,8 @@ mod tracker;
 mod usage_rules;
 
 #[cfg(test)]
+mod call_hang_tests;
+#[cfg(test)]
 mod call_reply_tests;
 #[cfg(test)]
 mod capabilities_tests;
