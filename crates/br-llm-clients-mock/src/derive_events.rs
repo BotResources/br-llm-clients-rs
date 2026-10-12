@@ -1,5 +1,4 @@
 use br_llm_messages::{AssistantBlock, BlockKind, Step, StreamEvent};
-use serde_json::Value;
 
 use crate::build_error::MockBuildError;
 use crate::chunking::{Chunking, pieces};
@@ -15,10 +14,10 @@ impl DerivedEvents {
     }
 
     pub fn before_finish(&self) -> usize {
-        self.events.len() - 1
+        self.events.len().saturating_sub(1)
     }
 
-    pub fn into_events(self) -> Vec<StreamEvent> {
+    pub(crate) fn into_events(self) -> Vec<StreamEvent> {
         self.events
     }
 }
@@ -76,7 +75,7 @@ fn block_events(
         }
         AssistantBlock::Structured { value } => {
             start(events, index, BlockKind::Structured);
-            for piece in pieces(&compact(value), chunking.structured_size()) {
+            for piece in pieces(&value.to_string(), chunking.structured_size()) {
                 events.push(StreamEvent::StructuredDelta {
                     index,
                     json_fragment: piece.to_owned(),
@@ -89,7 +88,7 @@ fn block_events(
                 id: call.id.clone(),
                 name: call.name.clone(),
             });
-            for piece in pieces(&compact(&call.arguments), chunking.tool_arguments_size()) {
+            for piece in pieces(&call.arguments.to_string(), chunking.tool_arguments_size()) {
                 events.push(StreamEvent::ToolCallArgumentsDelta {
                     index,
                     json_fragment: piece.to_owned(),
@@ -102,8 +101,4 @@ fn block_events(
 
 fn start(events: &mut Vec<StreamEvent>, index: usize, kind: BlockKind) {
     events.push(StreamEvent::BlockStart { index, kind });
-}
-
-fn compact(value: &Value) -> String {
-    value.to_string()
 }

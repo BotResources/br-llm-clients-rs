@@ -104,18 +104,16 @@ fn given_a_renamed_reply_whose_new_id_is_in_the_request_when_called_then_malform
 #[test]
 fn given_a_function_reply_when_called_then_it_gets_request_settings_sequence_and_prior_claims() {
     let client = mock();
-    client.set_fallback(crate::reply_source::ReplySource::function(
-        |request_value, settings_value, sequence, claimed_before| {
-            let label = format!(
-                "{}-{}-{}-{}",
-                request_value.messages().len(),
-                settings_value.model(),
-                sequence,
-                claimed_before
-            );
-            Reply::success(text_step(&label)).build()
-        },
-    ));
+    client.set_fallback(crate::reply_source::ReplySource::function(|call| {
+        let label = format!(
+            "{}-{}-{}-{}",
+            call.request().messages().len(),
+            call.settings().model(),
+            call.sequence(),
+            call.claimed_before()
+        );
+        Reply::success(text_step(&label)).build()
+    }));
     let (first, _) = run(&client, &request());
     let (second, _) = run(&client, &request());
     let texts: Vec<String> = [first, second]
@@ -129,11 +127,11 @@ fn given_a_function_reply_when_called_then_it_gets_request_settings_sequence_and
 fn given_a_function_that_returns_a_build_error_when_called_then_provider_rejected_invalid_reply_names_the_origin()
  {
     let client = mock();
-    client.push_reply(crate::reply_source::ReplySource::function(|_, _, _, _| {
+    client.push_reply(crate::reply_source::ReplySource::function(|_| {
         Reply::cut(text_step("x"), 99, ClientError::Transport).build()
     }));
     client.push_rule(Rule::new(
-        |_, _, _| false,
+        |_| false,
         Reply::failure(ClientError::Transport).build().unwrap(),
     ));
     let (outcome, sink) = run(&client, &request());
@@ -152,13 +150,10 @@ fn given_a_function_that_returns_a_build_error_when_called_then_provider_rejecte
 #[test]
 fn given_invalid_replies_from_a_rule_and_the_fallback_when_called_then_the_body_names_them_with_position()
  {
-    let bad = || {
-        crate::reply_source::ReplySource::function(|_, _, _, _| {
-            Reply::hang(text_step("x"), 99).build()
-        })
-    };
+    let bad =
+        || crate::reply_source::ReplySource::function(|_| Reply::hang(text_step("x"), 99).build());
     let client = mock();
-    client.push_rule(Rule::new(|_, _, _| false, bad()));
+    client.push_rule(Rule::new(|_| false, bad()));
     client.push_rule(Rule::always(bad()).with_limit(1).unwrap());
     client.set_fallback(bad());
     let (from_rule, _) = run(&client, &request());

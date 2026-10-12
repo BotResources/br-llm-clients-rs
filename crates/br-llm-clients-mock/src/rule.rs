@@ -1,13 +1,11 @@
 use std::fmt;
 use std::sync::Arc;
 
-use br_llm_clients_core::{ClientRequest, ClientSettings};
-
 use crate::build_error::MockBuildError;
+use crate::call_view::MatchContext;
 use crate::reply_source::ReplySource;
 
-pub(crate) type Matcher =
-    dyn Fn(&ClientRequest, &ClientSettings, usize) -> bool + Send + Sync + 'static;
+pub(crate) type Matcher = dyn Fn(&MatchContext<'_>) -> bool + Send + Sync + 'static;
 
 #[derive(Clone)]
 pub struct Rule {
@@ -19,7 +17,7 @@ pub struct Rule {
 impl Rule {
     pub fn new<M>(matcher: M, reply: impl Into<ReplySource>) -> Self
     where
-        M: Fn(&ClientRequest, &ClientSettings, usize) -> bool + Send + Sync + 'static,
+        M: Fn(&MatchContext<'_>) -> bool + Send + Sync + 'static,
     {
         Self {
             matcher: Arc::new(matcher),
@@ -29,7 +27,7 @@ impl Rule {
     }
 
     pub fn always(reply: impl Into<ReplySource>) -> Self {
-        Self::new(|_, _, _| true, reply)
+        Self::new(|_| true, reply)
     }
 
     pub fn with_limit(mut self, uses: usize) -> Result<Self, MockBuildError> {

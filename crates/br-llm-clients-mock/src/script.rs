@@ -97,13 +97,13 @@ impl ScriptState {
     }
 
     pub(crate) fn unused_entries(&self) -> usize {
-        self.entries.len() - self.next_entry
+        self.entries.len().saturating_sub(self.next_entry)
     }
 
     pub(crate) fn unused_uses(&self) -> usize {
         self.rules
             .iter()
-            .filter_map(|slot| slot.limit.map(|limit| limit - slot.used))
-            .sum()
+            .filter_map(|slot| slot.limit.map(|limit| limit.saturating_sub(slot.used)))
+            .fold(0, usize::saturating_add)
     }
 }

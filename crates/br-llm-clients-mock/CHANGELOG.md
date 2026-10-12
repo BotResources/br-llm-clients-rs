@@ -34,8 +34,10 @@ form to decide whether a version ships.
   stream (`ReplyBuilder`, with report values, a named usage for failure, cut and
   broken stream, `gate_at`, `chunking` and `rename_tool_call_ids`).
   `MockBuildError` (`#[non_exhaustive]`) reports a reply that breaks a rule when
-  it is built. `ReplySource` makes a reply a value or a function; `Rule` pairs a
-  matcher with a reply, with an optional limit of uses. A success is checked
+  it is built. `ReplySource` makes a reply a value or a function of one
+  `ReplyContext` (request, settings, sequence number, claims before); `Rule`
+  pairs a matcher, a function of one `MatchContext` (request, settings, sequence
+  number), with a reply, with an optional limit of uses. A success is checked
   against the request (`ContentBlocked`, `ReplyUnusable`, `MalformedResponse`).
   `tool_call_id` makes ids of the form `{prefix}-{seq}` or `{prefix}-{seq}-{i}`.
 - `derive_events` and `Chunking`: the pure derivation of the `StreamEvent` list
@@ -54,6 +56,11 @@ form to decide whether a version ships.
 - `Gate` (`open`, `release`, `waiting`, `is_open`, `wait_for_waiting`) to decide
   when a reply goes on, and `RecordingSink` (events, take, len, wait for
   events, fold with a model id; `FoldError`).
+- The wait futures (`WaitForCalls`, `WaitForState`, `WaitForWaiting`,
+  `WaitForEvents`) are `Send`, `Sync`, `Unpin` and `'static`, and `#[must_use]`
+  like `MockBuilder`, `ReplyBuilder` and `Chunking`. A waker is released when it
+  is replaced or when its future is dropped, and is never cloned, dropped or
+  woken under a lock; a waker that panics on wake does not stop the others.
 - A call that meets no gate, no hang and no sink that is not ready is complete
   at its first poll. No lock is held while a sink, a matcher or a reply
   function runs; a panic in user code leaves the mock usable.

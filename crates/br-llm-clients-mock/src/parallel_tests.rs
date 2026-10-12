@@ -34,14 +34,10 @@ fn spawn_small<T: Send + 'static>(
         .unwrap()
 }
 
-fn assert_send_sync<T: Send + Sync + ?Sized>() {}
-
 fn assert_send<T: Send>(_: &T) {}
 
 #[test]
-fn given_the_mock_when_compiled_then_it_is_send_sync_a_trait_object_and_its_call_future_is_send() {
-    assert_send_sync::<MockClient>();
-    assert_send_sync::<dyn Client>();
+fn given_the_mock_when_compiled_then_it_is_a_trait_object_and_its_call_future_is_send() {
     let shared: Arc<dyn Client> = Arc::new(mock());
     let request_value = request();
     let mut sink = RecordingSink::new();
@@ -146,7 +142,7 @@ fn given_two_calls_that_both_match_the_last_use_when_they_claim_together_then_on
     let client = mock();
     client.push_rule(
         Rule::new(
-            move |_, _, _| {
+            move |_| {
                 waiting.wait();
                 true
             },
@@ -228,7 +224,7 @@ fn given_the_same_mock_and_the_same_calls_in_the_same_order_when_repeated_then_t
         let client = mock();
         client.push_reply(says("a"));
         client.push_reply(Reply::failure(ClientError::Transport).build().unwrap());
-        client.push_rule(Rule::new(|_, _, sequence| sequence == 2, says("rule")));
+        client.push_rule(Rule::new(|call| call.sequence() == 2, says("rule")));
         client.set_fallback(says("fallback"));
         client
     };

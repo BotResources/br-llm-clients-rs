@@ -7,6 +7,7 @@ use crate::rule::Rule;
 use crate::shared::Shared;
 
 #[derive(Debug)]
+#[must_use]
 pub struct MockBuilder {
     settings: ClientSettings,
     capabilities: Capabilities,

@@ -66,7 +66,7 @@ fn given_a_sink_that_uses_the_same_mock_while_it_runs_when_a_call_streams_then_t
 fn given_a_reply_function_that_uses_the_same_mock_when_it_runs_then_there_is_no_deadlock() {
     let client = mock();
     let inside = client.clone();
-    client.push_reply(ReplySource::function(move |_, _, _, _| {
+    client.push_reply(ReplySource::function(move |_| {
         inside.push_reply(says("pushed from the function"));
         let seen = inside.log().len();
         Reply::success(text_step(&format!("function saw {seen}"))).build()
@@ -91,7 +91,7 @@ fn given_a_matcher_that_blocks_when_the_test_thread_uses_the_mock_then_no_lock_i
     let resume_rx = Mutex::new(resume_rx);
     let client = mock();
     client.push_rule(Rule::new(
-        move |_, _, _| {
+        move |_| {
             entered_tx.send(()).unwrap();
             resume_rx.lock().unwrap().recv().unwrap();
             false
@@ -122,7 +122,7 @@ fn given_a_reply_function_that_blocks_when_other_calls_are_made_then_they_are_no
     let (resume_tx, resume_rx) = mpsc::channel::<()>();
     let resume_rx = Mutex::new(resume_rx);
     let client = mock();
-    client.push_reply(ReplySource::function(move |_, _, _, _| {
+    client.push_reply(ReplySource::function(move |_| {
         entered_tx.send(()).unwrap();
         resume_rx.lock().unwrap().recv().unwrap();
         Ok(says("slow function"))
@@ -174,8 +174,8 @@ fn given_a_panic_in_a_matcher_when_the_call_is_polled_then_no_entry_and_no_use_i
     let client = mock();
     client.push_rule(
         Rule::new(
-            |_, _, sequence| {
-                if sequence == 0 {
+            |call| {
+                if call.sequence() == 0 {
                     panic!("the matcher failed");
                 }
                 false
@@ -207,9 +207,7 @@ fn given_a_panic_in_a_matcher_when_the_call_is_polled_then_no_entry_and_no_use_i
 fn given_a_panic_in_a_reply_function_when_the_call_is_polled_then_the_entry_stays_taken_and_the_call_is_dropped()
  {
     let client = mock();
-    client.push_reply(ReplySource::function(|_, _, _, _| {
-        panic!("the function failed")
-    }));
+    client.push_reply(ReplySource::function(|_| panic!("the function failed")));
     client.push_reply(says("next"));
     let request_value = request();
     let mut sink = crate::RecordingSink::new();
@@ -230,11 +228,9 @@ fn given_a_panic_in_a_reply_function_when_the_call_is_polled_then_the_entry_stay
 fn given_a_panic_in_a_rule_reply_function_when_the_call_is_polled_then_the_use_stays_taken() {
     let client = mock();
     client.push_rule(
-        Rule::always(ReplySource::function(|_, _, _, _| {
-            panic!("the function failed")
-        }))
-        .with_limit(2)
-        .unwrap(),
+        Rule::always(ReplySource::function(|_| panic!("the function failed")))
+            .with_limit(2)
+            .unwrap(),
     );
     let request_value = request();
     let mut sink = crate::RecordingSink::new();
@@ -253,8 +249,8 @@ fn given_a_panic_in_user_code_on_one_thread_when_other_threads_use_the_mock_then
     let client = mock();
     client.set_fallback(says("fine"));
     client.push_rule(Rule::new(
-        |_, _, sequence| {
-            if sequence == 0 {
+        |call| {
+            if call.sequence() == 0 {
                 panic!("only the first call fails");
             }
             false

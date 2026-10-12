@@ -4,6 +4,7 @@ use br_llm_clients_core::{CallOutcome, ClientRequest, ClientSettings, StreamSink
 
 use crate::call_context::CallContext;
 use crate::call_log::Served;
+use crate::call_view::{MatchContext, ReplyContext};
 use crate::claim::claim;
 use crate::codes;
 use crate::outcomes;
@@ -52,12 +53,10 @@ async fn answer(call: &mut CallContext<'_>, rules_at_start: usize) -> CallOutcom
 fn reply_of(call: &CallContext<'_>, claimed: &Claimed) -> Result<Reply, Box<CallOutcome>> {
     match &claimed.source.repr {
         Repr::Value(reply) => Ok(Reply::clone(reply)),
-        Repr::Function(function) => function(
-            call.request,
-            call.settings,
-            call.tracker.sequence(),
+        Repr::Function(function) => function(&ReplyContext::new(
+            MatchContext::new(call.request, call.settings, call.tracker.sequence()),
             claimed.claimed_before,
-        )
+        ))
         .map_err(|error| {
             Box::new(outcomes::refused(codes::invalid_reply(
                 &origin(&claimed.served),

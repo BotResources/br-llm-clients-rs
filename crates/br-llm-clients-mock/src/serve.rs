@@ -26,13 +26,12 @@ async fn stream(
     mut gates: Vec<(usize, Gate)>,
 ) {
     gates.sort_by_key(|(position, _)| *position);
-    let mut next_gate = 0;
+    let mut gates = gates.into_iter().peekable();
     let mut position = 0;
     let mut events = events.into_iter();
     loop {
-        while next_gate < gates.len() && gates[next_gate].0 == position {
-            gates[next_gate].1.pass(call.tracker.clone()).await;
-            next_gate += 1;
+        while let Some((_, gate)) = gates.next_if(|(gate_position, _)| *gate_position == position) {
+            gate.pass(call.tracker.clone()).await;
         }
         let Some(event) = events.next() else {
             break;

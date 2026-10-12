@@ -31,21 +31,6 @@ pub enum StateKind {
     Dropped,
 }
 
-impl StateKind {
-    pub(crate) const COUNT: usize = 6;
-
-    pub(crate) fn slot(self) -> usize {
-        match self {
-            StateKind::Running => 0,
-            StateKind::WaitingAtGate => 1,
-            StateKind::Hanging => 2,
-            StateKind::Succeeded => 3,
-            StateKind::Failed => 4,
-            StateKind::Dropped => 5,
-        }
-    }
-}
-
 impl CallState {
     pub fn kind(&self) -> StateKind {
         match self {

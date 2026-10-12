@@ -73,10 +73,6 @@ impl MockClient {
         drop(replaced);
     }
 
-    pub fn log_enabled(&self) -> bool {
-        self.shared.log_enabled()
-    }
-
     pub fn log(&self) -> Vec<LoggedCall> {
         self.shared.with(|state| state.log.snapshot())
     }

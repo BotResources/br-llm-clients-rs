@@ -1,6 +1,7 @@
 use std::future::Future;
 use std::sync::Arc;
-use std::task::{Context, Poll, Waker};
+use std::task::{Context, Poll, Wake, Waker};
+use std::thread::Thread;
 
 use br_llm_clients_core::{
     CacheRequirement, Client, ClientError, ClientRequest, ClientSettings, MaxOutputTokens,
@@ -14,12 +15,22 @@ use br_llm_messages::{
     AssistantBlock, ModelId, Step, StopReason, Text, ToolCall, ToolName, WireMessage, WireUserBlock,
 };
 
+struct Unparker(Thread);
+
+impl Wake for Unparker {
+    fn wake(self: Arc<Self>) {
+        self.0.unpark();
+    }
+}
+
 fn block_on<F: Future>(future: F) -> F::Output {
-    let mut context = Context::from_waker(Waker::noop());
+    let waker = Waker::from(Arc::new(Unparker(std::thread::current())));
+    let mut context = Context::from_waker(&waker);
     let mut future = std::pin::pin!(future);
     loop {
-        if let Poll::Ready(output) = future.as_mut().poll(&mut context) {
-            return output;
+        match future.as_mut().poll(&mut context) {
+            Poll::Ready(output) => return output,
+            Poll::Pending => std::thread::park(),
         }
     }
 }
@@ -96,9 +107,9 @@ fn given_capabilities_built_from_everything_when_changed_then_strictness_refuses
 fn given_a_reply_function_and_a_helper_when_a_tool_call_is_scripted_then_ids_are_distinct_per_call()
 {
     let client = MockClient::new(settings(), Capabilities::everything());
-    client.set_fallback(ReplySource::function(|_, _, sequence, _| {
+    client.set_fallback(ReplySource::function(|call| {
         let call = ToolCall {
-            id: tool_call_id("call", sequence, None),
+            id: tool_call_id("call", call.sequence(), None),
             name: ToolName::new("search").unwrap(),
             arguments: serde_json::json!({ "q": "rust" }),
         };
@@ -155,4 +166,28 @@ fn given_a_rule_and_a_gate_when_a_test_drives_a_call_by_hand_then_the_gate_decid
 fn given_a_step_when_events_are_derived_then_the_list_ends_with_the_finish_event() {
     let derived = derive_events(&answer("abc"), &Chunking::none()).unwrap();
     assert_eq!(derived.before_finish() + 1, derived.events().len());
+}
+
+#[test]
+fn given_a_call_waiting_at_a_gate_when_another_thread_opens_it_then_the_parked_caller_goes_on() {
+    let gate = Gate::new();
+    let client = MockClient::new(settings(), Capabilities::everything());
+    client.push_rule(Rule::always(
+        Reply::success(answer("released"))
+            .gate_at(0, &gate)
+            .build()
+            .unwrap(),
+    ));
+    let opener = {
+        let gate = gate.clone();
+        std::thread::spawn(move || {
+            block_on(gate.wait_for_waiting(1));
+            gate.open();
+        })
+    };
+    let mut sink = RecordingSink::new();
+    let outcome = block_on(client.call(&request(), &mut sink));
+    opener.join().unwrap();
+    assert!(outcome.result().is_ok());
+    assert!(gate.is_open());
 }

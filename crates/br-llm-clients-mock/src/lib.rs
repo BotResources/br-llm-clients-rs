@@ -1,8 +1,14 @@
+#![cfg_attr(
+    not(test),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)
+)]
+
 mod accepted;
 mod build_error;
 mod call;
 mod call_context;
 mod call_log;
+mod call_view;
 mod capabilities;
 mod capabilities_error;
 mod chunking;
@@ -11,6 +17,7 @@ mod codes;
 mod derive_events;
 mod fold_error;
 mod gate;
+mod gate_pass;
 mod log;
 mod log_disabled;
 mod mock_builder;
@@ -28,6 +35,7 @@ mod rule;
 mod script;
 mod serve;
 mod shared;
+mod state_counts;
 mod step_check;
 mod strictness;
 mod sync;
@@ -76,6 +84,8 @@ mod rule_tests;
 #[cfg(test)]
 mod script_tests;
 #[cfg(test)]
+mod send_sync_tests;
+#[cfg(test)]
 mod step_check_tests;
 #[cfg(test)]
 mod strictness_request_tests;
@@ -85,10 +95,19 @@ mod strictness_settings_tests;
 mod test_support;
 #[cfg(test)]
 mod tool_call_id_tests;
+#[cfg(test)]
+mod waker_drop_tests;
+#[cfg(test)]
+mod waker_panic_tests;
+#[cfg(test)]
+mod waker_replace_tests;
+#[cfg(test)]
+mod waker_support;
 
 pub use accepted::Accepted;
 pub use build_error::MockBuildError;
 pub use call_log::{CallState, LoggedCall, Served, StateKind};
+pub use call_view::{MatchContext, ReplyContext};
 pub use capabilities::{Capabilities, CapabilitiesSpec};
 pub use capabilities_error::CapabilitiesError;
 pub use chunking::Chunking;

@@ -38,7 +38,7 @@ pub(crate) fn block_on<F: Future>(future: F) -> F::Output {
     }
 }
 
-pub(crate) fn poll_once<F: Future>(future: &mut std::pin::Pin<&mut F>) -> Poll<F::Output> {
+pub(crate) fn poll_once<F: Future + ?Sized>(future: &mut std::pin::Pin<&mut F>) -> Poll<F::Output> {
     future
         .as_mut()
         .poll(&mut Context::from_waker(Waker::noop()))
@@ -67,7 +67,7 @@ impl Wake for WakeCount {
     }
 }
 
-pub(crate) fn poll_with<F: Future>(
+pub(crate) fn poll_with<F: Future + ?Sized>(
     future: &mut std::pin::Pin<&mut F>,
     waker: &Waker,
 ) -> Poll<F::Output> {

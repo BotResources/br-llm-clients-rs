@@ -159,8 +159,8 @@ fn given_script_entries_that_are_functions_when_claimed_then_the_prior_claims_ar
  {
     let client = mock();
     for _ in 0..3 {
-        client.push_reply(ReplySource::function(|_, _, _, claimed_before| {
-            Reply::success(text_step(&format!("entry {claimed_before}"))).build()
+        client.push_reply(ReplySource::function(|call| {
+            Reply::success(text_step(&format!("entry {}", call.claimed_before()))).build()
         }));
     }
     let answers: Vec<String> = (0..3)

@@ -70,9 +70,9 @@ fn given_a_rule_that_matches_the_settings_when_a_pair_is_refused_then_the_log_sh
  {
     let client = mock();
     let refusing = Rule::new(
-        |_, settings_value, _| {
-            settings_value.reasoning() == ReasoningLevel::Max
-                && settings_value.max_output_tokens().get() > 100
+        |call| {
+            call.settings().reasoning() == ReasoningLevel::Max
+                && call.settings().max_output_tokens().get() > 100
         },
         Reply::failure(ClientError::MaxOutputTokensTooLarge { limit: Some(100) })
             .build()

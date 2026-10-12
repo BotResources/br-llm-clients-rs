@@ -47,7 +47,6 @@ fn given_the_log_switched_off_when_calls_are_made_then_the_log_is_empty_and_coun
     run(&client, &request());
     run(&client, &request());
     assert!(client.log().is_empty());
-    assert!(!client.log_enabled());
     assert_eq!(client.calls(), 2);
     assert_eq!(client.unused_entries(), 1);
 }

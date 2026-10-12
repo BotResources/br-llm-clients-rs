@@ -15,11 +15,8 @@ fn event(index: usize) -> StreamEvent {
     StreamEvent::BlockEnd { index }
 }
 
-fn assert_send_sync<T: Send + Sync>() {}
-
 #[test]
-fn given_the_sink_when_compiled_then_it_is_send_sync_and_usable_as_a_trait_object() {
-    assert_send_sync::<RecordingSink>();
+fn given_the_sink_when_compiled_then_it_is_usable_as_a_trait_object() {
     let boxed: Box<dyn StreamSink> = Box::new(RecordingSink::new());
     drop(boxed);
 }

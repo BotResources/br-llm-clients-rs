@@ -1,13 +1,13 @@
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::task::{Context, Poll};
 
 use br_llm_clients_core::{BoxFuture, StreamSink};
 use br_llm_messages::{ModelId, Step, StepDraft, StreamEvent};
 
 use crate::fold_error::FoldError;
-use crate::sync::{Waiters, lock, wake_all};
+use crate::sync::{Condition, Wait, Waiters, lock, wake_all};
 
 #[derive(Default)]
 struct Recorded {
@@ -42,11 +42,10 @@ impl RecordingSink {
     }
 
     pub fn wait_for_events(&self, count: usize) -> WaitForEvents {
-        WaitForEvents {
+        WaitForEvents(Wait::new(EventsHeld {
             sink: self.clone(),
             count,
-            slot: None,
-        }
+        }))
     }
 
     pub fn fold(&self, model: Option<ModelId>) -> Result<Step, FoldError> {
@@ -87,28 +86,34 @@ impl StreamSink for RecordingSink {
     }
 }
 
-pub struct WaitForEvents {
+struct EventsHeld {
     sink: RecordingSink,
     count: usize,
-    slot: Option<u64>,
 }
+
+impl Condition for EventsHeld {
+    type State = Recorded;
+
+    fn lock(&self) -> MutexGuard<'_, Recorded> {
+        lock(&self.sink.recorded)
+    }
+
+    fn holds(&self, state: &Recorded) -> bool {
+        state.events.len() >= self.count
+    }
+
+    fn waiters(state: &mut Recorded) -> &mut Waiters {
+        &mut state.waiters
+    }
+}
+
+#[must_use = "futures do nothing unless awaited"]
+pub struct WaitForEvents(Wait<EventsHeld>);
 
 impl Future for WaitForEvents {
     type Output = ();
 
     fn poll(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<()> {
-        let this = &mut *self;
-        let mut recorded = lock(&this.sink.recorded);
-        if recorded.events.len() >= this.count {
-            return Poll::Ready(());
-        }
-        recorded.waiters.register(&mut this.slot, context.waker());
-        Poll::Pending
-    }
-}
-
-impl Drop for WaitForEvents {
-    fn drop(&mut self) {
-        lock(&self.sink.recorded).waiters.cancel(self.slot);
+        Pin::new(&mut self.0).poll(context)
     }
 }

@@ -2,31 +2,32 @@ use std::collections::VecDeque;
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::task::{Context, Poll, Waker};
 
 use crate::call_log::CallState;
-use crate::sync::{Waiters, lock, wake_all};
+use crate::gate_pass::GatePass;
+use crate::sync::{Condition, Wait, Waiters, lock, wake_all};
 use crate::tracker::CallTracker;
 
 pub(crate) struct Ticket {
-    id: u64,
-    tracker: CallTracker,
-    waker: Waker,
+    pub(crate) id: u64,
+    pub(crate) tracker: CallTracker,
+    pub(crate) waker: Waker,
 }
 
 #[derive(Default)]
 pub(crate) struct GateState {
-    open: bool,
-    next_ticket: u64,
-    queue: VecDeque<Ticket>,
-    released: Vec<u64>,
-    counters: Waiters,
+    pub(crate) open: bool,
+    pub(crate) next_ticket: u64,
+    pub(crate) queue: VecDeque<Ticket>,
+    pub(crate) released: Vec<u64>,
+    pub(crate) counters: Waiters,
 }
 
 #[derive(Clone, Default)]
 pub struct Gate {
-    state: Arc<Mutex<GateState>>,
+    pub(crate) state: Arc<Mutex<GateState>>,
 }
 
 impl Gate {
@@ -74,19 +75,14 @@ impl Gate {
     }
 
     pub fn wait_for_waiting(&self, count: usize) -> WaitForWaiting {
-        WaitForWaiting {
+        WaitForWaiting(Wait::new(GateWaiting {
             gate: self.clone(),
             count,
-            slot: None,
-        }
+        }))
     }
 
     pub(crate) fn pass(&self, tracker: CallTracker) -> GatePass {
-        GatePass {
-            gate: self.clone(),
-            tracker,
-            ticket: None,
-        }
+        GatePass::new(self.clone(), tracker)
     }
 }
 
@@ -101,99 +97,34 @@ impl fmt::Debug for Gate {
     }
 }
 
-pub struct WaitForWaiting {
+struct GateWaiting {
     gate: Gate,
     count: usize,
-    slot: Option<u64>,
 }
+
+impl Condition for GateWaiting {
+    type State = GateState;
+
+    fn lock(&self) -> MutexGuard<'_, GateState> {
+        lock(&self.gate.state)
+    }
+
+    fn holds(&self, state: &GateState) -> bool {
+        state.queue.len() >= self.count
+    }
+
+    fn waiters(state: &mut GateState) -> &mut Waiters {
+        &mut state.counters
+    }
+}
+
+#[must_use = "futures do nothing unless awaited"]
+pub struct WaitForWaiting(Wait<GateWaiting>);
 
 impl Future for WaitForWaiting {
     type Output = ();
 
     fn poll(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<()> {
-        let this = &mut *self;
-        let mut state = lock(&this.gate.state);
-        if state.queue.len() >= this.count {
-            return Poll::Ready(());
-        }
-        state.counters.register(&mut this.slot, context.waker());
-        Poll::Pending
-    }
-}
-
-impl Drop for WaitForWaiting {
-    fn drop(&mut self) {
-        lock(&self.gate.state).counters.cancel(self.slot);
-    }
-}
-
-pub(crate) struct GatePass {
-    gate: Gate,
-    tracker: CallTracker,
-    ticket: Option<u64>,
-}
-
-impl GatePass {
-    fn arrive(&mut self, state: &mut GateState, waker: &Waker) -> Vec<Waker> {
-        let id = state.next_ticket;
-        state.next_ticket += 1;
-        let mut wakers = self.tracker.set(CallState::WaitingAtGate);
-        state.queue.push_back(Ticket {
-            id,
-            tracker: self.tracker.clone(),
-            waker: waker.clone(),
-        });
-        wakers.extend(state.counters.take());
-        self.ticket = Some(id);
-        wakers
-    }
-}
-
-impl Future for GatePass {
-    type Output = ();
-
-    fn poll(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<()> {
-        let this = &mut *self;
-        let gate = this.gate.clone();
-        let mut state = lock(&gate.state);
-        if state.open {
-            return Poll::Ready(());
-        }
-        let Some(id) = this.ticket else {
-            let wakers = this.arrive(&mut state, context.waker());
-            drop(state);
-            wake_all(wakers);
-            return Poll::Pending;
-        };
-        if let Some(position) = state.released.iter().position(|released| *released == id) {
-            state.released.swap_remove(position);
-            this.ticket = None;
-            return Poll::Ready(());
-        }
-        if let Some(ticket) = state.queue.iter_mut().find(|ticket| ticket.id == id)
-            && !ticket.waker.will_wake(context.waker())
-        {
-            ticket.waker = context.waker().clone();
-        }
-        Poll::Pending
-    }
-}
-
-impl Drop for GatePass {
-    fn drop(&mut self) {
-        let Some(id) = self.ticket else {
-            return;
-        };
-        let mut wakers = Vec::new();
-        {
-            let mut state = lock(&self.gate.state);
-            if let Some(position) = state.queue.iter().position(|ticket| ticket.id == id) {
-                state.queue.remove(position);
-                wakers.extend(self.tracker.set(CallState::Dropped));
-                wakers.extend(state.counters.take());
-            }
-            state.released.retain(|released| *released != id);
-        }
-        wake_all(wakers);
+        Pin::new(&mut self.0).poll(context)
     }
 }

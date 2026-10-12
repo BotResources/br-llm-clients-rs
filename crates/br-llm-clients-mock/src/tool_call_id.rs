@@ -1,5 +1,9 @@
 use br_llm_messages::{AssistantBlock, MessageError, Step, ToolCall, ToolCallId};
 
+#[allow(
+    clippy::expect_used,
+    reason = "the text holds a dash, and ToolCallId refuses only an empty text"
+)]
 pub fn tool_call_id(prefix: &str, sequence: usize, index: Option<usize>) -> ToolCallId {
     let text = match index {
         Some(index) => format!("{prefix}-{sequence}-{index}"),

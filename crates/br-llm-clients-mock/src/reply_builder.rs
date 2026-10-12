@@ -55,6 +55,7 @@ impl NamesUsage for CutKind {}
 impl NamesUsage for BrokenStreamKind {}
 
 #[derive(Debug, Clone)]
+#[must_use]
 pub struct ReplyBuilder<K: ReplyKind> {
     reply: Reply,
     kind: PhantomData<K>,

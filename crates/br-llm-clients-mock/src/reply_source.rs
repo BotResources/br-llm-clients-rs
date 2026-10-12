@@ -1,15 +1,12 @@
 use std::fmt;
 use std::sync::Arc;
 
-use br_llm_clients_core::{ClientRequest, ClientSettings};
-
 use crate::build_error::MockBuildError;
+use crate::call_view::ReplyContext;
 use crate::reply::Reply;
 
-pub(crate) type ReplyFn = dyn Fn(&ClientRequest, &ClientSettings, usize, usize) -> Result<Reply, MockBuildError>
-    + Send
-    + Sync
-    + 'static;
+pub(crate) type ReplyFn =
+    dyn Fn(&ReplyContext<'_>) -> Result<Reply, MockBuildError> + Send + Sync + 'static;
 
 #[derive(Clone)]
 pub(crate) enum Repr {
@@ -31,10 +28,7 @@ impl ReplySource {
 
     pub fn function<F>(function: F) -> Self
     where
-        F: Fn(&ClientRequest, &ClientSettings, usize, usize) -> Result<Reply, MockBuildError>
-            + Send
-            + Sync
-            + 'static,
+        F: Fn(&ReplyContext<'_>) -> Result<Reply, MockBuildError> + Send + Sync + 'static,
     {
         Self {
             repr: Repr::Function(Arc::new(function)),

@@ -3,12 +3,13 @@ use std::task::Waker;
 use br_llm_clients_core::{ClientRequest, ClientSettings};
 
 use crate::call_log::{CallState, LoggedCall, Served, StateKind};
+use crate::state_counts::StateCounts;
 use crate::sync::Waiters;
 
 pub(crate) struct LogState {
     began: usize,
     calls: Vec<LoggedCall>,
-    in_state: [usize; StateKind::COUNT],
+    in_state: StateCounts,
     waiters: Waiters,
 }
 
@@ -17,7 +18,7 @@ impl LogState {
         Self {
             began: 0,
             calls: Vec::new(),
-            in_state: [0; StateKind::COUNT],
+            in_state: StateCounts::default(),
             waiters: Waiters::default(),
         }
     }
@@ -31,7 +32,7 @@ impl LogState {
         if let Some((request, settings)) = copies {
             self.calls
                 .push(LoggedCall::new(sequence, request, settings));
-            self.in_state[StateKind::Running.slot()] += 1;
+            self.in_state.enter(StateKind::Running);
         }
         (sequence, self.waiters.take())
     }
@@ -53,25 +54,21 @@ impl LogState {
         if call.state().is_final() {
             return Vec::new();
         }
-        self.in_state[call.state().kind().slot()] -= 1;
-        self.in_state[state.kind().slot()] += 1;
+        self.in_state.leave(call.state().kind());
+        self.in_state.enter(state.kind());
         call.replace_state(state);
         self.waiters.take()
     }
 
     pub(crate) fn count_in(&self, kind: StateKind) -> usize {
-        self.in_state[kind.slot()]
+        self.in_state.get(kind)
     }
 
     pub(crate) fn snapshot(&self) -> Vec<LoggedCall> {
         self.calls.clone()
     }
 
-    pub(crate) fn register(&mut self, slot: &mut Option<u64>, waker: &Waker) {
-        self.waiters.register(slot, waker);
-    }
-
-    pub(crate) fn cancel(&mut self, slot: Option<u64>) {
-        self.waiters.cancel(slot);
+    pub(crate) fn waiters_mut(&mut self) -> &mut Waiters {
+        &mut self.waiters
     }
 }

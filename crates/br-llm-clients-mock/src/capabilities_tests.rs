@@ -8,14 +8,15 @@ use crate::capabilities_error::CapabilitiesError;
 #[test]
 fn given_everything_when_built_then_it_accepts_any_level_the_largest_tokens_and_every_feature() {
     let capabilities = Capabilities::everything();
-    assert_eq!(capabilities.reasoning_levels(), &Accepted::Any);
-    assert_eq!(capabilities.max_output_tokens().get(), u32::MAX);
-    assert!(capabilities.tools());
-    assert!(capabilities.structured_output());
-    assert!(capabilities.structured_output_with_tools());
-    assert!(capabilities.caching());
-    assert!(capabilities.images());
-    assert_eq!(capabilities.image_media_types(), &Accepted::Any);
+    let spec = capabilities.spec();
+    assert_eq!(spec.reasoning_levels, Accepted::Any);
+    assert_eq!(spec.max_output_tokens.get(), u32::MAX);
+    assert!(spec.tools);
+    assert!(spec.structured_output);
+    assert!(spec.structured_output_with_tools);
+    assert!(spec.caching);
+    assert!(spec.images);
+    assert_eq!(spec.image_media_types, Accepted::Any);
 }
 
 #[test]

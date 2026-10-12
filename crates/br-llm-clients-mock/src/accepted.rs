@@ -9,14 +9,14 @@ impl<T: PartialEq> Accepted<T> {
         Accepted::Only(values.into_iter().collect())
     }
 
-    pub fn accepts(&self, value: &T) -> bool {
+    pub(crate) fn accepts(&self, value: &T) -> bool {
         match self {
             Accepted::Any => true,
             Accepted::Only(values) => values.contains(value),
         }
     }
 
-    pub fn is_empty_set(&self) -> bool {
+    pub(crate) fn is_empty_set(&self) -> bool {
         matches!(self, Accepted::Only(values) if values.is_empty())
     }
 }

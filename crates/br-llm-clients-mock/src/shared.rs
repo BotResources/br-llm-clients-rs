@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use br_llm_clients_core::{ClientRequest, ClientSettings};
 
@@ -44,8 +44,12 @@ impl Shared {
         self.log_enabled
     }
 
+    pub(crate) fn guard(&self) -> MutexGuard<'_, State> {
+        lock(&self.state)
+    }
+
     pub(crate) fn with<R>(&self, action: impl FnOnce(&mut State) -> R) -> R {
-        action(&mut lock(&self.state))
+        action(&mut self.guard())
     }
 
     pub(crate) fn begin(

@@ -1,6 +1,7 @@
 use br_llm_clients_core::{ClientRequest, ClientSettings};
 
 use crate::call_log::Served;
+use crate::call_view::MatchContext;
 use crate::script::Claimed;
 use crate::tracker::CallTracker;
 
@@ -39,7 +40,7 @@ pub(crate) fn claim(
             tracker,
             armed: true,
         };
-        let matched = matcher(request, settings, sequence);
+        let matched = matcher(&MatchContext::new(request, settings, sequence));
         mark.defuse();
         if !matched {
             continue;
