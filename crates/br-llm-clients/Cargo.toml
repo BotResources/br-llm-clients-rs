@@ -1,8 +1,0 @@
-[package]
-name = "br-llm-clients"
-version = "0.0.0"
-description = "Provider clients for LLM calls: send a system prompt, tools and a chat history from br-llm-messages, get the reply"
-edition.workspace = true
-rust-version.workspace = true
-license.workspace = true
-repository.workspace = true
