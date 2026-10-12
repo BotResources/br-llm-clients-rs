@@ -4,12 +4,12 @@ set -euo pipefail
 crate="${1:?usage: semver-check.sh <crate>}"
 lib="${crate//-/_}"
 
-baseline=$(git tag --list "${crate}-v*" | sed -E "s/^${crate}-v//" | sort -V | tail -n1)
+baseline=$(git tag --list "${crate}/v*" | sed -E "s#^${crate}/v##" | sort -V | tail -n1)
 if [ -z "$baseline" ]; then
-  echo "::notice::no prior ${crate}-v* tag, skipping semver-checks (first release)"
+  echo "::notice::no prior ${crate}/v* tag, skipping semver-checks (first release)"
   exit 0
 fi
-baseline_tag="${crate}-v${baseline}"
+baseline_tag="${crate}/v${baseline}"
 
 base_wt="$(mktemp -d)/baseline"
 git worktree add --detach "$base_wt" "$baseline_tag"

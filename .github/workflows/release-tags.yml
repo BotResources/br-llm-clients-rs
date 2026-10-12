@@ -2,8 +2,17 @@ name: release-tags
 
 on:
   push:
-    branches: [main]
+    branches: [main, "release/**"]
   workflow_dispatch:
+    inputs:
+      crate:
+        description: Crate to release (a tracked library crate)
+        required: true
+        type: string
+      version:
+        description: Version to release (the version the crate declares)
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -13,9 +22,60 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  tag:
-    name: Auto-tag each crate version
+  detect:
+    name: Detect crates to release
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.detect.outputs.matrix }}
+      refused: ${{ steps.detect.outputs.refused }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          fetch-depth: 0
+      - name: Detect
+        id: detect
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_CRATE: ${{ inputs.crate }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: bash .github/scripts/release-detect.sh
+
+  release-line-law:
+    name: Release-line law
+    needs: detect
+    if: needs.detect.outputs.refused != '[]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report refused versions
+        env:
+          REFUSED: ${{ needs.detect.outputs.refused }}
+        run: |
+          set -euo pipefail
+          python3 -c '
+          import json, os
+          for entry in json.loads(os.environ["REFUSED"]):
+              print("::error::" + entry)
+          '
+          exit 1
+
+  release:
+    name: Release ${{ matrix.crate }} ${{ matrix.version }}
+    needs: detect
+    if: needs.detect.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include: ${{ fromJson(needs.detect.outputs.matrix) }}
+    env:
+      CRATE: ${{ matrix.crate }}
+      VERSION: ${{ matrix.version }}
+      LINE: ${{ matrix.line }}
+      COMMIT: ${{ matrix.commit }}
+      BR_REGISTRY_KEY: ${{ secrets.BR_REGISTRY_KEY }}
+      BR_REGISTRY_PROJECT_ID: ${{ vars.BR_REGISTRY_PROJECT_ID }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
@@ -26,18 +86,40 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Verify changelog entries before tagging
-        run: |
-          set -euo pipefail
-          for crate in br-llm-clients-contract br-llm-clients; do
-            bash .github/scripts/check-changelog.sh "$crate"
-          done
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: nightly
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          key: release
+      - uses: taiki-e/install-action@fd2f5e3d644b484055ebf4268f474c565f148f25 # v2.81.9
+        with:
+          tool: cargo-public-api
 
-      - name: Tag and release each crate version
+      - name: Verify the changelog entry
+        run: bash .github/scripts/check-changelog.sh "$CRATE" "$COMMIT"
+
+      - name: Registry gate
+        id: gate
+        run: bash .github/scripts/registry-gate.sh "$CRATE" "$VERSION" "$CRATE/v$VERSION"
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          for crate in br-llm-clients-contract br-llm-clients; do
-            bash .github/scripts/release-crate.sh "$crate"
-          done
+          GATE_REV: ${{ matrix.commit }}
+
+      - name: Compute API listing, API diff and dependencies
+        if: steps.gate.outputs.implemented != 'true'
+        env:
+          BASELINE_TAG: ${{ steps.gate.outputs.baseline_tag }}
+        run: bash .github/scripts/registry-prepare.sh "$CRATE" "$VERSION" "$COMMIT" "$BASELINE_TAG"
+
+      - name: Tag and release
+        if: steps.gate.outputs.implemented != 'true'
+        run: bash .github/scripts/release-crate.sh "$CRATE" "$VERSION" "refs/heads/$LINE" "$COMMIT"
+
+      - name: Record in the registry
+        if: steps.gate.outputs.implemented != 'true'
+        env:
+          BASELINE_TAG: ${{ steps.gate.outputs.baseline_tag }}
+        run: bash .github/scripts/registry-record.sh "$CRATE" "$VERSION" "$CRATE/v$VERSION" "$COMMIT" "$BASELINE_TAG"

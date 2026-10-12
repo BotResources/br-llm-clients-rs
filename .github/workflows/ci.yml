@@ -3,7 +3,7 @@ name: ci
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, "release/**"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -84,7 +84,7 @@ jobs:
       - name: cargo semver-checks against each crate's previous tag
         run: |
           set -euo pipefail
-          for crate in br-llm-clients-contract br-llm-clients; do
+          for crate in $(bash .github/scripts/workspace-crates.sh); do
             bash .github/scripts/semver-check.sh "$crate"
           done
 
@@ -96,13 +96,13 @@ jobs:
       - name: check changelog entries
         run: |
           set -euo pipefail
-          for crate in br-llm-clients-contract br-llm-clients; do
+          for crate in $(bash .github/scripts/workspace-crates.sh); do
             bash .github/scripts/check-changelog.sh "$crate"
           done
       - name: check README tag pins are fresh
         run: |
           set -euo pipefail
-          for crate in br-llm-clients-contract br-llm-clients; do
+          for crate in $(bash .github/scripts/workspace-crates.sh); do
             bash .github/scripts/check-readme-pins.sh "$crate"
           done
 
@@ -116,6 +116,32 @@ jobs:
           set -euo pipefail
           shellcheck --version
           shellcheck --severity=warning .github/scripts/*.sh
+
+  release-tooling:
+    name: release-line law and registry wiring tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - name: release-line decision table
+        run: bash .github/scripts/test-release-line.sh
+      - name: release detection and registry wiring
+        run: bash .github/scripts/test-release-pipeline.sh
+      - name: registry gate, tag and record wiring
+        run: bash .github/scripts/test-registry-wiring.sh
+
+  registry-gate:
+    name: registry gate
+    if: github.event_name == 'pull_request' && (github.base_ref == 'main' || startsWith(github.base_ref, 'release/'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          fetch-depth: 0
+      - name: release-line law and registry gate for every bumped tracked crate
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          BR_REGISTRY_KEY: ${{ secrets.BR_REGISTRY_KEY }}
+        run: bash .github/scripts/pr-registry-gate.sh
 
   trufflehog:
     name: trufflehog (secret scan)
