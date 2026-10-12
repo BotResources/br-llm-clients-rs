@@ -3,7 +3,7 @@
 Provider clients for LLM calls: send a system prompt, tools and a chat history from `br-llm-messages`, get the reply. Provider clients are separate crates, versioned separately, each released by its own git tag `{crate}/v{version}`:
 
 - `br-llm-clients-core` — the core: provider-neutral request, settings, outcome, error and the `Client` and `StreamSink` traits every client library implements.
-- `br-llm-clients-mock` — a configurable mock `Client` for fast, parallel tests.
+- `br-llm-clients-mock` — a configurable mock `Client` for fast, parallel tests, used as a dev-dependency.
 
 **Status:** `br-llm-clients-core` and `br-llm-clients-mock` are at `0.1.0`; the other crates are not written yet.
 
