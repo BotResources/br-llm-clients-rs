@@ -1,8 +1,0 @@
-[package]
-name = "br-llm-clients-contract"
-version = "0.0.0"
-description = "Contract of br-llm-clients: the provider-neutral request, reply and client port for one LLM call"
-edition.workspace = true
-rust-version.workspace = true
-license.workspace = true
-repository.workspace = true

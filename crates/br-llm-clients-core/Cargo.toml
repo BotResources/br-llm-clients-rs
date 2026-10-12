@@ -1,0 +1,16 @@
+[package]
+name = "br-llm-clients-core"
+version = "0.1.0"
+description = "Contract shared by all LLM client libraries: call settings, request, tool and output vocabulary, errors, the Client and StreamSink traits"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+br-llm-messages = { git = "https://github.com/BotResources/br-llm-messages-rs", tag = "v0.2.0", version = "0.2.0" }
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+
+[dev-dependencies]
+serde_json = "1"

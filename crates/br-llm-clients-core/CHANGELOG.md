@@ -1,0 +1,54 @@
+# Changelog
+
+All notable changes to `br-llm-clients-core` are documented here. The git tag
+`br-llm-clients-core/v{version}` releases the crate; this crate is versioned
+separately from the other crates of the repository. Format follows
+[Keep a Changelog](https://keepachangelog.com/); versions follow semver.
+Release headings are plain `## X.Y.Z` — the release pipeline greps that exact
+form to decide whether a version ships.
+
+## Unreleased
+
+## 0.1.0
+
+### Added
+
+- `ReasoningLevel` (`Off`, `Low`, `Medium`, `High`, `Extra`, `Max`; ordered; no
+  default), `MaxOutputTokens` (greater than zero, fits in 32 bits) and
+  `CacheRequirement` (`Required`, `NotRequired`). The scale and the cache
+  requirement can grow.
+- The typed tool vocabulary: `ToolSpec`, `Parameters`, `Parameter` and
+  `ParameterKind` (string, number, integer, boolean, enum, array, object), with
+  blank-name, duplicate-name, enum and nesting checks, and `MAX_NESTING_DEPTH`
+  (32). No raw JSON schema.
+- `OutputMode` (`Plain`, `Structured`) and `StructuredShape`, which follows the
+  same nesting limit.
+- `ClientSettings` (model, reasoning level, cache requirement, maximum output
+  tokens; every field required) and `ClientRequest` (system prompt, wire
+  messages, tools, output mode) with the provider-independent build checks and
+  `ClientRequest::check_messages`, the shared `InvalidMessages` rules: the list
+  starts with a `User` message, every tool call is answered once, by id, in the
+  next `User` message, every tool result matches an earlier tool call, and a
+  tool call id appears only once in the list.
+- `CallReport` and `CallOutcome` (a report plus a `Step` or a `ClientError`).
+  On success the usage of the report equals the usage of the step; on failure
+  the report keeps the last usage the provider reported, with no relation to
+  any step.
+- `ClientError`, the one error type of every client library, with
+  `is_retryable`, and `LimitKind`. `BuildError`, the error of building a value
+  of this crate: `NoMessage`, `DuplicateToolName`, `DuplicateParameterName`,
+  `BlankParameterName`, `EmptyEnum`, `BlankEnumValue`, `DuplicateEnumValue`,
+  `BlankShapeName`, `ZeroMaxOutputTokens`, `NestingTooDeep`, `MisplacedRelay`
+  and `UsageMismatch`. `ReasoningLevel`, `CacheRequirement`, `ParameterKind`,
+  `ClientError`, `LimitKind` and `BuildError` are `#[non_exhaustive]`.
+- The `Client` trait (one async operation, usable as a trait object, `Send`
+  future), the `StreamSink` trait (async, usable as a trait object, `Send`) and
+  `BoxFuture`, the boxed `Send` future type of both.
+- Serde for the data types. `SCHEMA_VERSION` (`br-llm-clients-core/1`) is the
+  schema carried by `ClientSettings` and `CallOutcome`; another schema is
+  refused on load. Loading checks every rule again, also when `Parameters`,
+  `Parameter` or `ParameterKind` are loaded on their own. A case, value or kind
+  unknown to this version is always refused on load. An unknown field is
+  refused on stored structures and on cases that carry fields. It is not
+  refused on cases without fields, such as `ClientError::Transport` or
+  `OutputMode::Plain`, because serde cannot refuse it there.
