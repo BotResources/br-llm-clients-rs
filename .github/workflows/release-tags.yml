@@ -74,7 +74,6 @@ jobs:
       LINE: ${{ matrix.line }}
       COMMIT: ${{ matrix.commit }}
       BR_REGISTRY_KEY: ${{ secrets.BR_REGISTRY_KEY }}
-      BR_REGISTRY_PROJECT_ID: ${{ vars.BR_REGISTRY_PROJECT_ID }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
