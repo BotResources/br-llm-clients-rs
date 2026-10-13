@@ -13,6 +13,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "br-llm-clients-mock"
+version = "0.1.0"
+dependencies = [
+ "br-llm-clients-core",
+ "br-llm-messages",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "br-llm-messages"
 version = "0.2.0"
 source = "git+https://github.com/BotResources/br-llm-messages-rs?tag=v0.2.0#53ad03633c1e8b90d62070c5f7ec67a1526e1b0c"
