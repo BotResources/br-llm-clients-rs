@@ -1,0 +1,27 @@
+[package]
+name = "br-llm-clients-common-http"
+version = "0.1.0"
+description = "Sends one HTTP POST and gives back the status, the headers and a stream of byte chunks, with every failure told apart"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+bytes = "1"
+h2 = "0.4"
+http = "1"
+httpdate = "1"
+hyper = { version = "1.12", default-features = false, features = ["client", "http1", "http2"] }
+hyper-util = { version = "0.1", default-features = false, features = ["tokio"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-pki-types = { version = "1", features = ["std"] }
+thiserror = "2"
+tokio = { version = "1", default-features = false, features = ["net", "rt", "time"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+webpki-roots = "1"
+
+[dev-dependencies]
+hyper = { version = "1.12", default-features = false, features = ["client", "server", "http1", "http2"] }
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring", "pem"] }
+tokio = { version = "1", features = ["full", "test-util"] }
