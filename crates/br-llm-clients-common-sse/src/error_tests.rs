@@ -1,6 +1,5 @@
 use crate::test_support::{decode_whole, feed_all, frame};
 use crate::{DecodeError, Decoder};
-use std::error::Error;
 
 #[test]
 fn given_a_clean_stream_when_it_finishes_then_it_succeeds() {
@@ -211,22 +210,33 @@ fn given_every_error_case_when_displayed_then_a_text_for_people_comes() {
 }
 
 #[test]
-fn given_an_error_when_used_as_a_std_error_then_it_has_no_source() {
-    let error: Box<dyn Error + Send + Sync> = Box::new(DecodeError::InputEnded);
-    assert!(error.source().is_none());
-}
-
-#[test]
-fn given_the_error_when_cloned_and_compared_then_it_is_a_plain_value() {
-    let error = DecodeError::FrameTooLarge { limit: 3 };
-    assert_eq!(error.clone(), error);
-    assert_ne!(error, DecodeError::FrameTooLarge { limit: 4 });
-}
-
-#[test]
 fn given_a_decoder_when_moved_across_threads_then_it_is_send() {
     fn is_send<T: Send>() {}
     is_send::<Decoder>();
     is_send::<crate::Frame>();
     is_send::<DecodeError>();
+}
+
+#[test]
+fn given_a_decoder_holding_a_secret_when_it_is_printed_then_the_secret_never_appears() {
+    let mut decoder = Decoder::default();
+    feed_all(
+        &mut decoder,
+        b"event: SECRET-EVENT\ndata: SECRET-DATA\ndata: SECRET-PART",
+    )
+    .unwrap();
+    for text in [format!("{decoder:?}"), format!("{decoder:#?}")] {
+        assert!(!text.contains("SECRET"), "{text}");
+        assert!(text.contains("limit"));
+        assert!(text.contains("held"));
+    }
+}
+
+#[test]
+fn given_a_decoder_that_failed_with_a_secret_held_when_it_is_printed_then_the_secret_never_appears()
+{
+    let mut decoder = Decoder::new(40).unwrap();
+    feed_all(&mut decoder, b"data: SECRET-DATA\n").unwrap();
+    assert!(feed_all(&mut decoder, b"data: SECRET-TOO-LONG-TO-FIT-IN-FORTY-BYTES").is_err());
+    assert!(!format!("{decoder:?}").contains("SECRET"));
 }

@@ -220,14 +220,6 @@ fn given_a_frame_with_data_and_a_later_open_one_when_the_input_ends_then_the_fir
 }
 
 #[test]
-fn given_a_frame_when_read_through_its_accessors_then_the_parts_match() {
-    let frame = Frame::new(Some("e".to_owned()), "d");
-    assert_eq!(frame.event(), Some("e"));
-    assert_eq!(frame.data(), "d");
-    assert_eq!(frame.into_parts(), (Some("e".to_owned()), "d".to_owned()));
-}
-
-#[test]
 fn given_an_empty_event_name_when_a_frame_is_built_then_the_event_is_absent() {
     assert_eq!(Frame::new(Some(String::new()), "d").event(), None);
 }

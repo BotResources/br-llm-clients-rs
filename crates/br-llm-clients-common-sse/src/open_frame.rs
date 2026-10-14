@@ -1,13 +1,25 @@
+use std::fmt;
+
 use crate::decode_error::DecodeError;
 use crate::frame::Frame;
 use crate::line::{Line, classify};
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub(crate) struct OpenFrame {
     event: String,
     data: String,
     data_lines: usize,
     started: bool,
+}
+
+impl fmt::Debug for OpenFrame {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OpenFrame")
+            .field("held", &self.held())
+            .field("data_lines", &self.data_lines)
+            .field("started", &self.started)
+            .finish()
+    }
 }
 
 impl OpenFrame {

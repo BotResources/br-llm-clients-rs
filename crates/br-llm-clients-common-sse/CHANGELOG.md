@@ -19,7 +19,8 @@ form to decide whether a version ships.
   (8 MiB, 8 388 608 bytes). `feed(chunk, &mut frames)` appends the frames the
   chunk completes, in order, to a list the caller owns, so frames completed
   before an error in the same chunk are not lost. `finish()` tells the decoder
-  that the input has ended.
+  that the input has ended. `limit()` gives the limit the decoder was created
+  with.
 - `Frame`, with `event()` (absent when empty), `data()` (data lines joined with
   one line feed, none at the end), `into_parts()` and `Frame::new`.
 - `DecodeError`, one error type owned by the library, non-exhaustive, with a text
@@ -31,7 +32,12 @@ form to decide whether a version ships.
   line end without waiting for a line feed. A leading byte order mark is skipped.
 - The held bytes (unfinished line, event name and data text of the open frame)
   are limited; complete comment, `id`, `retry` and unknown field lines hold
-  nothing.
+  nothing. The limit counts held bytes, not the capacity of the buffers; the
+  line buffer is shrunk after a large line, and every buffer is released when an
+  error latches. The bytes of an incomplete byte order mark count as an
+  unfinished line.
+- `Debug` of `Decoder` shows the limit, the count of held bytes and flags, never
+  the held text.
 - After any error, including one returned by `finish`, `feed` and `finish`
   return the same error again. After a successful `finish`, `finish` succeeds
   again and `feed` returns `InputEnded`.

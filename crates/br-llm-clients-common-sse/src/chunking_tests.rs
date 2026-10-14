@@ -1,4 +1,7 @@
-use crate::test_support::{Xorshift, decode, decode_whole, frame, random_chunks};
+use crate::DEFAULT_LIMIT;
+use crate::test_support::{Xorshift, decode, decode_whole, decode_with, frame, random_chunks};
+
+const LIMITS: [usize; 5] = [1, 3, 7, 16, DEFAULT_LIMIT];
 
 fn corpus() -> Vec<(&'static str, Vec<u8>)> {
     let invalid_data: &[u8] = b"data: a\n\ndata: \xFF\n\ndata: late\n\n";
@@ -32,27 +35,15 @@ fn corpus() -> Vec<(&'static str, Vec<u8>)> {
 
 #[test]
 fn given_a_stream_when_it_is_split_at_every_byte_boundary_then_the_outcome_is_unchanged() {
-    for (name, bytes) in corpus() {
-        let expected = decode_whole(&bytes);
-        for cut in 0..=bytes.len() {
-            let (head, tail) = bytes.split_at(cut);
-            assert_eq!(decode(&[head, tail]), expected, "{name} cut at {cut}");
-        }
-    }
-}
-
-#[test]
-fn given_a_stream_when_it_is_split_at_every_pair_of_boundaries_then_the_outcome_is_unchanged() {
-    for (name, bytes) in corpus() {
-        let expected = decode_whole(&bytes);
-        for first in 0..=bytes.len() {
-            for second in first..=bytes.len() {
-                let (head, rest) = bytes.split_at(first);
-                let (middle, tail) = rest.split_at(second - first);
+    for limit in LIMITS {
+        for (name, bytes) in corpus() {
+            let expected = decode_with(limit, &[&bytes]);
+            for cut in 0..=bytes.len() {
+                let (head, tail) = bytes.split_at(cut);
                 assert_eq!(
-                    decode(&[head, middle, tail]),
+                    decode_with(limit, &[head, tail]),
                     expected,
-                    "{name} cut at {first} and {second}"
+                    "{name} limit {limit} cut at {cut}"
                 );
             }
         }
@@ -60,11 +51,37 @@ fn given_a_stream_when_it_is_split_at_every_pair_of_boundaries_then_the_outcome_
 }
 
 #[test]
+fn given_a_stream_when_it_is_split_at_every_pair_of_boundaries_then_the_outcome_is_unchanged() {
+    for limit in LIMITS {
+        for (name, bytes) in corpus() {
+            let expected = decode_with(limit, &[&bytes]);
+            for first in 0..=bytes.len() {
+                for second in first..=bytes.len() {
+                    let (head, rest) = bytes.split_at(first);
+                    let (middle, tail) = rest.split_at(second - first);
+                    assert_eq!(
+                        decode_with(limit, &[head, middle, tail]),
+                        expected,
+                        "{name} limit {limit} cut at {first} and {second}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn given_a_stream_when_it_is_fed_one_byte_at_a_time_then_the_outcome_is_unchanged() {
-    for (name, bytes) in corpus() {
-        let expected = decode_whole(&bytes);
-        let singles: Vec<&[u8]> = bytes.chunks(1).collect();
-        assert_eq!(decode(&singles), expected, "{name}");
+    for limit in LIMITS {
+        for (name, bytes) in corpus() {
+            let expected = decode_with(limit, &[&bytes]);
+            let singles: Vec<&[u8]> = bytes.chunks(1).collect();
+            assert_eq!(
+                decode_with(limit, &singles),
+                expected,
+                "{name} limit {limit}"
+            );
+        }
     }
 }
 
@@ -86,14 +103,20 @@ fn given_a_stream_when_it_is_cut_in_random_chunks_then_the_outcome_is_unchanged(
 
 #[test]
 fn given_empty_chunks_between_the_bytes_when_decoding_then_the_outcome_is_unchanged() {
-    for (name, bytes) in corpus() {
-        let expected = decode_whole(&bytes);
-        let mut chunks: Vec<&[u8]> = vec![b""];
-        for single in bytes.chunks(1) {
-            chunks.push(single);
-            chunks.push(b"");
+    for limit in LIMITS {
+        for (name, bytes) in corpus() {
+            let expected = decode_with(limit, &[&bytes]);
+            let mut chunks: Vec<&[u8]> = vec![b""];
+            for single in bytes.chunks(1) {
+                chunks.push(single);
+                chunks.push(b"");
+            }
+            assert_eq!(
+                decode_with(limit, &chunks),
+                expected,
+                "{name} limit {limit}"
+            );
         }
-        assert_eq!(decode(&chunks), expected, "{name}");
     }
 }
 
@@ -139,4 +162,28 @@ fn given_a_byte_order_mark_split_inside_when_decoding_then_it_is_still_skipped()
 fn given_a_byte_order_mark_split_from_what_follows_when_decoding_then_the_field_name_is_clean() {
     let outcome = decode(&[b"\xEF\xBB\xBF", b"data: x\n\n"]);
     assert_eq!(outcome.frames, vec![frame(None, "x")]);
+}
+
+#[test]
+fn given_small_limits_when_the_corpus_is_decoded_then_some_streams_fail_and_some_pass() {
+    for limit in [1, 3, 7, 16] {
+        let outcomes: Vec<_> = corpus()
+            .into_iter()
+            .map(|(_, bytes)| decode_with(limit, &[&bytes]))
+            .collect();
+        assert!(outcomes.iter().any(|outcome| matches!(
+            outcome.error,
+            Some(crate::DecodeError::FrameTooLarge { .. })
+        )));
+    }
+    assert!(
+        corpus()
+            .into_iter()
+            .any(|(_, bytes)| decode_with(16, &[&bytes]).error.is_none())
+    );
+    assert!(
+        corpus()
+            .into_iter()
+            .any(|(_, bytes)| !decode_whole(&bytes).frames.is_empty())
+    );
 }

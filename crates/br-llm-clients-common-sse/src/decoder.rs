@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::decode_error::DecodeError;
 use crate::frame::Frame;
 use crate::open_frame::OpenFrame;
@@ -7,8 +9,21 @@ pub const DEFAULT_LIMIT: usize = 8_388_608;
 const BYTE_ORDER_MARK: [u8; 3] = [0xEF, 0xBB, 0xBF];
 const CR: u8 = b'\r';
 const LF: u8 = b'\n';
+const RETAINED_LINE_CAPACITY: usize = 4096;
 
-#[derive(Debug)]
+impl fmt::Debug for Decoder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Decoder")
+            .field("limit", &self.limit)
+            .field("held", &self.held())
+            .field("at_start", &self.at_start)
+            .field("skip_lf", &self.skip_lf)
+            .field("ended", &self.ended)
+            .field("failed", &self.failed)
+            .finish()
+    }
+}
+
 pub struct Decoder {
     limit: usize,
     line: Vec<u8>,
@@ -58,7 +73,7 @@ impl Decoder {
         }
         let result = self.consume(chunk, frames);
         if let Err(error) = &result {
-            self.failed = Some(error.clone());
+            self.latch(error.clone());
         }
         result
     }
@@ -68,7 +83,7 @@ impl Decoder {
             return Err(error.clone());
         }
         if self.frame.is_started() || !self.line.is_empty() {
-            self.failed = Some(DecodeError::InputTruncated);
+            self.latch(DecodeError::InputTruncated);
             return Err(DecodeError::InputTruncated);
         }
         self.ended = true;
@@ -121,13 +136,18 @@ impl Decoder {
         Ok(true)
     }
 
+    fn latch(&mut self, error: DecodeError) {
+        self.failed = Some(error);
+        self.line = Vec::new();
+        self.frame = OpenFrame::default();
+    }
+
+    fn held(&self) -> usize {
+        self.line.len().saturating_add(self.frame.held())
+    }
+
     fn hold(&mut self, bytes: &[u8]) -> Result<(), DecodeError> {
-        let held = self
-            .line
-            .len()
-            .saturating_add(self.frame.held())
-            .saturating_add(bytes.len());
-        if held > self.limit {
+        if self.held().saturating_add(bytes.len()) > self.limit {
             return Err(DecodeError::FrameTooLarge { limit: self.limit });
         }
         self.line.extend_from_slice(bytes);
@@ -137,6 +157,7 @@ impl Decoder {
     fn complete_line(&mut self, frames: &mut Vec<Frame>) -> Result<(), DecodeError> {
         let outcome = self.frame.apply(&self.line);
         self.line.clear();
+        self.line.shrink_to(RETAINED_LINE_CAPACITY);
         frames.extend(outcome?);
         Ok(())
     }

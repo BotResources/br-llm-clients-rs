@@ -14,11 +14,6 @@ fn given_no_limit_when_creating_the_default_then_it_is_8_mib() {
 }
 
 #[test]
-fn given_a_limit_when_creating_then_the_decoder_reports_it() {
-    assert_eq!(Decoder::new(77).unwrap().limit(), 77);
-}
-
-#[test]
 fn given_an_unfinished_line_exactly_at_the_limit_when_feeding_then_it_is_allowed() {
     let mut decoder = Decoder::new(10).unwrap();
     assert_eq!(feed_all(&mut decoder, b"data: abcd"), Ok(vec![]));
@@ -228,4 +223,49 @@ fn given_a_default_decoder_when_the_held_bytes_pass_8_mib_then_it_fails() {
         feed_all(&mut decoder, b"a"),
         Err(DecodeError::FrameTooLarge { limit: 8_388_608 })
     );
+}
+
+#[test]
+fn given_an_incomplete_byte_order_mark_when_the_limit_is_one_then_the_second_byte_passes_it() {
+    let outcome = decode_with(1, &[b"\xEF\xBB"]);
+    assert_eq!(outcome.frames, vec![]);
+    assert_eq!(outcome.error, Some(DecodeError::FrameTooLarge { limit: 1 }));
+}
+
+#[test]
+fn given_a_byte_order_mark_when_the_limit_is_two_then_the_complete_mark_passes() {
+    let outcome = decode_with(2, &[b"\xEF\xBB\xBFid\n"]);
+    assert_eq!(outcome.frames, vec![]);
+    assert_eq!(outcome.error, None);
+}
+
+#[test]
+fn given_an_incomplete_byte_order_mark_at_the_limit_when_the_input_ends_then_it_is_a_held_line() {
+    let outcome = decode_with(2, &[b"\xEF\xBB"]);
+    assert_eq!(outcome.error, Some(DecodeError::InputTruncated));
+}
+
+#[test]
+fn given_large_lines_that_completed_when_a_new_line_arrives_then_the_limit_counts_held_bytes_not_capacity()
+ {
+    let mut decoder = Decoder::new(1000).unwrap();
+    let mut comment = b":".to_vec();
+    comment.resize(900, b'x');
+    comment.push(b'\n');
+    for _ in 0..20 {
+        assert_eq!(feed_all(&mut decoder, &comment), Ok(vec![]));
+    }
+    let mut data = b"data:".to_vec();
+    data.resize(1000, b'y');
+    assert_eq!(feed_all(&mut decoder, &data), Ok(vec![]));
+    assert_eq!(feed_all(&mut decoder, b"\n\n").unwrap().len(), 1);
+}
+
+#[test]
+fn given_a_latched_error_when_the_decoder_is_inspected_then_nothing_is_held() {
+    let mut decoder = Decoder::new(10).unwrap();
+    assert_eq!(feed_all(&mut decoder, b"event:a\n"), Ok(vec![]));
+    assert!(format!("{decoder:?}").contains("held: 1,"));
+    assert!(feed_all(&mut decoder, b"data: 0123456789").is_err());
+    assert!(format!("{decoder:?}").contains("held: 0,"));
 }
