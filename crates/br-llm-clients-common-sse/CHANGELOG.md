@@ -32,8 +32,9 @@ form to decide whether a version ships.
 - The held bytes (unfinished line, event name and data text of the open frame)
   are limited; complete comment, `id`, `retry` and unknown field lines hold
   nothing.
-- After an error, `feed` and `finish` return the same error again. After
-  `finish`, `feed` returns `InputEnded`.
+- After any error, including one returned by `finish`, `feed` and `finish`
+  return the same error again. After a successful `finish`, `finish` succeeds
+  again and `feed` returns `InputEnded`.
 - Departures from the WHATWG rules, on purpose: invalid UTF-8 in a `data` or
   `event` line is an error, an input that ends inside a frame is an error, and a
   size limit exists.

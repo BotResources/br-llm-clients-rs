@@ -50,11 +50,11 @@ impl Decoder {
     }
 
     pub fn feed(&mut self, chunk: &[u8], frames: &mut Vec<Frame>) -> Result<(), DecodeError> {
-        if self.ended {
-            return Err(DecodeError::InputEnded);
-        }
         if let Some(error) = &self.failed {
             return Err(error.clone());
+        }
+        if self.ended {
+            return Err(DecodeError::InputEnded);
         }
         let result = self.consume(chunk, frames);
         if let Err(error) = &result {
@@ -64,7 +64,6 @@ impl Decoder {
     }
 
     pub fn finish(&mut self) -> Result<(), DecodeError> {
-        self.ended = true;
         if let Some(error) = &self.failed {
             return Err(error.clone());
         }
@@ -72,6 +71,7 @@ impl Decoder {
             self.failed = Some(DecodeError::InputTruncated);
             return Err(DecodeError::InputTruncated);
         }
+        self.ended = true;
         Ok(())
     }
 

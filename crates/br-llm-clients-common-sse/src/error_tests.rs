@@ -104,14 +104,34 @@ fn given_a_finish_when_feeding_then_the_input_has_ended() {
 }
 
 #[test]
-fn given_a_failed_finish_when_feeding_then_the_input_has_ended() {
+fn given_a_failed_finish_when_feeding_then_the_same_error_comes_not_input_ended() {
     let mut decoder = Decoder::default();
     feed_all(&mut decoder, b"data: a").unwrap();
-    assert!(decoder.finish().is_err());
+    assert_eq!(decoder.finish(), Err(DecodeError::InputTruncated));
     assert_eq!(
         feed_all(&mut decoder, b"\n\n"),
-        Err(DecodeError::InputEnded)
+        Err(DecodeError::InputTruncated)
     );
+    assert_eq!(
+        feed_all(&mut decoder, b""),
+        Err(DecodeError::InputTruncated)
+    );
+    assert_eq!(decoder.finish(), Err(DecodeError::InputTruncated));
+}
+
+#[test]
+fn given_a_feed_error_then_a_finish_when_feeding_then_the_first_error_still_comes() {
+    let mut decoder = Decoder::default();
+    assert_eq!(
+        feed_all(&mut decoder, b"data: \xFF\n"),
+        Err(DecodeError::InvalidUtf8)
+    );
+    assert_eq!(decoder.finish(), Err(DecodeError::InvalidUtf8));
+    assert_eq!(
+        feed_all(&mut decoder, b"data: a\n\n"),
+        Err(DecodeError::InvalidUtf8)
+    );
+    assert_eq!(decoder.finish(), Err(DecodeError::InvalidUtf8));
 }
 
 #[test]
