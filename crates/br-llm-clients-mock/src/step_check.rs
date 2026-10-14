@@ -32,6 +32,11 @@ fn count(step: &Step) -> Counts {
             }
             AssistantBlock::ToolCall(_) => counts.tool_calls = counts.tool_calls.saturating_add(1),
             AssistantBlock::Thinking(_) | AssistantBlock::RedactedThinking(_) => {}
+            // `AssistantBlock` grows only by an intent change of br-llm-messages: a new
+            // minor, so a new 0.x line (0.5) outside the `^0.4.0` requirement. No lawful
+            // 0.4.x adds a block, so the five above are every block a `Step` holds here.
+            // A block is never left uncounted.
+            _ => unreachable!("br-llm-messages 0.4 has no other assistant block"),
         }
     }
     counts
