@@ -1,5 +1,5 @@
+use crate::DecodeError;
 use crate::test_support::{decode_whole, frame, frames_of};
-use crate::{DecodeError, Frame};
 
 #[test]
 fn given_several_data_lines_when_the_frame_closes_then_they_join_with_one_line_feed_and_no_trailing_one()
@@ -217,9 +217,4 @@ fn given_a_frame_with_data_and_a_later_open_one_when_the_input_ends_then_the_fir
     let outcome = decode_whole(b"data: a\n\ndata: b\n");
     assert_eq!(outcome.frames, vec![frame(None, "a")]);
     assert_eq!(outcome.error, Some(DecodeError::InputTruncated));
-}
-
-#[test]
-fn given_an_empty_event_name_when_a_frame_is_built_then_the_event_is_absent() {
-    assert_eq!(Frame::new(Some(String::new()), "d").event(), None);
 }

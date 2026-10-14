@@ -240,3 +240,17 @@ fn given_a_decoder_that_failed_with_a_secret_held_when_it_is_printed_then_the_se
     assert!(feed_all(&mut decoder, b"data: SECRET-TOO-LONG-TO-FIT-IN-FORTY-BYTES").is_err());
     assert!(!format!("{decoder:?}").contains("SECRET"));
 }
+
+#[test]
+fn given_a_successful_finish_when_feed_is_refused_then_input_ended_does_not_latch() {
+    let mut decoder = Decoder::default();
+    feed_all(&mut decoder, b"data: a\n\n").unwrap();
+    assert_eq!(decoder.finish(), Ok(()));
+    assert_eq!(
+        feed_all(&mut decoder, b"data: b\n\n"),
+        Err(DecodeError::InputEnded)
+    );
+    assert_eq!(decoder.finish(), Ok(()));
+    assert_eq!(feed_all(&mut decoder, b""), Err(DecodeError::InputEnded));
+    assert_eq!(decoder.finish(), Ok(()));
+}

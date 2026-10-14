@@ -19,10 +19,11 @@ form to decide whether a version ships.
   (8 MiB, 8 388 608 bytes). `feed(chunk, &mut frames)` appends the frames the
   chunk completes, in order, to a list the caller owns, so frames completed
   before an error in the same chunk are not lost. `finish()` tells the decoder
-  that the input has ended. `limit()` gives the limit the decoder was created
-  with.
-- `Frame`, with `event()` (absent when empty), `data()` (data lines joined with
-  one line feed, none at the end), `into_parts()` and `Frame::new`.
+  that the input has ended.
+- `Frame`, built only by the decoder, with `event()` (absent when empty, so an
+  importer that follows the WHATWG default maps absent to `message` itself),
+  `data()` (data lines joined with one line feed, none at the end) and
+  `into_parts()`, which gives both by value.
 - `DecodeError`, one error type owned by the library, non-exhaustive, with a text
   for people on every case: `InvalidLimit`, `FrameTooLarge { limit }`,
   `InvalidUtf8`, `InputTruncated`, `InputEnded`. No case carries a lower layer's
@@ -42,6 +43,8 @@ form to decide whether a version ships.
   return the same error again. After a successful `finish`, `finish` succeeds
   again and `feed` returns `InputEnded`.
 - Departures from the WHATWG rules, on purpose: invalid UTF-8 in a `data` or
-  `event` line is an error, an input that ends inside a frame is an error, and a
-  size limit exists.
+  `event` line is an error (the bytes of a comment and of an ignored field are
+  not checked at all); an input that ends inside a frame, or in the middle of
+  any line, is an error; a size limit exists; an empty event name is absent
+  instead of `message`.
 - No dependency, no runtime, no network, no clock.

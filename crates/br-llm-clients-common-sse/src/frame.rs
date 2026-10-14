@@ -5,7 +5,7 @@ pub struct Frame {
 }
 
 impl Frame {
-    pub fn new(event: Option<String>, data: impl Into<String>) -> Self {
+    pub(crate) fn new(event: Option<String>, data: impl Into<String>) -> Self {
         Self {
             event: event.filter(|name| !name.is_empty()),
             data: data.into(),

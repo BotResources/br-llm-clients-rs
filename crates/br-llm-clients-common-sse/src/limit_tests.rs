@@ -10,7 +10,6 @@ fn given_a_limit_of_zero_when_creating_then_it_is_refused() {
 fn given_no_limit_when_creating_the_default_then_it_is_8_mib() {
     assert_eq!(DEFAULT_LIMIT, 8 * 1024 * 1024);
     assert_eq!(DEFAULT_LIMIT, 8_388_608);
-    assert_eq!(Decoder::default().limit(), 8_388_608);
 }
 
 #[test]

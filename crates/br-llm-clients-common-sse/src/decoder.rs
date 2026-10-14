@@ -60,10 +60,6 @@ impl Decoder {
         }
     }
 
-    pub fn limit(&self) -> usize {
-        self.limit
-    }
-
     pub fn feed(&mut self, chunk: &[u8], frames: &mut Vec<Frame>) -> Result<(), DecodeError> {
         if let Some(error) = &self.failed {
             return Err(error.clone());
