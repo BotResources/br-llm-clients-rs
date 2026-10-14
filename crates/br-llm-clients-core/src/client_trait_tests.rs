@@ -4,11 +4,12 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
-use br_llm_messages::{BlockKind, StreamEvent, WireMessage, WireUserBlock};
+use br_llm_messages::{BlockKind, ModelId, StreamEvent, WireMessage, WireUserBlock};
 
 use crate::test_support::{block_on, text};
 use crate::{
-    BoxFuture, CallOutcome, CallReport, Client, ClientError, ClientRequest, OutputMode, StreamSink,
+    BoxFuture, CacheRequirement, CallOutcome, CallReport, Client, ClientError, ClientRequest,
+    ClientSettings, MaxOutputTokens, OutputMode, ReasoningLevel, StreamSink,
 };
 
 struct YieldOnce(bool);
@@ -46,6 +47,25 @@ impl StreamSink for Journal {
 
 struct Streaming {
     blocks: usize,
+    settings: ClientSettings,
+}
+
+impl Streaming {
+    fn new(blocks: usize) -> Self {
+        Self {
+            blocks,
+            settings: settings("model-x", ReasoningLevel::Off),
+        }
+    }
+}
+
+fn settings(model: &str, reasoning: ReasoningLevel) -> ClientSettings {
+    ClientSettings::new(
+        ModelId::new(model).unwrap(),
+        reasoning,
+        CacheRequirement::NotRequired,
+        MaxOutputTokens::new(4096).unwrap(),
+    )
 }
 
 impl Client for Streaming {
@@ -67,6 +87,10 @@ impl Client for Streaming {
                 ClientError::Transport,
             )
         })
+    }
+
+    fn settings(&self) -> &ClientSettings {
+        &self.settings
     }
 }
 
@@ -96,8 +120,30 @@ fn given_the_traits_when_compiled_then_clients_are_shareable_and_sinks_movable_a
 }
 
 #[test]
+fn given_a_client_held_as_a_trait_object_when_asked_then_it_gives_back_the_settings_it_is_bound_to()
+{
+    let bound = settings("model-y", ReasoningLevel::High);
+    let client: Box<dyn Client> = Box::new(Streaming {
+        blocks: 0,
+        settings: bound.clone(),
+    });
+    let read: fn(&dyn Client) -> &ClientSettings = |client| client.settings();
+    assert_eq!(read(client.as_ref()), &bound);
+}
+
+#[test]
+fn given_a_call_running_when_the_settings_are_asked_then_they_are_given_without_waiting() {
+    let client: Arc<dyn Client> = Arc::new(Streaming::new(2));
+    let request = request();
+    let mut sink = Journal::default();
+    let call = client.call(&request, &mut sink);
+    assert_eq!(client.settings(), &settings("model-x", ReasoningLevel::Off));
+    block_on(call);
+}
+
+#[test]
 fn given_a_call_through_a_trait_object_when_made_then_its_future_is_send() {
-    let client: Box<dyn Client> = Box::new(Streaming { blocks: 0 });
+    let client: Box<dyn Client> = Box::new(Streaming::new(0));
     let request = request();
     let mut sink = Journal::default();
     let future = client.call(&request, &mut sink);
@@ -107,7 +153,7 @@ fn given_a_call_through_a_trait_object_when_made_then_its_future_is_send() {
 
 #[test]
 fn given_a_call_when_it_returns_then_the_request_and_the_sink_are_still_usable_by_the_caller() {
-    let client: Box<dyn Client> = Box::new(Streaming { blocks: 2 });
+    let client: Box<dyn Client> = Box::new(Streaming::new(2));
     let request = request();
     let before = request.clone();
     let mut sink = Journal::default();
@@ -124,7 +170,7 @@ fn given_a_call_when_it_returns_then_the_request_and_the_sink_are_still_usable_b
 #[test]
 fn given_a_sink_that_waits_when_a_call_streams_then_each_event_is_handled_before_the_next_is_sent()
 {
-    let client: Box<dyn Client> = Box::new(Streaming { blocks: 3 });
+    let client: Box<dyn Client> = Box::new(Streaming::new(3));
     let request = request();
     let mut sink = Journal::default();
     block_on(client.call(&request, &mut sink));
@@ -138,7 +184,7 @@ fn given_a_sink_that_waits_when_a_call_streams_then_each_event_is_handled_before
 
 #[test]
 fn given_one_shared_client_when_called_from_several_threads_then_each_call_owns_its_sink() {
-    let client: Arc<dyn Client> = Arc::new(Streaming { blocks: 2 });
+    let client: Arc<dyn Client> = Arc::new(Streaming::new(2));
     let handles: Vec<_> = (0..4)
         .map(|_| {
             let client = Arc::clone(&client);

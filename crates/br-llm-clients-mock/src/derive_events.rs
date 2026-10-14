@@ -95,6 +95,10 @@ fn block_events(
                 });
             }
         }
+        // `AssistantBlock` may grow, but only in a later minor of br-llm-messages: this crate
+        // pins the tag `br-llm-messages/v0.4.0`, whose `Step` holds the five blocks above and
+        // no other. A block with no event mapping must never be dropped from the stream.
+        _ => unreachable!("br-llm-messages 0.4.0 has no other assistant block"),
     }
     events.push(StreamEvent::BlockEnd { index });
 }

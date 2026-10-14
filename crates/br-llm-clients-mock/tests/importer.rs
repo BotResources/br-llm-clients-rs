@@ -95,6 +95,28 @@ fn given_the_public_surface_when_a_test_writes_a_script_then_the_code_under_test
 }
 
 #[test]
+fn given_handles_of_one_mock_when_asked_for_their_settings_then_each_gives_back_its_own() {
+    let original = MockClient::new(settings(), everything());
+    let clone = original.clone();
+    let wider = ClientSettings::new(
+        ModelId::new("other-model").unwrap(),
+        ReasoningLevel::High,
+        CacheRequirement::Required,
+        MaxOutputTokens::new(4096).unwrap(),
+    );
+    let retry = clone.with_settings(wider.clone());
+    let back = retry.with_settings(settings());
+    let handles: [&dyn Client; 5] = [&original, &clone, &retry, &retry.clone(), &back];
+    assert_eq!(
+        handles.map(|handle| handle.settings().clone()),
+        [settings(), settings(), wider.clone(), wider, settings()]
+    );
+    original.set_fallback(Reply::success(answer("any")).build().unwrap());
+    block_on(retry.call(&request(), &mut RecordingSink::new()));
+    assert_eq!(original.log()[0].settings(), retry.settings());
+}
+
+#[test]
 fn given_capabilities_built_from_everything_when_changed_then_strictness_refuses_like_a_real_client()
  {
     let spec = CapabilitiesSpec {

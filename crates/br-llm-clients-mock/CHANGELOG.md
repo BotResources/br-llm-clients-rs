@@ -9,6 +9,32 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.3.0
+
+### Added
+
+- `MockClient` implements `Client::settings`: each handle gives back its own
+  `ClientSettings`. A clone gives back the settings of the handle it was cloned
+  from, and a handle made with `with_settings` gives back the settings it was
+  made with.
+
+### Changed
+
+- Breaking: follows `br-llm-clients-core` 0.3.0 and `br-llm-messages` 0.4.0 (tag
+  `br-llm-messages/v0.4.0`). The types of both libraries in the public API are
+  now those of these releases; an importer must move to them too, because the
+  types of the earlier releases are not the same types. A `MockClient` handle
+  now also answers the new required `Client::settings` of core 0.3.
+- A step check meeting an assistant block this version of the mock does not
+  know (`br-llm-messages` may add one in a later minor) gives
+  `MalformedResponse`, as core asks of an unknown kind of content block.
+
+### Tests
+
+- The original mock, a clone, a handle with other settings, a clone of that
+  handle and a handle made from it each give back their own settings, and a
+  call through a handle is logged with the settings that handle gives back.
+
 ## 0.2.0
 
 ### Changed

@@ -18,7 +18,7 @@ impl Counts {
     }
 }
 
-fn count(step: &Step) -> Counts {
+fn count(step: &Step) -> Result<Counts, ClientError> {
     let mut counts = Counts {
         text: 0,
         structured: 0,
@@ -32,9 +32,15 @@ fn count(step: &Step) -> Counts {
             }
             AssistantBlock::ToolCall(_) => counts.tool_calls = counts.tool_calls.saturating_add(1),
             AssistantBlock::Thinking(_) | AssistantBlock::RedactedThinking(_) => {}
+            // A kind of content block that is not known is `MalformedResponse` (core).
+            _ => {
+                return Err(malformed(
+                    "the step holds a block this version of the mock does not know".to_owned(),
+                ));
+            }
         }
     }
-    counts
+    Ok(counts)
 }
 
 fn blocked(stop_reason: &StopReason) -> bool {
@@ -47,7 +53,7 @@ pub(crate) fn check(
     mode: ModeClass,
     step: &Step,
 ) -> Result<(), ClientError> {
-    let counts = count(step);
+    let counts = count(step)?;
     let stop_reason = step.stop_reason();
     if counts.is_empty() {
         return Err(if blocked(stop_reason) {

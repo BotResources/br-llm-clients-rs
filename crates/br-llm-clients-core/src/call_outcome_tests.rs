@@ -1,9 +1,9 @@
 use std::time::Duration;
 
-use br_llm_messages::ModelId;
+use br_llm_messages::{AssistantBlock, ModelId, Step, StopReason, ToolCall, ToolName};
 
 use crate::build_error::BuildError;
-use crate::test_support::{text_step, usage};
+use crate::test_support::{call_id, text_step, usage};
 use crate::{CallOutcome, CallReport, ClientError};
 
 fn report() -> CallReport {
@@ -142,6 +142,26 @@ fn given_a_stored_step_breaking_a_messages_rule_when_loaded_then_refused() {
             "step": { "content": [], "stop_reason": { "type": "end_turn" } }
         }
     });
+    assert!(serde_json::from_value::<CallOutcome>(json).is_err());
+}
+
+#[test]
+fn given_a_stored_tool_call_whose_name_br_llm_messages_refuses_when_loaded_then_refused() {
+    let call = ToolCall {
+        id: call_id("call-1"),
+        name: ToolName::new("read_file").unwrap(),
+        arguments: serde_json::json!({}),
+    };
+    let step = Step::new(
+        vec![AssistantBlock::ToolCall(call)],
+        StopReason::AwaitingToolResults,
+        None,
+        None,
+    )
+    .unwrap();
+    let mut json = serde_json::to_value(CallOutcome::success(report(), step).unwrap()).unwrap();
+    assert!(serde_json::from_value::<CallOutcome>(json.clone()).is_ok());
+    json["result"]["step"]["content"][0]["name"] = serde_json::json!("fs.read");
     assert!(serde_json::from_value::<CallOutcome>(json).is_err());
 }
 
