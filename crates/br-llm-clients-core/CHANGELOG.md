@@ -9,6 +9,17 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.2.0
+
+### Changed
+
+- Breaking: the types of `br-llm-messages` in the public API (`Step`, `Usage`,
+  `StreamEvent`, `WireMessage`, `ModelId`, `ToolName`, `Text`) are now those of
+  `br-llm-messages` 0.3.0 (tag `br-llm-messages/v0.3.0`). An importer that also
+  uses `br-llm-messages` must move to 0.3 too; the types of 0.2 and of 0.3 are
+  not the same types. No API of this crate is added, removed or renamed, and the
+  stored schema `br-llm-clients-core/1` is unchanged.
+
 ## 0.1.0
 
 ### Added
