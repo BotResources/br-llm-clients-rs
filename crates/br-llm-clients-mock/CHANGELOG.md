@@ -9,6 +9,16 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.2.0
+
+### Changed
+
+- Breaking: follows `br-llm-clients-core` 0.2.0 and `br-llm-messages` 0.3.0 (tag
+  `br-llm-messages/v0.3.0`). The types of both libraries in the public API are
+  now those of these releases; an importer must move to them too, because the
+  types of the earlier releases are not the same types. No API of this crate is
+  added, removed or renamed.
+
 ## 0.1.0
 
 ### Added
