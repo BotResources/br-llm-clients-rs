@@ -23,10 +23,10 @@ form to decide whether a version ships.
 - Breaking: `Client` gains the required method `settings`. Every implementor
   must add it. The trait stays object-safe, `Send` and `Sync`.
 - Breaking: the types of `br-llm-messages` in the public API (`Step`, `Usage`,
-  `StreamEvent`, `WireMessage`, `ModelId`, `ToolName`, `Text`) are now those of
-  `br-llm-messages` 0.4.0 (tag `br-llm-messages/v0.4.0`). An importer that also
-  uses `br-llm-messages` must move to 0.4 too; the types of 0.3 and of 0.4 are
-  not the same types. Its rules come with it: a `ToolName` is now 1 to 64 ASCII
+  `StreamEvent`, `WireMessage`, `ModelId`, `ToolName`, `Text`, `StopReason`,
+  `ImageMime`) are now those of `br-llm-messages` 0.4.0 (tag
+  `br-llm-messages/v0.4.0`). An importer that also uses `br-llm-messages` must
+  move to 0.4 too; the types of 0.3 and of 0.4 are not the same types. Its rules come with it: a `ToolName` is now 1 to 64 ASCII
   letters, digits, `_` or `-`, the first a letter or `_`, so a `ToolSpec`, a
   `ToolSchemaRejected` error or a `CallOutcome` whose step holds a tool call
   with another name no longer builds or loads. The stored schema
@@ -40,7 +40,7 @@ form to decide whether a version ships.
 ### Tests
 
 - A client held as a trait object gives back the settings it is bound to,
-  also while one of its calls is running.
+  also while a call it made still borrows it.
 - A stored `ToolSpec`, `ToolSchemaRejected` error or successful `CallOutcome`
   naming a tool that `br-llm-messages` 0.4 refuses does not load.
 

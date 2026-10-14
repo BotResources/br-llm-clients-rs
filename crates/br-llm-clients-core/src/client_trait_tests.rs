@@ -132,7 +132,7 @@ fn given_a_client_held_as_a_trait_object_when_asked_then_it_gives_back_the_setti
 }
 
 #[test]
-fn given_a_call_running_when_the_settings_are_asked_then_they_are_given_without_waiting() {
+fn given_a_call_borrowing_the_client_when_the_settings_are_asked_then_they_are_given() {
     let client: Arc<dyn Client> = Arc::new(Streaming::new(2));
     let request = request();
     let mut sink = Journal::default();

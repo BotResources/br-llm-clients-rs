@@ -25,9 +25,6 @@ form to decide whether a version ships.
   now those of these releases; an importer must move to them too, because the
   types of the earlier releases are not the same types. A `MockClient` handle
   now also answers the new required `Client::settings` of core 0.3.
-- A step check meeting an assistant block this version of the mock does not
-  know (`br-llm-messages` may add one in a later minor) gives
-  `MalformedResponse`, as core asks of an unknown kind of content block.
 
 ### Tests
 

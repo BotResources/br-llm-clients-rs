@@ -15,8 +15,6 @@ pub trait Client: Send + Sync {
         sink: &'a mut dyn StreamSink,
     ) -> BoxFuture<'a, CallOutcome>;
 
-    /// The `ClientSettings` this client is bound to. Pure: not async, no I/O.
-    /// It gives the common settings only; the configuration of a provider
-    /// library stays private to that library.
+    /// The common settings this client is bound to; pure, no I/O.
     fn settings(&self) -> &ClientSettings;
 }

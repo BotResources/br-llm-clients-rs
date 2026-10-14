@@ -141,9 +141,11 @@ fn given_a_reasoning_error_naming_a_level_unknown_to_this_version_when_loaded_th
 
 #[test]
 fn given_a_schema_error_naming_a_tool_name_br_llm_messages_refuses_when_loaded_then_refused() {
-    let stored = serde_json::json!({
-        "type": "tool_schema_rejected", "tool": "fs.read", "reason": "x"
+    let mut stored = serde_json::json!({
+        "type": "tool_schema_rejected", "tool": "read_file", "reason": "x"
     });
+    assert!(serde_json::from_value::<ClientError>(stored.clone()).is_ok());
+    stored["tool"] = serde_json::json!("fs.read");
     assert!(serde_json::from_value::<ClientError>(stored).is_err());
 }
 
