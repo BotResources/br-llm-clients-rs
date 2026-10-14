@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/br-llm-clients-core", "crates/br-llm-clients-mock"]
+members = ["crates/br-llm-clients-core", "crates/br-llm-clients-mock", "crates/br-llm-clients-common-sse"]
 
 [workspace.package]
 edition = "2024"

@@ -3,6 +3,10 @@
 version = 4
 
 [[package]]
+name = "br-llm-clients-common-sse"
+version = "0.1.0"
+
+[[package]]
 name = "br-llm-clients-core"
 version = "0.2.0"
 dependencies = [
