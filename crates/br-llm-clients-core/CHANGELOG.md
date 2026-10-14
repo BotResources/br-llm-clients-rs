@@ -26,8 +26,9 @@ form to decide whether a version ships.
   `StreamEvent`, `WireMessage`, `ModelId`, `ToolName`, `Text`, `StopReason`,
   `ImageMime`) are now those of `br-llm-messages` 0.4.0 (tag
   `br-llm-messages/v0.4.0`). An importer that also uses `br-llm-messages` must
-  move to 0.4 too; the types of 0.3 and of 0.4 are not the same types. Its rules come with it: a `ToolName` is now 1 to 64 ASCII
-  letters, digits, `_` or `-`, the first a letter or `_`, so a `ToolSpec`, a
+  move to 0.4 too; the types of 0.3 and of 0.4 are not the same types. Its
+  rules come with it: a `ToolName` is now 1 to 64 ASCII letters, digits, `_`
+  or `-`, the first a letter or `_`, so a `ToolSpec`, a
   `ToolSchemaRejected` error or a `CallOutcome` whose step holds a tool call
   with another name no longer builds or loads. The stored schema
   `br-llm-clients-core/1` is unchanged.
