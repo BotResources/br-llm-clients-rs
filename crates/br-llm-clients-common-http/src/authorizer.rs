@@ -17,6 +17,7 @@ pub trait Authorizer: Send + Sync {
 }
 
 #[derive(Clone)]
+#[non_exhaustive]
 pub struct AuthorizedHeader {
     pub name: String,
     pub value: Secret,

@@ -255,3 +255,13 @@ fn given_characters_a_url_does_not_allow_when_built_then_they_are_refused() {
         refused_https(text);
     }
 }
+
+#[test]
+fn given_a_text_longer_than_8192_bytes_when_built_then_it_is_refused() {
+    let at_limit = format!("https://h/{}", "a".repeat(8192 - "https://h/".len()));
+    assert!(Endpoint::https(&at_limit).is_ok());
+    let over = format!("https://h/{}", "a".repeat(8192 - "https://h/".len() + 1));
+    assert!(refused_https(&over).contains("8192"));
+    let long_query = format!("https://h/?{}", "q".repeat(9000));
+    refused_https(&long_query);
+}

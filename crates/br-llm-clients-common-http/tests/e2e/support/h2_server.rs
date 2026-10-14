@@ -18,11 +18,12 @@ use tokio_rustls::TlsAcceptor;
 use super::script_body::ScriptBody;
 
 pub type Reply = Pin<Box<dyn Future<Output = Result<Response<ScriptBody>, io::Error>> + Send>>;
-pub type Service = Arc<dyn Fn(Request<Incoming>) -> Reply + Send + Sync>;
+pub type Service = Arc<dyn Fn(http::request::Parts) -> Reply + Send + Sync>;
 
 pub struct TlsServer {
     pub addr: SocketAddr,
     accepted: Arc<AtomicUsize>,
+    closed: Arc<AtomicUsize>,
     task: tokio::task::JoinHandle<()>,
 }
 
@@ -40,6 +41,8 @@ impl TlsServer {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
         let addr = listener.local_addr().expect("addr");
         let accepted = Arc::new(AtomicUsize::new(0));
+        let closed = Arc::new(AtomicUsize::new(0));
+        let closed_counter = Arc::clone(&closed);
         let counter = Arc::clone(&accepted);
         let task = tokio::spawn(async move {
             let mut connections = JoinSet::new();
@@ -50,6 +53,7 @@ impl TlsServer {
                 counter.fetch_add(1, Ordering::SeqCst);
                 let acceptor = acceptor.clone();
                 let service = Arc::clone(&service);
+                let closed_counter = Arc::clone(&closed_counter);
                 connections.spawn(async move {
                     tokio::time::sleep(handshake_delay).await;
                     let Ok(tls) = acceptor.accept(tcp).await else {
@@ -57,7 +61,14 @@ impl TlsServer {
                     };
                     let h2 = tls.get_ref().1.alpn_protocol() == Some(b"h2".as_slice());
                     let io = TokioIo::new(tls);
-                    let svc = service_fn(move |req| service(req));
+                    let svc = service_fn(move |req: Request<Incoming>| {
+                        let service = Arc::clone(&service);
+                        async move {
+                            let (parts, body) = req.into_parts();
+                            drain(body).await;
+                            service(parts).await
+                        }
+                    });
                     if h2 {
                         let mut builder = http2::Builder::new(TokioExecutor::new());
                         builder.max_concurrent_streams(max_streams);
@@ -65,18 +76,24 @@ impl TlsServer {
                     } else {
                         let _ = http1::Builder::new().serve_connection(io, svc).await;
                     }
+                    closed_counter.fetch_add(1, Ordering::SeqCst);
                 });
             }
         });
         Self {
             addr,
             accepted,
+            closed,
             task,
         }
     }
 
     pub fn accepted(&self) -> usize {
         self.accepted.load(Ordering::SeqCst)
+    }
+
+    pub fn closed(&self) -> usize {
+        self.closed.load(Ordering::SeqCst)
     }
 
     pub fn endpoint(&self, path: &str) -> Endpoint {
@@ -93,8 +110,15 @@ impl Drop for TlsServer {
 
 pub fn service<F, Fut>(f: F) -> Service
 where
-    F: Fn(Request<Incoming>) -> Fut + Send + Sync + 'static,
+    F: Fn(http::request::Parts) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = Result<Response<ScriptBody>, io::Error>> + Send + 'static,
 {
     Arc::new(move |req| Box::pin(f(req)))
+}
+
+async fn drain(mut body: Incoming) {
+    while let Some(Ok(_)) =
+        std::future::poll_fn(|cx| hyper::body::Body::poll_frame(std::pin::Pin::new(&mut body), cx))
+            .await
+    {}
 }

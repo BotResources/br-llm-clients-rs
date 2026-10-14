@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 #![cfg_attr(
     not(test),
     deny(
@@ -8,6 +9,7 @@
     )
 )]
 
+mod acquire;
 mod authorize;
 mod authorizer;
 mod authorizer_error;
@@ -21,6 +23,8 @@ mod config;
 mod config_error;
 mod connect;
 mod deadline;
+mod dial;
+mod driver;
 mod encoding;
 mod endpoint;
 mod endpoint_parse;
@@ -29,6 +33,7 @@ mod exchange;
 mod flow;
 mod header;
 mod headers;
+mod idle;
 mod lease;
 mod payload;
 mod percent;
@@ -40,8 +45,10 @@ mod response;
 mod retry_after;
 mod secret;
 mod send_error;
+mod texts;
 mod tls;
 mod transport;
+mod tuning;
 
 pub use authorizer::{AuthorizationRequest, AuthorizedHeader, Authorizer, BoxFuture};
 pub use authorizer_error::AuthorizerError;
@@ -80,3 +87,12 @@ mod request_tests;
 mod retry_after_tests;
 #[cfg(test)]
 mod secret_tests;
+
+#[cfg(test)]
+extern crate self as br_llm_clients_common_http;
+#[cfg(test)]
+mod lifetime_tests;
+#[cfg(test)]
+#[allow(dead_code)] // the end-to-end helpers are shared with this build, which uses a subset
+#[path = "../tests/e2e/support/mod.rs"]
+mod support;

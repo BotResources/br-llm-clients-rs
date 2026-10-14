@@ -31,7 +31,8 @@ fn given_every_type_that_can_hold_a_secret_or_payload_when_formatted_then_nothin
     let secret = Secret::new("SECRET-KEY").expect("secret");
     let endpoint = Endpoint::https("https://h/p?token=SECRET-QUERY")
         .expect("endpoint")
-        .with_query_pair("k", "SECRET-QUERY");
+        .with_query_pair("k", "SECRET-QUERY")
+        .expect("pair");
     let request = Request::new(endpoint.clone(), "SECRET-BODY")
         .with_header("x-h", "SECRET-HEADER")
         .expect("header");

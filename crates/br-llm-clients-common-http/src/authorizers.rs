@@ -3,7 +3,7 @@ use http::HeaderName;
 use crate::authorizer::{AuthorizationRequest, AuthorizedHeader, Authorizer, BoxFuture};
 use crate::authorizer_error::AuthorizerError;
 use crate::config_error::ConfigError;
-use crate::header::{describe_name, is_reserved};
+use crate::header::is_reserved;
 use crate::secret::Secret;
 
 #[derive(Clone)]
@@ -14,15 +14,14 @@ pub struct ApiKeyAuthorizer {
 
 impl ApiKeyAuthorizer {
     pub fn new(header_name: &str, key: Secret) -> Result<Self, ConfigError> {
-        let shown = describe_name(header_name);
         let parsed = HeaderName::from_bytes(header_name.as_bytes()).map_err(|_| {
             ConfigError::InvalidHeader {
-                text: format!("`{shown}` is not a valid header name"),
+                text: "the header name is not a valid header name".to_owned(),
             }
         })?;
         if is_reserved(&parsed) {
             return Err(ConfigError::ReservedHeader {
-                text: format!("`{shown}` is managed by the library"),
+                text: format!("`{}` is managed by the library", parsed.as_str()),
             });
         }
         Ok(Self {

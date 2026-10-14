@@ -1,7 +1,7 @@
-use std::error::Error;
 use std::fmt;
 
 use crate::secret::REDACTION;
+use crate::texts::bounded;
 
 #[derive(Default)]
 pub(crate) struct Redactor {
@@ -30,17 +30,8 @@ impl Redactor {
         cleaned
     }
 
-    pub(crate) fn describe(&self, error: &(dyn Error + 'static)) -> String {
-        let mut parts: Vec<String> = Vec::new();
-        let mut current: Option<&(dyn Error + 'static)> = Some(error);
-        while let Some(layer) = current {
-            let text = layer.to_string();
-            if parts.last().is_none_or(|last| !last.contains(&text)) {
-                parts.push(text);
-            }
-            current = layer.source();
-        }
-        self.clean(&parts.join(": "))
+    pub(crate) fn finish(&self, text: &str) -> String {
+        self.clean(&bounded(text))
     }
 }
 
@@ -75,16 +66,6 @@ mod tests {
     fn given_an_empty_value_when_building_then_it_is_ignored() {
         let redactor = Redactor::new([""]);
         assert_eq!(redactor.clean("text"), "text");
-    }
-
-    #[test]
-    fn given_a_chain_of_errors_when_describing_then_each_layer_is_joined_and_cleaned() {
-        let inner = std::io::Error::other("token sk-9 refused");
-        let outer = std::io::Error::other(inner);
-        let redactor = Redactor::new(["sk-9"]);
-        let text = redactor.describe(&outer);
-        assert!(!text.contains("sk-9"), "{text}");
-        assert!(text.contains("[redacted]"), "{text}");
     }
 
     #[test]

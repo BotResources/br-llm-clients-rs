@@ -121,7 +121,12 @@ async fn given_an_empty_body_when_sent_then_the_content_length_is_zero() {
 async fn given_an_endpoint_with_an_ipv6_literal_when_sent_then_the_host_header_keeps_the_brackets()
 {
     let listener = tokio::net::TcpListener::bind("[::1]:0").await;
-    let Ok(listener) = listener else { return };
+    let Ok(listener) = listener else {
+        eprintln!(
+            "SKIPPED: this host has no IPv6 loopback, the bracketed Host header is not exercised"
+        );
+        return;
+    };
     let port = listener.local_addr().expect("addr").port();
     let task = tokio::spawn(async move {
         let (mut stream, _) = listener.accept().await.expect("accept");

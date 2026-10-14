@@ -14,7 +14,7 @@ async fn h2_server(steps: impl Fn() -> Vec<Step> + Send + Sync + 'static) -> Tls
     TlsServer::start(
         Pki::trusted().acceptor(&[b"h2"]),
         service(move |req| {
-            assert_eq!(req.version(), Version::HTTP_2);
+            assert_eq!(req.version, Version::HTTP_2);
             let steps = steps();
             async move { Ok(Response::new(ScriptBody::new(steps))) }
         }),
@@ -210,9 +210,9 @@ async fn given_an_authority_when_sent_over_http2_then_the_server_sees_the_endpoi
         Pki::trusted().acceptor(&[b"h2"]),
         service(move |req| {
             sink.lock().expect("lock").push((
-                req.uri().authority().map(ToString::to_string),
-                req.headers().get_all("host").iter().count(),
-                req.uri().path_and_query().map(ToString::to_string),
+                req.uri.authority().map(ToString::to_string),
+                req.headers.get_all("host").iter().count(),
+                req.uri.path_and_query().map(ToString::to_string),
             ));
             async { Ok(Response::new(ScriptBody::new([]))) }
         }),

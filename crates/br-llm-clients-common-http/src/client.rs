@@ -15,12 +15,14 @@ use crate::request::Request;
 use crate::response::Response;
 use crate::send_error::SendError;
 use crate::tls;
+use crate::tuning::Tuning;
 
 pub(crate) struct Shared {
     pub(crate) config: HttpConfig,
     pub(crate) user_agent: HeaderValue,
     pub(crate) tls: TlsConnector,
     pub(crate) pool: Arc<Pool>,
+    pub(crate) tuning: Tuning,
 }
 
 #[derive(Clone)]
@@ -30,6 +32,15 @@ pub struct HttpClient {
 
 impl HttpClient {
     pub fn new(config: HttpConfig) -> Result<Self, ConfigError> {
+        Self::build(config, Tuning::FIXED)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_tuning(config: HttpConfig, tuning: Tuning) -> Result<Self, ConfigError> {
+        Self::build(config, tuning)
+    }
+
+    fn build(config: HttpConfig, tuning: Tuning) -> Result<Self, ConfigError> {
         let user_agent = config.validate()?;
         let tls = tls::build_connector(&config.extra_root_certificates)?;
         Ok(Self {
@@ -37,7 +48,8 @@ impl HttpClient {
                 config,
                 user_agent,
                 tls,
-                pool: Arc::new(Pool::default()),
+                pool: Arc::new(Pool::new(tuning.idle_limit)),
+                tuning,
             }),
         })
     }

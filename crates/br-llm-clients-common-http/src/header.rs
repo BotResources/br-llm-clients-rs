@@ -37,14 +37,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn given_the_ten_reserved_names_when_checking_then_all_are_reserved() {
-        for name in RESERVED_NAMES {
-            let parsed = HeaderName::from_bytes(name.as_bytes()).expect("valid name");
-            assert!(is_reserved(&parsed), "{name}");
-        }
-    }
-
-    #[test]
     fn given_a_long_name_with_control_characters_when_describing_then_it_is_escaped_and_cut() {
         let described = describe_name(&format!("a\nb{}", "x".repeat(200)));
         assert!(described.starts_with("a\\nb"));

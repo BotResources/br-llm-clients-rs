@@ -92,7 +92,7 @@ fn given_a_query_when_joining_then_the_query_is_kept_and_the_original_is_unchang
 #[test]
 fn given_a_pair_when_adding_a_query_pair_then_name_and_value_are_percent_encoded() {
     let base = https("https://h/p");
-    let with = base.with_query_pair("a b", "c&d=e/é");
+    let with = base.with_query_pair("a b", "c&d=e/é").expect("pair");
     assert_eq!(with.path_and_query(), "/p?a%20b=c%26d%3De%2F%C3%A9");
     assert_eq!(base.path_and_query(), "/p");
 }
@@ -101,11 +101,13 @@ fn given_a_pair_when_adding_a_query_pair_then_name_and_value_are_percent_encoded
 fn given_a_query_when_adding_pairs_then_they_are_appended_with_an_ampersand() {
     let endpoint = https("https://h/p?x=1")
         .with_query_pair("y", "2")
-        .with_query_pair("z", "");
+        .and_then(|e| e.with_query_pair("z", ""))
+        .expect("pairs");
     assert_eq!(endpoint.path_and_query(), "/p?x=1&y=2&z=");
     assert_eq!(
         https("https://h/p?")
             .with_query_pair("y", "2")
+            .expect("pair")
             .path_and_query(),
         "/p?y=2"
     );
@@ -113,8 +115,9 @@ fn given_a_query_when_adding_pairs_then_they_are_appended_with_an_ampersand() {
 
 #[test]
 fn given_a_query_when_formatting_then_neither_debug_nor_display_shows_it() {
-    let endpoint =
-        https("https://h:8443/v1/m?key=SECRET-KEY&other=1").with_query_pair("tok", "SECRET-TOKEN");
+    let endpoint = https("https://h:8443/v1/m?key=SECRET-KEY&other=1")
+        .with_query_pair("tok", "SECRET-TOKEN")
+        .expect("pair");
     let debug = format!("{endpoint:?}");
     let display = endpoint.to_string();
     for text in [&debug, &display] {
@@ -145,4 +148,20 @@ fn given_an_invalid_text_when_refused_then_the_error_text_never_echoes_the_input
             "{reason}"
         );
     }
+}
+
+#[test]
+fn given_a_result_longer_than_8192_bytes_when_joining_or_adding_a_pair_then_it_is_refused() {
+    let base = https("https://h/p");
+    assert!(matches!(
+        base.join_segment(&"y".repeat(9000)),
+        Err(ConfigError::InvalidEndpoint { .. })
+    ));
+    assert!(matches!(
+        base.with_query_pair("a", &"x".repeat(9000)),
+        Err(ConfigError::InvalidEndpoint { .. })
+    ));
+    let near = base.join_segment(&"y".repeat(8100)).expect("fits");
+    assert!(near.with_query_pair("a", &"x".repeat(200)).is_err());
+    assert!(near.with_query_pair("a", "x").is_ok());
 }

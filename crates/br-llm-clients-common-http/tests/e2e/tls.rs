@@ -13,7 +13,7 @@ fn versions_server_service(
     versions: Arc<std::sync::Mutex<Vec<Version>>>,
 ) -> crate::support::h2_server::Service {
     service(move |req| {
-        versions.lock().expect("lock").push(req.version());
+        versions.lock().expect("lock").push(req.version);
         async { Ok(Response::new(ScriptBody::new([Step::Data(b"secure")]))) }
     })
 }

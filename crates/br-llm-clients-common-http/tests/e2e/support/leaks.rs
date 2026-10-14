@@ -23,6 +23,11 @@ pub fn forbidden() -> [&'static str; 6] {
 
 pub fn assert_clean(label: &str, texts: &[String]) {
     for text in texts {
+        assert!(
+            text.chars().count() <= 512,
+            "{label} text of {} chars",
+            text.chars().count()
+        );
         for secret in forbidden() {
             assert!(!text.contains(secret), "{label} leaks {secret}: {text}");
         }

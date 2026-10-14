@@ -14,12 +14,14 @@ use crate::body_state::{Active, State};
 use crate::classify::{Cause, classify};
 use crate::lease::Lease;
 use crate::redact::Redactor;
+use crate::texts::hyper_text;
 
 pub struct BodyStream {
     state: State,
 }
 
 #[derive(Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Collected {
     pub bytes: Vec<u8>,
     pub cut: bool,
@@ -57,6 +59,7 @@ impl BodyStream {
     }
 
     pub async fn next_chunk(&mut self) -> Result<Option<Bytes>, BodyError> {
+        self.begin_read();
         poll_fn(|cx| self.poll_next_chunk(cx)).await
     }
 
@@ -71,6 +74,12 @@ impl BodyStream {
             bytes.extend_from_slice(&chunk);
         }
         Ok(Collected { bytes, cut: false })
+    }
+
+    fn begin_read(&mut self) {
+        if let State::Active(active) = &mut self.state {
+            active.idle_timer = None;
+        }
     }
 
     pub fn poll_next_chunk(
@@ -138,10 +147,10 @@ fn poll_deadline(timer: &mut Option<Pin<Box<tokio::time::Sleep>>>, cx: &mut Cont
 }
 
 fn body_failure(error: &hyper::Error, redactor: &Redactor) -> BodyError {
-    let text = redactor.describe(error);
-    match classify(error) {
-        Cause::Interrupted => BodyError::Interrupted { text },
+    let text = redactor.finish(&hyper_text(error));
+    match classify(error, true) {
         Cause::Protocol => BodyError::Protocol { text },
+        Cause::Interrupted | Cause::Unprocessed { .. } => BodyError::Interrupted { text },
     }
 }
 

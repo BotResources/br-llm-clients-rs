@@ -5,7 +5,7 @@ use http::{HeaderName, HeaderValue};
 
 use crate::config_error::ConfigError;
 use crate::endpoint::Endpoint;
-use crate::header::{describe_name, is_reserved};
+use crate::header::is_reserved;
 
 #[derive(Clone)]
 pub struct Request {
@@ -24,22 +24,21 @@ impl Request {
     }
 
     pub fn with_header(mut self, name: &str, value: &str) -> Result<Self, ConfigError> {
-        let shown = describe_name(name);
         let parsed =
             HeaderName::from_bytes(name.as_bytes()).map_err(|_| ConfigError::InvalidHeader {
-                text: format!("`{shown}` is not a valid header name"),
+                text: "the header name is not a valid header name".to_owned(),
             })?;
         if is_reserved(&parsed) {
             return Err(ConfigError::ReservedHeader {
-                text: format!("`{shown}` is managed by the library"),
+                text: format!("`{}` is managed by the library", parsed.as_str()),
             });
         }
         let value = HeaderValue::from_str(value).map_err(|_| ConfigError::InvalidHeader {
-            text: format!("the value of `{shown}` is not a valid header value"),
+            text: "the header value is not a valid header value".to_owned(),
         })?;
         if self.headers.iter().any(|(existing, _)| *existing == parsed) {
             return Err(ConfigError::DuplicateHeader {
-                text: format!("`{shown}` is given twice"),
+                text: "a header name is given twice".to_owned(),
             });
         }
         self.headers.push((parsed, value));

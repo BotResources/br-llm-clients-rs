@@ -69,3 +69,14 @@ async fn given_a_response_and_its_stream_then_they_can_be_moved_to_another_task(
     .expect("join");
     assert_eq!(body, b"moved");
 }
+
+#[test]
+fn given_the_dependency_tree_then_hyper_and_the_library_share_one_h2_so_error_downcasts_work() {
+    let lock = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../Cargo.lock"))
+        .expect("Cargo.lock");
+    let copies = lock.matches("name = \"h2\"").count();
+    assert_eq!(
+        copies, 1,
+        "two copies of h2 would break the classification of HTTP/2 errors"
+    );
+}

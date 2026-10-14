@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use br_llm_clients_common_http::{BodyError, NoAuthorizer, Request, SendError};
+use br_llm_clients_common_http::{BodyError, Endpoint, NoAuthorizer, Request, SendError};
 use tokio::io::AsyncWriteExt;
 
 use crate::support::canned::{serve_bytes, serve_response};
@@ -73,7 +73,7 @@ async fn given_a_credential_that_appears_in_a_lower_layer_text_then_the_second_b
 {
     let closed = closed_port_endpoint(false);
     let spy = Spy::returning(&[("authorization", "127.0.0.1")]);
-    let error = guarded(client().send(Request::new(closed, ""), &spy))
+    let error = guarded(client().send(Request::new(Endpoint::clone(&closed), ""), &spy))
         .await
         .unwrap_err();
     let SendError::Connect { text } = &error else {

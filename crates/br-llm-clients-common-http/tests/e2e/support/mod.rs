@@ -1,7 +1,10 @@
 pub mod canned;
+pub mod h2_headers;
 pub mod h2_server;
 pub mod leaks;
 pub mod pki;
+pub mod probe;
+pub mod proxy;
 pub mod raw;
 pub mod script_body;
 pub mod spy;
@@ -42,11 +45,8 @@ pub async fn guarded<F: Future>(work: F) -> F::Output {
 }
 
 pub fn closed_port_endpoint(https: bool) -> Endpoint {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
-    let port = listener.local_addr().expect("addr").port();
-    drop(listener);
     let text = format!(
-        "{}://127.0.0.1:{port}/closed",
+        "{}://127.0.0.1:1/closed",
         if https { "https" } else { "http" }
     );
     if https {

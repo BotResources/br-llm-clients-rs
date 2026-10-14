@@ -7,6 +7,12 @@ use crate::endpoint_parse::parse;
 use crate::endpoint_scheme::Scheme;
 use crate::percent::{encode_query_component, encode_segment};
 
+const MAX_ENDPOINT_BYTES: usize = 8192;
+
+fn too_long() -> ConfigError {
+    ConfigError::endpoint("it is longer than 8192 bytes")
+}
+
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Endpoint {
     scheme: Scheme,
@@ -26,6 +32,9 @@ impl Endpoint {
     }
 
     fn from_text(text: &str, scheme: Scheme) -> Result<Self, ConfigError> {
+        if text.len() > MAX_ENDPOINT_BYTES {
+            return Err(too_long());
+        }
         let parsed = parse(text, scheme)?;
         let endpoint = Self {
             scheme,
@@ -49,13 +58,14 @@ impl Endpoint {
             path.push('/');
         }
         path.push_str(&encode_segment(segment));
-        Ok(Self {
+        Self {
             path,
             ..self.clone()
-        })
+        }
+        .checked_length()
     }
 
-    pub fn with_query_pair(&self, name: &str, value: &str) -> Self {
+    pub fn with_query_pair(&self, name: &str, value: &str) -> Result<Self, ConfigError> {
         let mut query = self.query.clone().unwrap_or_default();
         if !query.is_empty() {
             query.push('&');
@@ -67,6 +77,25 @@ impl Endpoint {
             query: Some(query),
             ..self.clone()
         }
+        .checked_length()
+    }
+
+    fn checked_length(self) -> Result<Self, ConfigError> {
+        let port = self
+            .port
+            .map_or(0, |port| port.to_string().len().saturating_add(1));
+        let length = self
+            .scheme
+            .as_str()
+            .len()
+            .saturating_add(3)
+            .saturating_add(self.host.len())
+            .saturating_add(port)
+            .saturating_add(self.path_and_query().len());
+        if length > MAX_ENDPOINT_BYTES {
+            return Err(too_long());
+        }
+        Ok(self)
     }
 
     pub fn is_https(&self) -> bool {

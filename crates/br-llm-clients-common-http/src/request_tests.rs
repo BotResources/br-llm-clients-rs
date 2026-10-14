@@ -42,8 +42,26 @@ fn given_an_invalid_value_when_added_then_it_is_an_invalid_header_and_the_text_h
             matches!(error, ConfigError::InvalidHeader { .. }),
             "{value:?}"
         );
-        assert!(error.to_string().contains("x-key"));
         assert!(!error.to_string().contains("tok"), "{error}");
+    }
+}
+
+#[test]
+fn given_a_secret_passed_by_mistake_as_name_or_value_when_added_then_no_error_text_repeats_it() {
+    let canaries = ["sk CANARY-5521", "sk-CANARY-5521\n", "sk-CANARY-5521"];
+    for canary in canaries {
+        let swapped = request().with_header(canary, "x-api-key");
+        let wrong_value = request().with_header("x-api-key", canary);
+        let twice = request()
+            .with_header("sk-CANARY-5521", "1")
+            .and_then(|r| r.with_header("SK-CANARY-5521", "2"));
+        for outcome in [swapped, wrong_value, twice] {
+            if let Err(error) = outcome {
+                let text = format!("{error} {error:?}");
+                assert!(!text.contains("CANARY-5521"), "{text}");
+                assert!(text.len() < 512);
+            }
+        }
     }
 }
 
