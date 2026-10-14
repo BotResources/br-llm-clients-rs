@@ -36,12 +36,13 @@ async fn echo_server() -> (RawServer, Arc<std::sync::Mutex<Vec<Received>>>) {
 #[tokio::test]
 async fn given_an_invalid_returned_header_when_sent_then_nothing_is_sent_and_the_text_hides_the_value()
  {
-    let cases: [&[(&str, &str)]; 6] = [
+    let cases: [&[(&str, &str)]; 7] = [
         &[("bad name", "SECRET-V")],
         &[("x-ok", "SECRET-V\n")],
         &[("x-ok", "SECRET-V\r\nx-injected: 1")],
         &[("Host", "SECRET-V")],
         &[("accept-encoding", "SECRET-V")],
+        &[("user-agent", "SECRET-V")],
         &[("x-a", "SECRET-V"), ("X-A", "SECRET-W")],
     ];
     for headers in cases {

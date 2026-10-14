@@ -7,8 +7,8 @@ pub enum BodyError {
     IdleTimeout { text: String },
     #[error("total timeout: {text}")]
     TotalTimeout { text: String },
-    #[error("unsupported content encoding `{encoding}`: {text}")]
-    UnsupportedEncoding { encoding: String, text: String },
+    #[error("unsupported content encoding: {text}")]
+    UnsupportedEncoding { text: String },
     #[error("protocol error: {text}")]
     Protocol { text: String },
 }

@@ -1,6 +1,6 @@
 use http::HeaderName;
 
-const RESERVED_NAMES: [&str; 10] = [
+const RESERVED_NAMES: [&str; 11] = [
     "host",
     "content-length",
     "transfer-encoding",
@@ -11,6 +11,7 @@ const RESERVED_NAMES: [&str; 10] = [
     "te",
     "expect",
     "accept-encoding",
+    "user-agent",
 ];
 
 const MAX_NAME_CHARS: usize = 64;

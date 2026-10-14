@@ -13,28 +13,41 @@ async fn first_read(encoding: &str, body: &[u8]) -> (u16, Result<Option<bytes::B
 }
 
 #[tokio::test]
-async fn given_another_encoding_when_first_read_then_it_fails_naming_the_encoding_whatever_the_body()
- {
+async fn given_another_encoding_when_first_read_then_it_fails_without_naming_it_whatever_the_body()
+{
     for (encoding, body) in [
         ("gzip", b"\x1f\x8b\x08".as_slice()),
         ("GZIP", b"x"),
-        ("br", b""),
+        ("x-brotli", b""),
         ("Zstd", b"abc"),
-        ("deflate", b""),
+        ("sk-odd-coding", b""),
     ] {
         let (status, first) = first_read(encoding, body).await;
         assert_eq!(status, 200);
         match first {
-            Err(BodyError::UnsupportedEncoding {
-                encoding: named,
-                text,
-            }) => {
-                assert_eq!(named, encoding);
-                assert!(text.contains(encoding));
+            Err(error @ BodyError::UnsupportedEncoding { .. }) => {
+                let shown = format!("{error} {error:?}");
+                assert!(
+                    !shown.to_lowercase().contains(&encoding.to_lowercase()),
+                    "{shown}"
+                );
             }
             other => panic!("{encoding}: {other:?}"),
         }
     }
+}
+
+#[tokio::test]
+async fn given_an_unsupported_encoding_when_the_response_is_kept_then_the_importer_reads_the_header()
+ {
+    let server = serve_response("200 OK", &[("Content-Encoding", "gzip")], b"zz").await;
+    let response = guarded(client().send(post(&server.endpoint("/"), ""), &NoAuthorizer))
+        .await
+        .expect("response");
+    assert_eq!(
+        response.headers().get_text("content-encoding"),
+        Some("gzip")
+    );
 }
 
 #[tokio::test]

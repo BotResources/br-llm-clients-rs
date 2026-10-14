@@ -62,23 +62,6 @@ fn given_a_request_when_preparing_then_the_library_headers_come_first_and_are_ex
 }
 
 #[test]
-fn given_a_user_agent_on_the_request_when_preparing_then_it_replaces_the_configured_one_once() {
-    let endpoint = Endpoint::https("https://h/").expect("endpoint");
-    let request = Request::new(endpoint, "")
-        .with_header("User-Agent", "mine/1")
-        .expect("header");
-    let p = prepare(request, &HeaderValue::from_static("agent/1")).expect("prepared");
-    let agents: Vec<_> = p
-        .headers
-        .iter()
-        .filter(|(n, _)| n == "user-agent")
-        .collect();
-    assert_eq!(agents.len(), 1);
-    assert_eq!(agents[0].1, "mine/1");
-    assert_eq!(value_of(&p, "content-length").expect("cl"), "0");
-}
-
-#[test]
 fn given_a_new_header_when_merging_then_it_is_appended_and_marked_sensitive() {
     let mut p = prepared();
     merge(&mut p, vec![header("X-Api-Key", "sk-1")]).expect("merged");
@@ -96,7 +79,7 @@ fn given_a_header_with_the_name_of_a_request_header_when_merging_then_it_replace
         &mut p,
         vec![
             header("Content-Type", "application/x-other"),
-            header("user-agent", "signed/1"),
+            header("x-keep", "signed"),
         ],
     )
     .expect("merged");
@@ -105,7 +88,7 @@ fn given_a_header_with_the_name_of_a_request_header_when_merging_then_it_replace
         value_of(&p, "content-type").expect("ct"),
         "application/x-other"
     );
-    assert_eq!(value_of(&p, "user-agent").expect("ua"), "signed/1");
+    assert_eq!(value_of(&p, "x-keep").expect("keep"), "signed");
     assert_eq!(
         p.headers
             .iter()
@@ -155,6 +138,7 @@ fn given_a_reserved_name_when_merging_then_it_is_refused_in_any_case() {
         "TE",
         "Expect",
         "ACCEPT-ENCODING",
+        "User-Agent",
     ] {
         let text = invalid(vec![header(name, "TOP-SECRET")]);
         assert!(text.contains("managed by the library"), "{name}: {text}");

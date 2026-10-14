@@ -41,9 +41,6 @@ impl BodyStream {
             parts.lease.finish_clean();
             return Self { state: State::Done };
         }
-        let pending = parts
-            .unsupported_encoding
-            .map(|e| scrubbed(e, &parts.redactor));
         let active = Active {
             incoming: parts.incoming,
             lease: parts.lease,
@@ -52,7 +49,7 @@ impl BodyStream {
             idle_timer: None,
             total_limit: parts.total_limit,
             total_timer: parts.total_deadline.map(|d| Box::pin(sleep_until(d))),
-            pending,
+            pending: parts.unsupported_encoding,
         };
         Self {
             state: State::Active(Box::new(active)),
@@ -131,16 +128,6 @@ impl BodyStream {
                 }
             }
         }
-    }
-}
-
-fn scrubbed(error: BodyError, redactor: &Redactor) -> BodyError {
-    match error {
-        BodyError::UnsupportedEncoding { encoding, text } => BodyError::UnsupportedEncoding {
-            encoding: redactor.clean(&encoding),
-            text: redactor.clean(&text),
-        },
-        other => other,
     }
 }
 

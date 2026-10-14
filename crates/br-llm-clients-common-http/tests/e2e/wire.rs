@@ -107,21 +107,6 @@ async fn given_a_configured_user_agent_when_sent_then_it_is_used() {
 }
 
 #[tokio::test]
-async fn given_a_user_agent_on_the_request_when_sent_then_it_wins_and_is_sent_once() {
-    let (server, seen) = capturing_server().await;
-    let client = client_with(|c| c.user_agent = Some("my-app/9".to_owned()));
-    let request = post(&server.endpoint("/"), "")
-        .with_header("user-agent", "per-request/1")
-        .expect("header");
-    guarded(client.send(request, &NoAuthorizer))
-        .await
-        .expect("response");
-    let seen = seen.lock().expect("lock");
-    assert_eq!(seen[0].header_count("user-agent"), 1);
-    assert_eq!(seen[0].header("user-agent"), Some("per-request/1"));
-}
-
-#[tokio::test]
 async fn given_an_empty_body_when_sent_then_the_content_length_is_zero() {
     let (server, seen) = capturing_server().await;
     guarded(client().send(post(&server.endpoint("/"), ""), &NoAuthorizer))

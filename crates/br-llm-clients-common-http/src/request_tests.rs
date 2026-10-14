@@ -65,6 +65,7 @@ fn given_a_reserved_name_in_any_case_when_added_then_it_is_a_reserved_header() {
         "TE",
         "expect",
         "Accept-Encoding",
+        "User-Agent",
     ] {
         let error = request().with_header(name, "x").unwrap_err();
         assert!(
@@ -79,7 +80,6 @@ fn given_names_the_importer_may_set_when_added_then_they_are_accepted() {
     for name in [
         "content-type",
         "accept",
-        "user-agent",
         "authorization",
         "x-anything",
         "content-encoding",

@@ -64,24 +64,6 @@ async fn given_every_failure_after_the_headers_then_no_text_holds_a_secret_a_bod
     );
     all.extend(texts_of_body(&error));
 
-    let credential_as_encoding =
-        serve_response("200 OK", &[("Content-Encoding", "gzip")], b"").await;
-    let gzip_spy = Spy::returning(&[("authorization", "gzip")]);
-    let mut response = guarded(client().send(
-        secret_request(&plain(credential_as_encoding.addr.port())),
-        &gzip_spy,
-    ))
-    .await
-    .expect("response");
-    let error = response.body_mut().next_chunk().await.unwrap_err();
-    let BodyError::UnsupportedEncoding { encoding, text } = &error else {
-        panic!("{error:?}")
-    };
-    assert!(
-        encoding.contains("[redacted]") && text.contains("[redacted]") && !text.contains("gzip"),
-        "{error:?}"
-    );
-
     assert!(all.len() >= 15);
     assert_clean("body failures", &all);
 }

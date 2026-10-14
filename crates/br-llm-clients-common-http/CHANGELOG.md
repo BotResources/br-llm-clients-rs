@@ -28,7 +28,7 @@ form to decide whether a version ships.
 - `Endpoint` (`https`, `plain_http`, `join_segment`, `with_query_pair`) with the
   strict refusal rules of the intent; `Debug` and `Display` never show the query.
 - `Secret` (placeholder `Debug` and `Display`, `expose`, never empty).
-- `Request` (POST, in-memory body, validated headers, reserved headers refused);
+- `Request` (POST, in-memory body, validated headers, reserved headers refused, `User-Agent` included: it is set through `HttpConfig` only);
   `Debug` shows the endpoint, the header names and the body size only.
 - `Authorizer`, `AuthorizationRequest`, `AuthorizedHeader` and the ready-made
   `ApiKeyAuthorizer`, `BearerAuthorizer` and `NoAuthorizer`. The authorizer sees
@@ -37,7 +37,8 @@ form to decide whether a version ships.
 - `Response`, `Headers`, `BodyStream` (`next_chunk`, `poll_next_chunk`,
   `collect`) and `Collected`. `retry_after` reads delay seconds and the three
   RFC 9110 date forms. `Content-Encoding` other than identity fails the stream at
-  its first read.
+  its first read with `UnsupportedEncoding`, which never names the encoding (the
+  importer reads the header from the response).
 - The four timeouts: connect, headers (from the moment a connection is ready,
   covering the wait for a free HTTP/2 stream and the sending of the body), idle
   (only while the importer is reading) and total.

@@ -21,9 +21,7 @@ pub(crate) fn prepare(request: Request, user_agent: &HeaderValue) -> Result<Prep
         text: "the endpoint host cannot be sent as a header value".to_owned(),
     })?;
     let mut headers = vec![(HOST, host_value)];
-    if !own_headers.iter().any(|(name, _)| *name == USER_AGENT) {
-        headers.push((USER_AGENT, user_agent.clone()));
-    }
+    headers.push((USER_AGENT, user_agent.clone()));
     headers.push((ACCEPT_ENCODING, HeaderValue::from_static("identity")));
     headers.push((CONTENT_LENGTH, HeaderValue::from(body.len())));
     headers.extend(own_headers);
