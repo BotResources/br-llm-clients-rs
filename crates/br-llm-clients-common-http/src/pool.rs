@@ -127,6 +127,7 @@ pub(crate) struct Wait {
     pub(crate) kind: WaitKind,
     pub(crate) seq: u64,
     pub(crate) guard: LiveGuard,
+    pub(crate) awaiting: Option<Arc<H2State>>,
 }
 
 pub(crate) enum Plan {
@@ -206,7 +207,11 @@ impl Pool {
         } else if host.h2.is_empty() && host.live_h1.load(Ordering::SeqCst) == 0 && !host.dialing {
             host.proto = None;
         }
-        let limit_unknown = host.h2.iter().any(|entry| entry.state.limit_unknown());
+        let unannounced = host
+            .h2
+            .iter()
+            .find(|entry| entry.state.limit_unknown())
+            .map(|entry| Arc::clone(&entry.state));
         if let Some(reuse) = self.reusable(host) {
             return reuse;
         }
@@ -214,16 +219,17 @@ impl Pool {
             return Plan::TryIdle(idle.conn);
         }
         let seq = host.failure.as_ref().map_or(0, |recorded| recorded.seq);
-        let wait = |kind| {
+        let wait = |kind, awaiting| {
             Plan::Wait(Wait {
                 changed: changes,
                 kind,
                 seq,
                 guard: LiveGuard::new(&host.waiting),
+                awaiting,
             })
         };
-        if limit_unknown {
-            return wait(WaitKind::Stream);
+        if unannounced.is_some() {
+            return wait(WaitKind::Stream, unannounced);
         }
         match host.proto {
             Some(Proto::H1) => Plan::Dial(self.dialer(key, host, false)),
@@ -231,8 +237,8 @@ impl Pool {
                 host.dialing = true;
                 Plan::Dial(self.dialer(key, host, true))
             }
-            Some(Proto::H2) => wait(WaitKind::Stream),
-            None if host.dialing => wait(WaitKind::Dial),
+            Some(Proto::H2) => wait(WaitKind::Stream, None),
+            None if host.dialing => wait(WaitKind::Dial, None),
             None => match (&host.failure, waited_from) {
                 (Some(recorded), Some(from)) if recorded.seq > from => {
                     Plan::Failed(recorded.failure.clone())

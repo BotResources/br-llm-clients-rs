@@ -151,7 +151,7 @@ fn body_failure(error: &hyper::Error, redactor: &Redactor, h2: bool) -> BodyErro
     let text = redactor.finish(&hyper_text(error));
     match classify(error, true, h2) {
         Cause::Protocol => BodyError::Protocol { text },
-        Cause::Interrupted | Cause::Unprocessed { .. } => BodyError::Interrupted { text },
+        Cause::Interrupted { .. } | Cause::Unprocessed { .. } => BodyError::Interrupted { text },
     }
 }
 

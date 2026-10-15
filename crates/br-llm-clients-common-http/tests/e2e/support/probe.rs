@@ -27,6 +27,7 @@ pub enum Script {
     ZeroWindowClose,
     ZeroWindowGoAway,
     RefuseEvery(usize),
+    Graceful(usize),
 }
 
 pub struct Probe {
@@ -88,7 +89,12 @@ impl Probe {
                     let Ok(mut conn) = builder.handshake::<_, Bytes>(tls).await else {
                         return;
                     };
+                    let mut served = 0usize;
                     while let Some(Ok((request, mut respond))) = conn.accept().await {
+                        served = served.saturating_add(1);
+                        if matches!(script, Script::Graceful(after) if after == served) {
+                            conn.graceful_shutdown();
+                        }
                         let id = request
                             .headers()
                             .get("x-id")

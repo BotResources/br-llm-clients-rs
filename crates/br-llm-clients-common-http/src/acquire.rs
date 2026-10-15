@@ -8,12 +8,18 @@ use crate::connect::{ConnectFailure, open};
 use crate::deadline;
 use crate::dialer::{DialFailure, Dialer};
 use crate::endpoint::Endpoint;
+use crate::h2state::H2State;
 use crate::pool::{Plan, PoolKey, Wait, WaitKind};
 use crate::redact::Redactor;
 use crate::send_error::SendError;
 use crate::transport::{Conn, LiveGuard};
 
 pub(crate) const READY_GRACE: Duration = Duration::from_millis(250);
+
+pub(crate) enum Acquisition {
+    Ready(Acquired),
+    Spent,
+}
 
 pub(crate) struct Acquired {
     pub(crate) conn: Conn,
@@ -65,6 +71,13 @@ impl Waiting<'_> {
         }
     }
 
+    fn protocol(&self, text: &str) -> SendError {
+        let endpoint = self.endpoint;
+        SendError::Protocol {
+            text: self.redactor.finish(&format!("{endpoint}: {text}")),
+        }
+    }
+
     fn stream_timeout(&self) -> SendError {
         let limit = self.shared.config.headers_timeout;
         SendError::HeadersTimeout {
@@ -80,7 +93,7 @@ pub(crate) async fn acquire(
     endpoint: &Endpoint,
     key: &PoolKey,
     redactor: &Redactor,
-) -> Result<Acquired, SendError> {
+) -> Result<Acquisition, SendError> {
     let mut state = Waiting {
         shared,
         endpoint,
@@ -90,7 +103,16 @@ pub(crate) async fn acquire(
     };
     let mut waited_from: Option<u64> = None;
     let mut _waiting: Option<LiveGuard> = None;
+    let mut awaiting: Option<Arc<H2State>> = None;
     loop {
+        if let Some(awaited) = awaiting.take() {
+            if awaited.is_silent() {
+                return Ok(Acquisition::Spent);
+            }
+            if let Some(text) = awaited.violation() {
+                return Err(state.protocol(&text));
+            }
+        }
         let plan = shared.pool.plan(key, waited_from);
         _waiting = None;
         if !matches!(
@@ -104,16 +126,16 @@ pub(crate) async fn acquire(
             state.connect_deadline = None;
         }
         match plan {
-            Plan::Reuse(conn) => return Ok(state.ready(conn)),
+            Plan::Reuse(conn) => return Ok(Acquisition::Ready(state.ready(conn))),
             Plan::TryIdle(mut idle) => {
                 if matches!(timeout(READY_GRACE, idle.sender.ready()).await, Ok(Ok(()))) {
                     idle.idle.disarm();
-                    return Ok(state.ready(Conn::H1(idle)));
+                    return Ok(Acquisition::Ready(state.ready(Conn::H1(idle))));
                 }
             }
             Plan::Dial(dialer) => {
                 if let Some(conn) = dial(&mut state, dialer).await? {
-                    return Ok(state.ready(conn));
+                    return Ok(Acquisition::Ready(state.ready(conn)));
                 }
             }
             Plan::Failed(failure) => return Err(state.failure(failure)),
@@ -122,8 +144,10 @@ pub(crate) async fn acquire(
                 kind,
                 seq,
                 guard,
+                awaiting: awaited,
             }) => {
                 _waiting = Some(guard);
+                awaiting = awaited;
                 let (at, timed_out) = match kind {
                     WaitKind::Dial => {
                         waited_from = Some(seq);

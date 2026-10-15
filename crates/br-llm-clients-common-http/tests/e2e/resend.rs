@@ -18,7 +18,7 @@ fn client() -> HttpClient {
 }
 
 #[tokio::test]
-async fn given_a_stream_excluded_by_a_goaway_when_sent_then_it_is_sent_again_on_a_new_connection_once()
+async fn given_a_stream_excluded_by_a_goaway_when_sent_then_it_fails_interrupted_and_is_not_sent_again()
  {
     let probe = Probe::start(Script::GoAway {
         first_connections: 1,
@@ -27,18 +27,31 @@ async fn given_a_stream_excluded_by_a_goaway_when_sent_then_it_is_sent_again_on_
     })
     .await;
     let spy = Spy::returning(&[("x-api-key", "k")]);
-    let mut response = guarded(client().send(identified(&probe, "r1"), &spy))
+    let client = client();
+    let error = guarded(client.send(identified(&probe, "r1"), &spy))
         .await
-        .expect("sent again");
-    assert_eq!(response.status(), 200);
+        .unwrap_err();
+    assert!(matches!(error, SendError::Interrupted { .. }), "{error:?}");
+    assert_eq!(spy.calls(), 1);
+    let mut next = guarded(client.send(identified(&probe, "r2"), &spy))
+        .await
+        .expect("the next send dials a new connection");
     assert_eq!(
-        response.body_mut().collect(10).await.expect("body").bytes,
+        next.body_mut().collect(10).await.expect("body").bytes,
         b"ok"
     );
-    assert_eq!(probe.accepted.load(std::sync::atomic::Ordering::SeqCst), 2);
-    assert_eq!(probe.processed(), ["r1"]);
-    assert_eq!(probe.arrivals(), ["?", "r1"]);
-    assert_eq!(spy.calls(), 1);
+    assert_eq!(probe.accepted.load(Ordering::SeqCst), 2);
+    assert_eq!(probe.processed(), ["r2"]);
+    let mut arrivals = probe.arrivals();
+    for _ in 0..200 {
+        if arrivals.len() >= 2 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        arrivals = probe.arrivals();
+    }
+    arrivals.sort();
+    assert_eq!(arrivals, ["?", "r2"]);
 }
 
 #[tokio::test]
@@ -164,17 +177,28 @@ async fn burst(client: &HttpClient, probe: &Probe, count: usize) -> Vec<Result<(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn given_many_sends_on_a_connection_that_excludes_them_all_then_one_new_connection_is_opened()
-{
+async fn given_many_sends_on_a_connection_that_a_goaway_excludes_then_each_is_processed_at_most_once_and_the_connection_is_retired()
+ {
     for count in [50usize, 100] {
         let probe = Probe::start(goaway(1, 0, 0)).await;
-        let outcomes = guarded(burst(&client(), &probe, count)).await;
-        assert!(outcomes.iter().all(Result::is_ok), "{outcomes:?}");
+        let client = client();
+        let outcomes = guarded(burst(&client, &probe, count)).await;
+        let interrupted = outcomes
+            .iter()
+            .filter(|outcome| matches!(outcome, Err(SendError::Interrupted { .. })))
+            .count();
+        let succeeded = outcomes.iter().filter(|outcome| outcome.is_ok()).count();
+        assert!(interrupted >= 1, "{count} sends: {outcomes:?}");
+        assert_eq!(interrupted + succeeded, count, "{outcomes:?}");
+        let processed = probe.processed();
+        let mut unique = processed.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(processed.len(), unique.len(), "{count} sends");
+        assert_eq!(processed.len(), succeeded, "{count} sends");
+        let after = guarded(burst(&client, &probe, 1)).await;
+        assert!(after[0].is_ok(), "{after:?}");
         assert_eq!(probe.accepted.load(Ordering::SeqCst), 2, "{count} sends");
-        let mut processed = probe.processed();
-        processed.sort();
-        processed.dedup();
-        assert_eq!(processed.len(), count);
     }
 }
 

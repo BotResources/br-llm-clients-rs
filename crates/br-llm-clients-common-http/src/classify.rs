@@ -7,8 +7,21 @@ use crate::texts::find_source;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Cause {
     Unprocessed { written: bool, retire: bool },
-    Interrupted,
+    Interrupted { retire: bool },
     Protocol,
+}
+
+impl Cause {
+    pub(crate) fn retires_connection(self) -> bool {
+        matches!(
+            self,
+            Self::Unprocessed { retire: true, .. } | Self::Interrupted { retire: true }
+        )
+    }
+}
+
+pub(crate) fn server_broke_http2(error: &hyper::Error) -> bool {
+    classify(error, true, true) == Cause::Protocol
 }
 
 pub(crate) fn classify(error: &hyper::Error, may_have_written: bool, h2: bool) -> Cause {
@@ -26,18 +39,18 @@ pub(crate) fn classify(error: &hyper::Error, may_have_written: bool, h2: bool) -
             io::ErrorKind::InvalidData | io::ErrorKind::InvalidInput if !tls && !h2 => {
                 Cause::Protocol
             }
-            _ => untaken_or(may_have_written, Cause::Interrupted),
+            _ => untaken_or(may_have_written),
         };
     }
     if error.is_user() || error.is_canceled() || error.is_closed() {
-        return untaken_or(may_have_written, Cause::Interrupted);
+        return untaken_or(may_have_written);
     }
-    Cause::Interrupted
+    Cause::Interrupted { retire: false }
 }
 
-fn untaken_or(may_have_written: bool, otherwise: Cause) -> Cause {
+fn untaken_or(may_have_written: bool) -> Cause {
     if may_have_written {
-        otherwise
+        Cause::Interrupted { retire: false }
     } else {
         Cause::Unprocessed {
             written: false,
@@ -50,11 +63,13 @@ fn classify_h2(error: &h2::Error) -> Cause {
     if error.is_remote() && error.reason() == Some(Reason::HTTP_1_1_REQUIRED) {
         return Cause::Protocol;
     }
-    let refused = error.is_reset() && error.reason() == Some(Reason::REFUSED_STREAM);
-    if error.is_remote() && (error.is_go_away() || refused) {
+    if error.is_remote() && error.is_go_away() {
+        return Cause::Interrupted { retire: true };
+    }
+    if error.is_remote() && error.is_reset() && error.reason() == Some(Reason::REFUSED_STREAM) {
         return Cause::Unprocessed {
             written: true,
-            retire: !refused,
+            retire: false,
         };
     }
     let violation = matches!(
@@ -70,6 +85,6 @@ fn classify_h2(error: &h2::Error) -> Cause {
     if error.is_library() && violation {
         Cause::Protocol
     } else {
-        Cause::Interrupted
+        Cause::Interrupted { retire: false }
     }
 }

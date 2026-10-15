@@ -55,6 +55,7 @@ mod texts;
 mod tls;
 mod transport;
 mod tuning;
+mod unsent;
 
 pub use authorizer::{AuthorizationRequest, AuthorizedHeader, Authorizer, BoxFuture};
 pub use authorizer_error::AuthorizerError;
@@ -102,6 +103,8 @@ mod secret_tests;
 extern crate self as br_llm_clients_common_http;
 #[cfg(test)]
 mod cap_tests;
+#[cfg(test)]
+mod classify_tests;
 #[cfg(test)]
 mod exchange_tests;
 #[cfg(test)]

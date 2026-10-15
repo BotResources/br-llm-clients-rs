@@ -1,18 +1,15 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 
 use http::header::HOST;
 use hyper::body::Incoming;
-use hyper::client::conn::TrySendError;
-use tokio::sync::watch;
 use tokio::time::{Instant, timeout_at};
 
-use crate::acquire::{Acquired, acquire};
+use crate::acquire::{Acquired, Acquisition, acquire};
 use crate::body::{BodyParts, BodyStream};
 use crate::classify::{Cause, classify};
 use crate::client::Shared;
 use crate::encoding;
-use crate::h2state::Permit;
 use crate::headers::Headers;
 use crate::lease::Lease;
 use crate::limits::{MAX_ATTEMPTS, MAX_HEADER_LINES};
@@ -23,17 +20,13 @@ use crate::redact::Redactor;
 use crate::response::Response;
 use crate::send_error::SendError;
 use crate::texts::hyper_text;
-use crate::transport::{Conn, H1Conn, H2Sender};
+use crate::transport::Conn;
+use crate::unsent::{Unsent, never_taken, retires_connection, send_h1, send_h2};
 
 enum Attempt {
     Done(Box<Response>),
     Unprocessed { written: bool },
     Failed(SendError),
-}
-
-enum Unsent {
-    Unprocessed { written: bool, retire: bool },
-    Failed(hyper::Error, bool),
 }
 
 pub(crate) async fn exchange(
@@ -45,7 +38,13 @@ pub(crate) async fn exchange(
     let key = PoolKey::of(&prepared.endpoint);
     let mut last = false;
     for _ in 0..MAX_ATTEMPTS {
-        let acquired = acquire(shared, &prepared.endpoint, &key, redactor).await?;
+        let acquired = match acquire(shared, &prepared.endpoint, &key, redactor).await? {
+            Acquisition::Ready(acquired) => acquired,
+            Acquisition::Spent => {
+                last = false;
+                continue;
+            }
+        };
         match attempt(shared, prepared, &key, redactor, total_deadline, acquired).await {
             Attempt::Done(response) => return Ok(*response),
             Attempt::Unprocessed { written } => last = written,
@@ -141,6 +140,10 @@ async fn attempt(
             match outcome {
                 Ok(Ok(response)) => Ok(Ok((response, Lease::Shared(permit)))),
                 Ok(Err(unsent)) => {
+                    let unsent = match permit.violation() {
+                        Some(text) => Unsent::Violation(text),
+                        None => unsent,
+                    };
                     if retires_connection(&unsent, &written) {
                         permit.retire_connection();
                     }
@@ -155,9 +158,12 @@ async fn attempt(
             text: redactor.finish(&format!("no response headers within {limit:?}")),
         }),
         Ok(Err(Unsent::Unprocessed { written, .. })) => Attempt::Unprocessed { written },
+        Ok(Err(Unsent::Violation(text))) => Attempt::Failed(SendError::Protocol {
+            text: redactor.finish(&text),
+        }),
         Ok(Err(Unsent::Failed(error, written))) => match classify(&error, written, h2) {
             Cause::Unprocessed { written, .. } => Attempt::Unprocessed { written },
-            Cause::Interrupted => Attempt::Failed(SendError::Interrupted {
+            Cause::Interrupted { .. } => Attempt::Failed(SendError::Interrupted {
                 text: redactor.finish(&hyper_text(&error)),
             }),
             Cause::Protocol => Attempt::Failed(SendError::Protocol {
@@ -167,69 +173,6 @@ async fn attempt(
         Ok(Ok((response, lease))) => {
             into_response(shared, response, lease, redactor, total_deadline)
         }
-    }
-}
-
-async fn send_h1(
-    conn: &mut H1Conn,
-    request: http::Request<Payload>,
-    written: &Arc<AtomicBool>,
-) -> Result<http::Response<Incoming>, Unsent> {
-    if conn.sender.ready().await.is_err() {
-        return Err(Unsent::Unprocessed {
-            written: false,
-            retire: true,
-        });
-    }
-    conn.sender
-        .try_send_request(request)
-        .await
-        .map_err(|error| into_unsent(error, written))
-}
-
-async fn send_h2(
-    sender: &mut H2Sender,
-    permit: &Permit,
-    request: http::Request<Payload>,
-    written: &Arc<AtomicBool>,
-) -> Result<http::Response<Incoming>, Unsent> {
-    if permit.announced_limit().await == 0 {
-        return Err(Unsent::Unprocessed {
-            written: false,
-            retire: false,
-        });
-    }
-    sender
-        .try_send_request(request)
-        .await
-        .map_err(|error| into_unsent(error, written))
-}
-
-pub(crate) async fn never_taken(gone: &mut watch::Receiver<bool>, written: &Arc<AtomicBool>) {
-    if gone.wait_for(|ended| *ended).await.is_ok() && !written.load(Ordering::SeqCst) {
-        return;
-    }
-    std::future::pending::<()>().await;
-}
-
-fn retires_connection(unsent: &Unsent, written: &Arc<AtomicBool>) -> bool {
-    match unsent {
-        Unsent::Unprocessed { retire, .. } => *retire,
-        Unsent::Failed(error, _) => matches!(
-            classify(error, written.load(Ordering::SeqCst), true),
-            Cause::Unprocessed { retire: true, .. }
-        ),
-    }
-}
-
-fn into_unsent(error: TrySendError<http::Request<Payload>>, written: &Arc<AtomicBool>) -> Unsent {
-    if error.message().is_some() {
-        Unsent::Unprocessed {
-            written: false,
-            retire: true,
-        }
-    } else {
-        Unsent::Failed(error.into_error(), written.load(Ordering::SeqCst))
     }
 }
 

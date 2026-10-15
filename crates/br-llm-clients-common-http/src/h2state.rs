@@ -12,6 +12,8 @@ pub(crate) struct H2State {
     peer_max: AtomicUsize,
     known: watch::Sender<bool>,
     retired: AtomicBool,
+    violation: Mutex<Option<String>>,
+    silent: AtomicBool,
     gone: watch::Sender<bool>,
     idle: IdleClock,
     host: HostHandle,
@@ -24,6 +26,8 @@ impl H2State {
             peer_max: AtomicUsize::new(0),
             known: watch::channel(false).0,
             retired: AtomicBool::new(false),
+            violation: Mutex::new(None),
+            silent: AtomicBool::new(false),
             gone: watch::channel(false).0,
             idle,
             host,
@@ -48,6 +52,28 @@ impl H2State {
 
     pub(crate) fn awaiting_settings(&self) -> bool {
         !*self.known.borrow()
+    }
+
+    pub(crate) fn record_violation(&self, text: String) {
+        *self
+            .violation
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(text);
+    }
+
+    pub(crate) fn mark_silent(&self) {
+        self.silent.store(true, Ordering::SeqCst);
+    }
+
+    pub(crate) fn is_silent(&self) -> bool {
+        self.silent.load(Ordering::SeqCst)
+    }
+
+    pub(crate) fn violation(&self) -> Option<String> {
+        self.violation
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 
     pub(crate) fn mark_gone(&self) {
@@ -111,6 +137,10 @@ impl Permit {
 
     pub(crate) fn retire_connection(&self) {
         self.0.retire();
+    }
+
+    pub(crate) fn violation(&self) -> Option<String> {
+        self.0.violation()
     }
 
     pub(crate) async fn announced_limit(&self) -> usize {

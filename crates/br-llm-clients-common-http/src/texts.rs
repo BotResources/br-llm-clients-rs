@@ -92,7 +92,9 @@ pub(crate) fn hyper_text(error: &hyper::Error) -> String {
 }
 
 fn h2_text(error: &h2::Error) -> String {
-    let kind = if error.is_go_away() {
+    let kind = if error.is_library() && error.is_go_away() {
+        "the HTTP/2 connection was closed after a broken rule"
+    } else if error.is_go_away() {
         "the server is closing the connection"
     } else if error.is_reset() {
         "the stream was reset"

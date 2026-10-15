@@ -5,7 +5,7 @@ use std::time::Duration;
 use tokio::sync::watch;
 use tokio::time::timeout;
 
-use crate::exchange::never_taken;
+use crate::unsent::never_taken;
 
 const BRIEF: Duration = Duration::from_millis(150);
 
