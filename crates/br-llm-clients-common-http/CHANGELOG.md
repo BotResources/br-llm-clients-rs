@@ -29,8 +29,15 @@ form to decide whether a version ships.
   connections is in use another connection is opened, up to 16 per host, then a
   send waits within `headers_timeout`, which is one deadline shared by the wait
   and the exchange. A new HTTP/2 connection counts as full until the first
-  SETTINGS frame of the server is applied, so a send never queues inside a
-  connection whose stream limit is unknown.
+  SETTINGS frame of the server has been read, and no request is handed to it
+  before: the sends that arrive meanwhile wait for it, including the send that
+  dialed it. A connection whose first SETTINGS frame has not been read within
+  `connect_timeout` after the connection is ready is closed, and the sends that
+  waited for it dial again, through the same gate and within the same limit of
+  16 connections. A server limit of zero makes the connection full, not unknown:
+  a send then uses or opens another connection. The stream limit is read from
+  the SETTINGS frames as they arrive on the wire, so a change by the server
+  (also a drop to zero) is seen at once.
   Addresses of a name are tried with a fixed 250 ms pause between the starts of
   two attempts. HTTP/2 connections send keep-alive pings every 30 s, also when
   idle, and close when a ping gets no answer within 10 s. An idle connection is
@@ -42,12 +49,17 @@ form to decide whether a version ships.
   the request was written, an HTTP/2 stream the server refused (REFUSED_STREAM),
   or an HTTP/2 stream that a remote GOAWAY reports as failed (the classifier
   cannot see the last stream id, so it relies on the HTTP/2 library failing only
-  the streams above it). The connection that failed is not used again. The
-  authorizer is not called again. A failure after bytes may have reached the
-  server (a broken pipe, a reset, a close) is never resent. A GOAWAY that asks
-  for HTTP/1.1 is `Protocol` and is not resent. A request that an HTTP/2
-  connection never took before it ended (its body was never read) is also resent,
-  instead of waiting for `headers_timeout`.
+  the streams above it). A GOAWAY retires the connection that carried the
+  request; a refused stream does not, the next attempt goes through the normal
+  plan and may use the same healthy connection. The authorizer is not called
+  again. A request counts as written as soon as the HTTP/2 or HTTP/1.1 library
+  has taken it, so a failure after that (a broken pipe, a reset, a close, also
+  before the body was read) is never resent and is `Interrupted`. A request an
+  HTTP/2 connection never took before it ended is resent, instead of waiting for
+  `headers_timeout`. A GOAWAY that asks for HTTP/1.1 is `Protocol` and is not
+  resent. Each attempt has its own connect and headers deadlines, so one send
+  makes at most three attempts and can last up to three times as long as one
+  attempt; `total_timeout` still bounds the whole send.
 - Limits. A response head larger than 64 KiB, or with more than 1024 header
   lines, is refused with `SendError::Protocol`; on HTTP/2 the size is counted as
   RFC 9113 counts a header list, and exactly 64 KiB is accepted.
@@ -95,13 +107,14 @@ form to decide whether a version ships.
 
 ### Public surface
 
-`Endpoint` (`https`, `plain_http`, `join_segment`, `with_query_pair`), `Secret`
-(`new`, `expose`), `Request` (`new`, `with_header`), `HttpConfig` (`new`,
-`with_total_timeout`, `with_user_agent`, `with_extra_root_certificates`),
-`HttpClient` (`new`, `send`), `Response` (`status`, `headers`, `retry_after`,
-`body_mut`, `into_parts`), `Headers` (`get`, `get_all`, `get_text`, `iter`),
-`BodyStream` (`next_chunk`, `poll_next_chunk`, `collect`), `Collected`,
-`Authorizer`, `AuthorizationRequest` (`method`, `path_and_query`, `host`,
-`headers`, `header`, `body`), `AuthorizedHeader`, `BoxFuture`,
-`ApiKeyAuthorizer`, `BearerAuthorizer`, `NoAuthorizer`, `ConfigError`,
-`SendError`, `BodyError`, `AuthorizerError`.
+`Endpoint` (`https`, `plain_http`, `join_segment`, `with_query_pair`; comparable,
+`Display`), `Secret` (`new`, `expose`), `Request` (`new`, `with_header`),
+`HttpConfig` (`new`, `with_total_timeout`, `with_user_agent`,
+`with_extra_root_certificates`; comparable), `HttpClient` (`new`, `send`;
+`Debug`), `Response` (`status`, `headers`, `retry_after`, `body_mut`,
+`into_parts`), `Headers` (`get`, `get_all`, `get_text`, `iter`), `BodyStream`
+(`next_chunk`, `poll_next_chunk`, `collect`), `Collected`, `Authorizer`,
+`AuthorizationRequest` (`method`, `path_and_query`, `host`, `headers`, `header`,
+`body`), `AuthorizedHeader` (`new`), `BoxFuture`, `ApiKeyAuthorizer` (`new`),
+`BearerAuthorizer` (`new`), `NoAuthorizer` (`Default`, `Copy`), `ConfigError`,
+`SendError`, `BodyError`, `AuthorizerError` (`unavailable`, `fetch_failed`).
