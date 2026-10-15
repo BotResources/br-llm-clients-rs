@@ -54,6 +54,11 @@ impl HttpClient {
         })
     }
 
+    #[cfg(test)]
+    pub(crate) fn h2_connections(&self) -> usize {
+        self.shared.pool.h2_connections()
+    }
+
     pub async fn send(
         &self,
         request: Request,

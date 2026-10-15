@@ -136,6 +136,11 @@ impl Pool {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn h2_connections(&self) -> usize {
+        self.lock().values().map(|host| host.h2.len()).sum()
+    }
+
     pub(crate) fn lock(&self) -> MutexGuard<'_, HashMap<PoolKey, Host>> {
         self.hosts.lock().unwrap_or_else(PoisonError::into_inner)
     }

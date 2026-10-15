@@ -96,6 +96,8 @@ mod secret_tests;
 #[cfg(test)]
 extern crate self as br_llm_clients_common_http;
 #[cfg(test)]
+mod cap_tests;
+#[cfg(test)]
 mod fixed_values_tests;
 #[cfg(test)]
 mod lifetime_tests;
