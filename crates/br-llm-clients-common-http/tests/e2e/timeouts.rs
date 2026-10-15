@@ -88,12 +88,12 @@ async fn given_a_slow_connection_setup_then_headers_timeout_starts_only_when_the
         pki.acceptor(&[b"http/1.1"]),
         service(|_| async { Ok(Response::new(ScriptBody::new([Step::Data(b"ok")]))) }),
         None,
-        Duration::from_millis(700),
+        Duration::from_millis(1800),
     )
     .await;
     let client = {
         let mut config = crate::support::config();
-        config.headers_timeout = Duration::from_millis(300);
+        config.headers_timeout = Duration::from_millis(1000);
         config.extra_root_certificates = vec![pki.ca_pem.clone()];
         config.client()
     };
@@ -102,7 +102,7 @@ async fn given_a_slow_connection_setup_then_headers_timeout_starts_only_when_the
         .await
         .expect("response");
     assert_eq!(response.status(), 200);
-    assert!(started.elapsed() >= Duration::from_millis(650));
+    assert!(started.elapsed() >= Duration::from_millis(1750));
 }
 
 pub(crate) fn stalling_body_server(

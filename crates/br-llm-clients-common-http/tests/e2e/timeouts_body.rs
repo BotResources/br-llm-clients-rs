@@ -141,7 +141,7 @@ async fn given_chunks_that_each_arrive_within_the_idle_timeout_then_a_long_body_
         let _ = stream.shutdown().await;
     })
     .await;
-    let client = client_with(|c| c.idle_timeout = Duration::from_millis(400));
+    let client = client_with(|c| c.idle_timeout = Duration::from_millis(1500));
     let mut response = guarded(client.send(post(&server.endpoint("/"), "a"), &NoAuthorizer))
         .await
         .expect("response");

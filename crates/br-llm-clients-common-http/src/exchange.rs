@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use http::header::HOST;
 use hyper::body::Incoming;
 use hyper::client::conn::TrySendError;
+use tokio::sync::watch;
 use tokio::time::{Instant, timeout_at};
 
 use crate::acquire::{Acquired, acquire};
@@ -121,8 +122,17 @@ async fn attempt(
             })
         }
         Conn::H2 { mut sender, permit } => {
-            let outcome =
-                timeout_at(headers_deadline, send_h2(&mut sender, request, &written)).await;
+            let mut gone = permit.gone();
+            let outcome = timeout_at(headers_deadline, async {
+                tokio::select! {
+                    biased;
+                    result = send_h2(&mut sender, request, &written) => result,
+                    () = never_taken(&mut gone, &written) => {
+                        Err(Unsent::Unprocessed { written: false })
+                    }
+                }
+            })
+            .await;
             match outcome {
                 Ok(Ok(response)) => Ok(Ok((response, Lease::Shared(permit)))),
                 Ok(Err(unsent)) => {
@@ -178,6 +188,13 @@ async fn send_h2(
         .try_send_request(request)
         .await
         .map_err(|error| into_unsent(error, written))
+}
+
+async fn never_taken(gone: &mut watch::Receiver<bool>, written: &Arc<AtomicBool>) {
+    if gone.wait_for(|ended| *ended).await.is_ok() && !written.load(Ordering::SeqCst) {
+        return;
+    }
+    std::future::pending::<()>().await;
 }
 
 fn unprocessed(unsent: &Unsent, written: &Arc<AtomicBool>) -> bool {

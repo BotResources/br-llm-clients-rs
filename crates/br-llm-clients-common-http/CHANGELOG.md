@@ -45,7 +45,9 @@ form to decide whether a version ships.
   the streams above it). The connection that failed is not used again. The
   authorizer is not called again. A failure after bytes may have reached the
   server (a broken pipe, a reset, a close) is never resent. A GOAWAY that asks
-  for HTTP/1.1 is `Protocol` and is not resent.
+  for HTTP/1.1 is `Protocol` and is not resent. A request that an HTTP/2
+  connection never took before it ended (its body was never read) is also resent,
+  instead of waiting for `headers_timeout`.
 - Limits. A response head larger than 64 KiB, or with more than 1024 header
   lines, is refused with `SendError::Protocol`; on HTTP/2 the size is counted as
   RFC 9113 counts a header list, and exactly 64 KiB is accepted.

@@ -116,6 +116,7 @@ struct Gone(std::sync::Arc<H2State>);
 
 impl Drop for Gone {
     fn drop(&mut self) {
+        self.0.mark_gone();
         self.0.retire();
         self.0.wake_host();
     }

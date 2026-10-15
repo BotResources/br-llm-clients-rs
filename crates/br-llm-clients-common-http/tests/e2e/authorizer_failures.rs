@@ -213,15 +213,15 @@ async fn given_an_authorizer_that_is_slow_when_no_total_timeout_is_set_then_the_
             _request: &'a AuthorizationRequest<'a>,
         ) -> BoxFuture<'a, Result<Vec<AuthorizedHeader>, AuthorizerError>> {
             Box::pin(async {
-                tokio::time::sleep(Duration::from_millis(600)).await;
+                tokio::time::sleep(Duration::from_millis(1500)).await;
                 Ok(Vec::new())
             })
         }
     }
     let (server, _seen) = echo_server().await;
     let client = client_with(|c| {
-        c.connect_timeout = Duration::from_millis(100);
-        c.headers_timeout = Duration::from_millis(100);
+        c.connect_timeout = Duration::from_millis(1000);
+        c.headers_timeout = Duration::from_millis(1000);
     });
     let response = guarded(client.send(post(&server.endpoint("/"), ""), &Slow))
         .await

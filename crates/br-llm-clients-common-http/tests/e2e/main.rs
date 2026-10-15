@@ -9,6 +9,7 @@ mod env_isolation;
 mod errors;
 mod gate;
 mod gate_dial;
+mod goaway_races;
 mod h2;
 mod herd;
 

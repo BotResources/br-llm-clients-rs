@@ -1,6 +1,8 @@
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+use tokio::sync::watch;
+
 use crate::idle::IdleClock;
 use crate::pool::HostHandle;
 use crate::transport::bump;
@@ -9,6 +11,7 @@ pub(crate) struct H2State {
     inflight: Mutex<usize>,
     peer_max: AtomicUsize,
     retired: AtomicBool,
+    gone: watch::Sender<bool>,
     idle: IdleClock,
     host: HostHandle,
 }
@@ -19,6 +22,7 @@ impl H2State {
             inflight: Mutex::new(0),
             peer_max: AtomicUsize::new(0),
             retired: AtomicBool::new(false),
+            gone: watch::channel(false).0,
             idle,
             host,
         })
@@ -30,6 +34,10 @@ impl H2State {
 
     pub(crate) fn set_peer_max(&self, max: usize) -> bool {
         self.peer_max.swap(max, Ordering::SeqCst) != max
+    }
+
+    pub(crate) fn mark_gone(&self) {
+        self.gone.send_replace(true);
     }
 
     pub(crate) fn retire(&self) {
@@ -83,6 +91,10 @@ impl H2State {
 pub(crate) struct Permit(Arc<H2State>);
 
 impl Permit {
+    pub(crate) fn gone(&self) -> watch::Receiver<bool> {
+        self.0.gone.subscribe()
+    }
+
     pub(crate) fn retire_connection(&self) {
         self.0.retire();
     }

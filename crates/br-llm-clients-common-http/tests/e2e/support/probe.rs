@@ -199,8 +199,11 @@ pub async fn go_away_with<S: AsyncReadExt + AsyncWriteExt + Unpin>(
             if last_stream > 0 {
                 return true;
             }
+            let _ = stream.shutdown().await;
             let mut sink = [0u8; 1024];
-            while matches!(stream.read(&mut sink).await, Ok(n) if n > 0) {}
+            let lingering =
+                async { while matches!(stream.read(&mut sink).await, Ok(n) if n > 0) {} };
+            let _ = tokio::time::timeout(std::time::Duration::from_millis(500), lingering).await;
             return true;
         }
     }
