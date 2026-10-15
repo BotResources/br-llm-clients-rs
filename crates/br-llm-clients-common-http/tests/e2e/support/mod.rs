@@ -1,3 +1,4 @@
+pub mod burst;
 pub mod canned;
 pub mod frames;
 pub mod gate_kit;

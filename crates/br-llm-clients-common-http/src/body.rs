@@ -11,7 +11,7 @@ use tokio::time::{Instant, sleep, sleep_until};
 
 use crate::body_error::BodyError;
 use crate::body_state::{Active, State};
-use crate::classify::{Cause, classify, is_stream_reset_for_length};
+use crate::classify::{Cause, classify, is_library_protocol_reset};
 use crate::lease::Lease;
 use crate::redact::Redactor;
 use crate::texts::hyper_text;
@@ -35,11 +35,13 @@ pub(crate) struct BodyParts {
     pub(crate) total_deadline: Option<Instant>,
     pub(crate) total_limit: Option<Duration>,
     pub(crate) unsupported_encoding: Option<BodyError>,
+    pub(crate) bodiless: bool,
 }
 
 impl BodyStream {
     pub(crate) fn new(parts: BodyParts) -> Self {
-        if parts.unsupported_encoding.is_none() && parts.incoming.is_end_stream() {
+        let ended = parts.bodiless || parts.incoming.is_end_stream();
+        if parts.unsupported_encoding.is_none() && ended {
             parts.lease.finish_clean();
             return Self { state: State::Done };
         }
@@ -166,7 +168,7 @@ fn ended_short(redactor: &Redactor) -> BodyError {
 fn body_failure(error: &hyper::Error, redactor: &Redactor, h2: bool, short: bool) -> BodyError {
     let text = redactor.finish(&hyper_text(error));
     match classify(error, true, h2) {
-        Cause::Protocol if short && is_stream_reset_for_length(error) => {
+        Cause::Protocol if short && is_library_protocol_reset(error) => {
             BodyError::Interrupted { text }
         }
         Cause::Protocol => BodyError::Protocol { text },

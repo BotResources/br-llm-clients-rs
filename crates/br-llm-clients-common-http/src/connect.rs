@@ -101,7 +101,11 @@ where
             .map_err(failed)?;
         state.arm_idle();
         let tracked = track_streams(connection, Arc::clone(&state), settings_wait);
-        tokio::spawn(drive(tracked, idle_rx));
+        let swept = host.clone();
+        tokio::spawn(async move {
+            drive(tracked, idle_rx).await;
+            swept.sweep();
+        });
         Ok(Opened::H2 { sender, state })
     } else {
         let io = TokioIo::new(io);
@@ -112,7 +116,11 @@ where
             .handshake::<_, Payload>(io)
             .await
             .map_err(failed)?;
-        let driver = tokio::spawn(drive(connection, idle_rx));
+        let swept = host.clone();
+        let driver = tokio::spawn(async move {
+            drive(connection, idle_rx).await;
+            swept.sweep();
+        });
         Ok(Opened::H1(H1Conn::new(sender, idle, driver.abort_handle())))
     }
 }

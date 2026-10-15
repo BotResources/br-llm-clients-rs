@@ -6,7 +6,8 @@ use tokio::net::TcpListener;
 use crate::connect::open;
 use crate::dialer::DialFailure;
 use crate::endpoint::Endpoint;
-use crate::pool::{Plan, Pool, PoolKey};
+use crate::h2state_tests::bare_state;
+use crate::pool::{Plan, Pool, PoolKey, WaitKind};
 use crate::transport::bump;
 use crate::tuning::Tuning;
 
@@ -162,4 +163,53 @@ fn given_a_waiter_still_to_read_a_failure_when_planning_another_host_then_the_fa
     drop(pool.plan(&key("b.example"), None));
     assert_eq!(pool.lock().len(), 2);
     assert!(matches!(pool.plan(&host, Some(wait.seq)), Plan::Failed(_)));
+}
+
+fn landing_waited_for(plan: Plan) -> std::sync::Arc<crate::claim::Landing> {
+    match plan {
+        Plan::Wait(wait) => match wait.kind {
+            WaitKind::Dial(landing) => landing,
+            WaitKind::Stream => panic!("the send waits for a dial"),
+        },
+        _ => panic!("the send waits"),
+    }
+}
+
+#[test]
+fn given_a_dial_in_flight_when_a_send_waits_then_it_waits_for_the_landing_of_that_dial() {
+    let pool = pool();
+    let host = key("h.example");
+    let Plan::Dial(dialer) = pool.plan(&host, None) else {
+        panic!("the first send dials");
+    };
+    let landing = landing_waited_for(pool.plan(&host, None));
+    let state = bare_state();
+    assert!(landing.landed().is_none());
+    let held = pool
+        .lock()
+        .get(&host)
+        .map(|h| std::sync::Arc::clone(&h.landing));
+    assert!(held.is_some_and(|held| std::sync::Arc::ptr_eq(&held, &landing)));
+    landing.land(&state);
+    assert!(landing.landed().is_some());
+    drop(dialer);
+}
+
+#[test]
+fn given_a_later_dial_when_a_send_waits_then_it_does_not_wait_for_the_landing_of_an_earlier_dial() {
+    let pool = pool();
+    let host = key("h.example");
+    let Plan::Dial(first) = pool.plan(&host, None) else {
+        panic!("the first send dials");
+    };
+    let earlier = landing_waited_for(pool.plan(&host, None));
+    earlier.land(&bare_state());
+    drop(first);
+    let Plan::Dial(second) = pool.plan(&host, None) else {
+        panic!("the next send dials");
+    };
+    let later = landing_waited_for(pool.plan(&host, None));
+    assert!(!std::sync::Arc::ptr_eq(&earlier, &later));
+    assert!(later.landed().is_none());
+    drop(second);
 }

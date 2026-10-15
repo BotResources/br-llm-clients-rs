@@ -165,3 +165,28 @@ fn given_a_result_longer_than_8192_bytes_when_joining_or_adding_a_pair_then_it_i
     assert!(near.with_query_pair("a", &"x".repeat(200)).is_err());
     assert!(near.with_query_pair("a", "x").is_ok());
 }
+
+#[test]
+fn given_any_built_endpoint_then_the_host_header_and_both_uris_are_always_valid() {
+    let hostile = "a b/c?d#e%f\u{e9}\u{1}:;@[]";
+    let bases = [
+        "https://h",
+        "https://h:8443/",
+        "https://[::1]:8443/v1",
+        "https://EXAMPLE.org:443/a%2Fb?x=1&y=%20",
+        "https://1.2.3.4/models/gemini:generate",
+    ];
+    for base in bases {
+        let endpoint = https(base);
+        let joined = endpoint.join_segment(hostile).expect("segment");
+        let queried = joined.with_query_pair(hostile, hostile).expect("query");
+        for built in [endpoint, joined, queried] {
+            assert!(
+                http::HeaderValue::from_str(&built.host_header()).is_ok(),
+                "{built:?}"
+            );
+            assert!(built.absolute_uri().is_ok(), "{built:?}");
+            assert!(built.origin_uri().is_ok(), "{built:?}");
+        }
+    }
+}

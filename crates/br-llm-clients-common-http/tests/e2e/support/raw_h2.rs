@@ -10,8 +10,8 @@ use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 
 use super::frames::{
-    ACK, DATA, END_STREAM, HEADERS, PING, SETTINGS, empty_response, frame, read_frame,
-    read_preface, settings_frame, settings_frame_padded,
+    ACK, DATA, END_STREAM, HEADERS, PING, SETTINGS, empty_response, frame, goaway_frame,
+    read_frame, read_preface, settings_frame, settings_frame_padded,
 };
 use super::pki::Pki;
 
@@ -50,6 +50,9 @@ pub struct Policy {
     pub answer: Answer,
     pub lower_to_after: Option<(u32, usize)>,
     pub ends_after: Option<(Duration, Ending)>,
+    pub accept_delay: Duration,
+    pub goaway_on_headers: Option<u32>,
+    pub goaway_after: Option<(Duration, u32)>,
 }
 
 impl Policy {
@@ -59,6 +62,9 @@ impl Policy {
             answer: Answer::After(Duration::ZERO),
             lower_to_after: None,
             ends_after: None,
+            accept_delay: Duration::ZERO,
+            goaway_on_headers: None,
+            goaway_after: None,
         }
     }
 
@@ -108,6 +114,7 @@ impl RawH2 {
                 };
                 let policy = policy(index);
                 connections.spawn(async move {
+                    tokio::time::sleep(policy.accept_delay).await;
                     if let Ok(tls) = acceptor.accept(tcp).await {
                         if matches!(policy.ends_after, Some((_, Ending::Reset))) {
                             reset_on_close(tls.get_ref().0);
@@ -206,6 +213,13 @@ where
             });
         }
     }
+    if let Some((delay, code)) = policy.goaway_after {
+        let out = out.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(delay).await;
+            drop(out.send(goaway_frame(0, code, b"")));
+        });
+    }
     if !read_preface(&mut reader).await {
         return;
     }
@@ -234,6 +248,9 @@ where
             opened.fetch_add(1, Ordering::SeqCst);
             let now = live.fetch_add(1, Ordering::SeqCst).saturating_add(1);
             peak.fetch_max(now, Ordering::SeqCst);
+            if let Some(code) = policy.goaway_on_headers {
+                drop(out.send(goaway_frame(0, code, b"")));
+            }
             if let Some((limit, after)) = policy.lower_to_after
                 && seen == after
             {

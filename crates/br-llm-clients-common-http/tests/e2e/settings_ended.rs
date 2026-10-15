@@ -1,10 +1,10 @@
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use br_llm_clients_common_http::{NoAuthorizer, SendError};
+use br_llm_clients_common_http::SendError;
 
+use crate::support::burst::{slowest_of, timed_burst};
 use crate::support::frames::goaway_frame;
 use crate::support::gate_kit::trusting;
-use crate::support::post;
 use crate::support::raw_h2::{Announce, Answer, Ending, Policy, RawH2};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(600);
@@ -24,33 +24,16 @@ fn goaway_only() -> Announce {
     Announce::Raw(bytes)
 }
 
-async fn timed_burst(server: &RawH2, count: usize) -> Vec<(Result<(), SendError>, Duration)> {
-    let client = trusting(CONNECT_TIMEOUT, Duration::from_secs(60));
-    let mut tasks = tokio::task::JoinSet::new();
-    for _ in 0..count {
-        let (client, endpoint) = (client.clone(), server.endpoint());
-        tasks.spawn(async move {
-            let started = Instant::now();
-            let outcome = client
-                .send(post(&endpoint, "x"), &NoAuthorizer)
-                .await
-                .map(|_| ());
-            (outcome, started.elapsed())
-        });
-    }
-    let mut outcomes = Vec::new();
-    while let Some(outcome) = tasks.join_next().await {
-        outcomes.push(outcome.expect("join"));
-    }
-    outcomes
-}
-
 async fn assert_every_send_ends_with_connect(policy: Policy, sends: usize, shape: &str) {
     let server = RawH2::start(move |_| policy).await;
-    let outcomes = tokio::time::timeout(Duration::from_secs(30), timed_burst(&server, sends))
-        .await
-        .expect("the sends hung");
-    let slowest = outcomes.iter().map(|(_, took)| *took).max();
+    let client = trusting(CONNECT_TIMEOUT, Duration::from_secs(60));
+    let outcomes = tokio::time::timeout(
+        Duration::from_secs(30),
+        timed_burst(&client, &server, sends),
+    )
+    .await
+    .expect("the sends hung");
+    let slowest = slowest_of(&outcomes);
     assert!(
         outcomes
             .iter()

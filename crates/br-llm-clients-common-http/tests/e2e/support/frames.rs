@@ -72,8 +72,25 @@ pub fn goaway_frame(last_stream: u32, code: u32, debug: &[u8]) -> Vec<u8> {
     frame(GOAWAY, 0, 0, &payload)
 }
 
+pub const STATUS_204: u8 = 0x89;
+pub const STATUS_304: u8 = 0x8b;
+
 pub fn response_head(stream: u32, content_length: Option<&str>, end_stream: bool) -> Vec<u8> {
-    let mut block = vec![STATUS_200];
+    response_head_with_status(stream, STATUS_200, content_length, end_stream)
+}
+
+pub fn trailers(stream: u32) -> Vec<u8> {
+    let block = [0x40, 0x03, b'x', b'-', b't', 0x01, b'1'];
+    frame(HEADERS, END_STREAM | END_HEADERS, stream, &block)
+}
+
+pub fn response_head_with_status(
+    stream: u32,
+    status: u8,
+    content_length: Option<&str>,
+    end_stream: bool,
+) -> Vec<u8> {
+    let mut block = vec![status];
     if let Some(length) = content_length {
         block.extend_from_slice(&[0x0f, 0x0d]);
         block.push(u8::try_from(length.len()).expect("length"));

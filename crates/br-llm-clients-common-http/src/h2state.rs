@@ -7,6 +7,12 @@ use crate::idle::IdleClock;
 use crate::pool::HostHandle;
 use crate::transport::bump;
 
+pub(crate) enum Standing {
+    Open,
+    Spent,
+    Broken(String),
+}
+
 pub(crate) struct H2State {
     inflight: Mutex<usize>,
     peer_max: AtomicUsize,
@@ -14,6 +20,7 @@ pub(crate) struct H2State {
     retired: AtomicBool,
     violation: Mutex<Option<String>>,
     silent: AtomicBool,
+    opened_full: AtomicBool,
     gone: watch::Sender<bool>,
     idle: IdleClock,
     host: HostHandle,
@@ -28,6 +35,7 @@ impl H2State {
             retired: AtomicBool::new(false),
             violation: Mutex::new(None),
             silent: AtomicBool::new(false),
+            opened_full: AtomicBool::new(false),
             gone: watch::channel(false).0,
             idle,
             host,
@@ -45,6 +53,9 @@ impl H2State {
             None if first => usize::MAX,
             None => return,
         };
+        if first && limit == 0 {
+            self.opened_full.store(true, Ordering::SeqCst);
+        }
         self.peer_max.store(limit, Ordering::SeqCst);
         self.known.send_replace(true);
         self.wake_host();
@@ -62,8 +73,8 @@ impl H2State {
     }
 
     pub(crate) fn mark_silent(&self) {
-        self.retire();
         self.silent.store(true, Ordering::SeqCst);
+        self.retire();
     }
 
     pub(crate) fn is_silent(&self) -> bool {
@@ -97,6 +108,28 @@ impl H2State {
         *self.count() == 0
     }
 
+    pub(crate) fn is_trimmable(&self) -> bool {
+        self.is_idle() && !self.is_announced_full()
+    }
+
+    fn is_announced_full(&self) -> bool {
+        !self.awaiting_settings() && self.peer_max.load(Ordering::SeqCst) == 0
+    }
+
+    pub(crate) fn standing(&self) -> Standing {
+        if self.is_silent() {
+            return Standing::Spent;
+        }
+        if let Some(text) = self.violation() {
+            return Standing::Broken(text);
+        }
+        if self.is_retired() || self.opened_full.load(Ordering::SeqCst) {
+            Standing::Spent
+        } else {
+            Standing::Open
+        }
+    }
+
     pub(crate) fn wake_host(&self) {
         bump(&self.host.signal);
     }
@@ -123,7 +156,9 @@ impl H2State {
     pub(crate) fn force_acquire(self: &Arc<Self>) -> Permit {
         let mut count = self.count();
         *count = count.saturating_add(1);
-        self.idle.disarm();
+        if !self.idle.disarm() {
+            self.retire();
+        }
         Permit(Arc::clone(self))
     }
 }

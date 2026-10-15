@@ -5,7 +5,7 @@ use std::time::Duration;
 use tokio::sync::watch;
 
 use crate::endpoint::Endpoint;
-use crate::h2state::H2State;
+use crate::h2state::{H2State, Standing};
 use crate::idle::IdleClock;
 use crate::pool::{HostHandle, Pool, PoolKey};
 
@@ -147,4 +147,128 @@ fn given_a_connection_marked_silent_then_it_is_retired_in_the_same_step() {
     state.mark_silent();
     assert!(state.is_silent());
     assert!(state.is_retired());
+}
+
+fn is_open(state: &H2State) -> bool {
+    matches!(state.standing(), Standing::Open)
+}
+
+fn is_spent(state: &H2State) -> bool {
+    matches!(state.standing(), Standing::Spent)
+}
+
+#[test]
+fn given_a_connection_that_is_alive_then_a_send_that_waited_for_it_has_lost_nothing() {
+    assert!(is_open(&bare_state()));
+    assert!(is_open(&state_with_limit(5)));
+}
+
+#[test]
+fn given_a_connection_that_was_retired_after_its_settings_then_a_send_that_waited_for_it_has_lost_an_attempt()
+ {
+    let state = state_with_limit(5);
+    state.retire();
+    assert!(is_spent(&state));
+}
+
+#[test]
+fn given_a_connection_that_never_sent_its_settings_then_a_send_that_waited_for_it_has_lost_an_attempt()
+ {
+    let state = bare_state();
+    state.mark_silent();
+    assert!(is_spent(&state));
+}
+
+#[test]
+fn given_a_first_settings_with_a_limit_of_zero_then_a_send_that_waited_for_it_has_lost_an_attempt()
+{
+    let state = bare_state();
+    state.apply_settings(Some(0));
+    assert!(is_spent(&state));
+    state.apply_settings(Some(3));
+    assert!(is_spent(&state));
+}
+
+#[test]
+fn given_a_limit_lowered_to_zero_after_a_usable_first_settings_then_the_send_that_waited_has_lost_nothing()
+ {
+    let state = state_with_limit(5);
+    state.apply_settings(Some(0));
+    assert!(is_open(&state));
+}
+
+#[test]
+fn given_a_violation_then_it_is_reported_with_its_text_and_not_as_a_lost_attempt() {
+    let state = bare_state();
+    state.record_violation("the server broke a rule".to_owned());
+    assert!(matches!(
+        state.standing(),
+        Standing::Broken(text) if text == "the server broke a rule"
+    ));
+}
+
+#[test]
+fn given_a_silent_connection_with_a_violation_then_the_silence_wins() {
+    let state = bare_state();
+    state.record_violation("broken".to_owned());
+    state.mark_silent();
+    assert!(is_spent(&state));
+}
+
+#[test]
+fn given_an_idle_connection_that_announced_zero_then_it_is_never_trimmed_and_does_not_count_as_idle()
+ {
+    let state = state_with_limit(0);
+    assert!(state.is_idle());
+    assert!(!state.is_trimmable());
+}
+
+#[test]
+fn given_an_idle_connection_with_room_then_it_can_be_trimmed() {
+    let state = state_with_limit(2);
+    assert!(state.is_trimmable());
+    let permit = state.try_acquire().expect("permit");
+    assert!(!state.is_trimmable());
+    drop(permit);
+}
+
+#[test]
+fn given_an_idle_connection_whose_settings_are_unknown_then_it_can_be_trimmed() {
+    assert!(bare_state().is_trimmable());
+}
+
+#[test]
+fn given_a_retired_connection_that_never_sent_its_settings_then_its_limit_is_still_unknown() {
+    let state = bare_state();
+    state.retire();
+    assert!(state.limit_unknown());
+}
+
+#[test]
+fn given_a_new_connection_whose_idle_expiry_was_already_claimed_then_the_dialer_gets_a_retired_connection()
+ {
+    let pool = Arc::new(Pool::new(Duration::from_secs(30)));
+    let key = PoolKey::of(&Endpoint::https("https://h.example/").expect("endpoint"));
+    let host = HostHandle {
+        signal: Arc::new(watch::channel(0u64).0),
+        pool: Arc::downgrade(&pool),
+        key,
+    };
+    let (idle, mut idle_watch) = IdleClock::new(Duration::from_secs(30));
+    let state = H2State::new(idle, host);
+    state.arm_idle();
+    let armed = idle_watch.armed_until().expect("armed");
+    assert!(idle_watch.expire(armed));
+    let permit = state.force_acquire();
+    assert!(state.is_retired());
+    drop(permit);
+}
+
+#[test]
+fn given_a_new_connection_alive_then_the_dialer_gets_a_permit_and_it_is_not_retired() {
+    let state = bare_state();
+    state.arm_idle();
+    let permit = state.force_acquire();
+    assert!(!state.is_retired());
+    drop(permit);
 }

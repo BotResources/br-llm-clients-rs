@@ -1,15 +1,16 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 use std::time::Duration;
 
 use tokio::sync::watch;
 use tokio::time::Instant;
 
+use crate::claim::{Claim, Landing};
 use crate::dialer::{DialFailure, Dialer};
 use crate::endpoint::Endpoint;
-use crate::h2state::H2State;
-use crate::transport::{Conn, H1Conn, H2Sender, LiveGuard, Signal};
+use crate::host::{Host, Idle, Proto};
+use crate::transport::{Conn, H1Conn, LiveGuard, Signal};
 
 pub(crate) const MAX_IDLE_PER_HOST: usize = 8;
 pub(crate) const MAX_H2_PER_HOST: usize = 16;
@@ -38,87 +39,16 @@ pub(crate) struct HostHandle {
     pub(crate) key: PoolKey,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Proto {
-    H1,
-    H2,
-}
-
-struct Idle {
-    conn: H1Conn,
-    since: Instant,
-}
-
-pub(crate) struct H2Entry {
-    pub(crate) sender: H2Sender,
-    pub(crate) state: Arc<H2State>,
-}
-
-struct Recorded {
-    seq: u64,
-    failure: DialFailure,
-}
-
-pub(crate) struct Host {
-    pub(crate) proto: Option<Proto>,
-    pub(crate) dialing: bool,
-    pub(crate) h2: Vec<H2Entry>,
-    h1: Vec<Idle>,
-    pub(crate) live_h1: Arc<AtomicUsize>,
-    waiting: Arc<AtomicUsize>,
-    pub(crate) signal: Signal,
-    failure: Option<Recorded>,
-    failures: u64,
-}
-
-impl Host {
-    pub(crate) fn new() -> Self {
-        Self {
-            proto: None,
-            dialing: false,
-            h2: Vec::new(),
-            h1: Vec::new(),
-            live_h1: Arc::new(AtomicUsize::new(0)),
-            waiting: Arc::new(AtomicUsize::new(0)),
-            signal: Arc::new(watch::channel(0u64).0),
-            failure: None,
-            failures: 0,
+impl HostHandle {
+    pub(crate) fn sweep(&self) {
+        if let Some(pool) = self.pool.upgrade() {
+            pool.forget_if_unused(&self.key);
         }
-    }
-
-    fn in_use(&self) -> bool {
-        self.dialing
-            || self.waiting.load(Ordering::SeqCst) > 0
-            || !self.h2.is_empty()
-            || !self.h1.is_empty()
-            || self.live_h1.load(Ordering::SeqCst) > 0
-    }
-
-    pub(crate) fn record_failure(&mut self, failure: DialFailure) {
-        self.failures = self.failures.saturating_add(1);
-        self.failure = Some(Recorded {
-            seq: self.failures,
-            failure,
-        });
-    }
-
-    pub(crate) fn clear_failure(&mut self) {
-        self.failure = None;
-    }
-
-    #[cfg(test)]
-    pub(crate) fn has_failure(&self) -> bool {
-        self.failure.is_some()
-    }
-
-    fn idle_total(&self) -> usize {
-        let idle_h2 = self.h2.iter().filter(|e| e.state.is_idle()).count();
-        self.h1.len().saturating_add(idle_h2)
     }
 }
 
 pub(crate) enum WaitKind {
-    Dial,
+    Dial(Arc<Landing>),
     Stream,
 }
 
@@ -127,7 +57,7 @@ pub(crate) struct Wait {
     pub(crate) kind: WaitKind,
     pub(crate) seq: u64,
     pub(crate) guard: LiveGuard,
-    pub(crate) awaiting: Option<Arc<H2State>>,
+    pub(crate) claim: Option<Claim>,
 }
 
 pub(crate) enum Plan {
@@ -211,7 +141,7 @@ impl Pool {
             .h2
             .iter()
             .find(|entry| entry.state.limit_unknown())
-            .map(|entry| Arc::clone(&entry.state));
+            .map(|entry| Claim::Conn(Arc::clone(&entry.state)));
         if let Some(reuse) = self.reusable(host) {
             return reuse;
         }
@@ -219,13 +149,13 @@ impl Pool {
             return Plan::TryIdle(idle.conn);
         }
         let seq = host.failure.as_ref().map_or(0, |recorded| recorded.seq);
-        let wait = |kind, awaiting| {
+        let wait = |kind, claim| {
             Plan::Wait(Wait {
                 changed: changes,
                 kind,
                 seq,
                 guard: LiveGuard::new(&host.waiting),
-                awaiting,
+                claim,
             })
         };
         if unannounced.is_some() {
@@ -234,17 +164,22 @@ impl Pool {
         match host.proto {
             Some(Proto::H1) => Plan::Dial(self.dialer(key, host, false)),
             Some(Proto::H2) if host.h2.len() < MAX_H2_PER_HOST && !host.dialing => {
-                host.dialing = true;
+                host.begin_gated_dial();
                 Plan::Dial(self.dialer(key, host, true))
             }
-            Some(Proto::H2) => wait(WaitKind::Stream, None),
-            None if host.dialing => wait(WaitKind::Dial, None),
+            Some(Proto::H2) => {
+                let claim = host
+                    .dialing
+                    .then(|| Claim::Landing(Arc::clone(&host.landing)));
+                wait(WaitKind::Stream, claim)
+            }
+            None if host.dialing => wait(WaitKind::Dial(Arc::clone(&host.landing)), None),
             None => match (&host.failure, waited_from) {
                 (Some(recorded), Some(from)) if recorded.seq > from => {
                     Plan::Failed(recorded.failure.clone())
                 }
                 _ => {
-                    host.dialing = true;
+                    host.begin_gated_dial();
                     Plan::Dial(self.dialer(key, host, true))
                 }
             },
@@ -258,7 +193,7 @@ impl Pool {
                 pool: Arc::downgrade(self),
                 key: key.clone(),
             },
-            gated,
+            gated.then(|| Arc::clone(&host.landing)),
         )
     }
 
@@ -276,6 +211,19 @@ impl Pool {
         });
     }
 
+    pub(crate) fn forget_if_unused(&self, key: &PoolKey) {
+        let mut hosts = self.lock();
+        let Some(host) = hosts.get_mut(key) else {
+            return;
+        };
+        host.h2
+            .retain(|entry| !entry.state.is_retired() && !entry.sender.is_closed());
+        host.h1.retain(|idle| !idle.conn.sender.is_closed());
+        if !host.in_use() {
+            hosts.remove(key);
+        }
+    }
+
     pub(crate) fn trim_idle(&self, key: &PoolKey) {
         let mut hosts = self.lock();
         let Some(host) = hosts.get_mut(key) else {
@@ -285,7 +233,7 @@ impl Pool {
             let oldest_idle = host
                 .h2
                 .iter()
-                .position(|entry| entry.state.is_idle() && !entry.state.is_retired());
+                .position(|entry| entry.state.is_trimmable() && !entry.state.is_retired());
             match oldest_idle {
                 Some(index) => {
                     let entry = host.h2.remove(index);

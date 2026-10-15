@@ -3,16 +3,17 @@ use std::time::Duration;
 
 use tokio::time::{Instant, timeout, timeout_at};
 
+use crate::claim::{Claim, Landing};
 use crate::client::Shared;
 use crate::connect::{ConnectFailure, open};
 use crate::deadline;
 use crate::dialer::{DialFailure, Dialer};
 use crate::endpoint::Endpoint;
-use crate::h2state::H2State;
+use crate::h2state::Standing;
 use crate::pool::{Plan, PoolKey, Wait, WaitKind};
 use crate::redact::Redactor;
 use crate::send_error::SendError;
-use crate::server_fault::protocol_failure;
+use crate::server_fault::{about_endpoint, protocol_failure};
 use crate::transport::{Conn, LiveGuard};
 
 pub(crate) const READY_GRACE: Duration = Duration::from_millis(250);
@@ -31,16 +32,20 @@ struct Waiting<'a> {
     shared: &'a Arc<Shared>,
     endpoint: &'a Endpoint,
     redactor: &'a Redactor,
-    connect_deadline: Option<Instant>,
+    dial_wait: Option<(Arc<Landing>, Instant)>,
     headers_deadline: Option<Instant>,
 }
 
 impl Waiting<'_> {
-    fn connect_deadline(&mut self) -> Instant {
-        let limit = self.shared.config.connect_timeout;
-        *self
-            .connect_deadline
-            .get_or_insert_with(|| deadline::after(Instant::now(), limit))
+    fn dial_wait_deadline(&mut self, landing: &Arc<Landing>) -> Instant {
+        if let Some((seen, at)) = &self.dial_wait
+            && Arc::ptr_eq(seen, landing)
+        {
+            return *at;
+        }
+        let at = deadline::after(Instant::now(), self.shared.config.connect_timeout);
+        self.dial_wait = Some((Arc::clone(landing), at));
+        at
     }
 
     fn ready(&mut self, conn: Conn) -> Acquired {
@@ -64,10 +69,10 @@ impl Waiting<'_> {
                     .finish(&format!("no connection to {endpoint} within {limit:?}")),
             },
             DialFailure::Connect(text) => SendError::Connect {
-                text: self.redactor.finish(&format!("{endpoint}: {text}")),
+                text: about_endpoint(self.redactor, endpoint, &text),
             },
             DialFailure::Tls(text) => SendError::Tls {
-                text: self.redactor.finish(&format!("{endpoint}: {text}")),
+                text: about_endpoint(self.redactor, endpoint, &text),
             },
         }
     }
@@ -92,32 +97,31 @@ pub(crate) async fn acquire(
         shared,
         endpoint,
         redactor,
-        connect_deadline: None,
+        dial_wait: None,
         headers_deadline: None,
     };
     let mut waited_from: Option<u64> = None;
     let mut _waiting: Option<LiveGuard> = None;
-    let mut awaiting: Option<Arc<H2State>> = None;
+    let mut claim: Option<Claim> = None;
     loop {
-        if let Some(awaited) = awaiting.take() {
-            if awaited.is_silent() {
-                return Ok(Acquisition::Spent);
-            }
-            if let Some(text) = awaited.violation() {
-                return Err(protocol_failure(redactor, endpoint, &text));
+        if let Some(held) = claim.take() {
+            match held.standing() {
+                Standing::Spent => return Ok(Acquisition::Spent),
+                Standing::Broken(text) => return Err(protocol_failure(redactor, endpoint, &text)),
+                Standing::Open => {}
             }
         }
         let plan = shared.pool.plan(key, waited_from);
         _waiting = None;
-        if !matches!(
+        if matches!(
             plan,
             Plan::Dial(_)
                 | Plan::Wait(Wait {
-                    kind: WaitKind::Dial,
+                    kind: WaitKind::Dial(_),
                     ..
                 })
         ) {
-            state.connect_deadline = None;
+            state.headers_deadline = None;
         }
         match plan {
             Plan::Reuse(conn) => return Ok(Acquisition::Ready(state.ready(conn))),
@@ -138,19 +142,18 @@ pub(crate) async fn acquire(
                 kind,
                 seq,
                 guard,
-                awaiting: awaited,
+                claim: held,
             }) => {
                 _waiting = Some(guard);
-                awaiting = awaited;
                 let (at, timed_out) = match kind {
-                    WaitKind::Dial => {
+                    WaitKind::Dial(landing) => {
                         waited_from = Some(seq);
-                        (
-                            state.connect_deadline(),
-                            state.failure(DialFailure::Timeout),
-                        )
+                        let at = state.dial_wait_deadline(&landing);
+                        claim = Some(Claim::Landing(landing));
+                        (at, state.failure(DialFailure::Timeout))
                     }
                     WaitKind::Stream => {
+                        claim = held;
                         let limit = shared.config.headers_timeout;
                         let at = *state
                             .headers_deadline
@@ -168,14 +171,15 @@ pub(crate) async fn acquire(
 
 async fn dial(state: &mut Waiting<'_>, dialer: Dialer) -> Result<Option<Conn>, SendError> {
     let shared = state.shared;
+    let limit = shared.config.connect_timeout;
     let opened = timeout_at(
-        state.connect_deadline(),
+        deadline::after(Instant::now(), limit),
         open(
             &shared.tls,
             state.endpoint,
             &dialer.host,
             shared.tuning,
-            shared.config.connect_timeout,
+            limit,
         ),
     )
     .await;

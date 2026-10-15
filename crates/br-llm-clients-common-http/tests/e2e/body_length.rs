@@ -91,6 +91,19 @@ async fn given_an_http2_body_that_ends_before_its_declared_length_then_it_is_int
 }
 
 #[tokio::test]
+async fn given_an_http2_body_reset_with_no_error_exactly_one_byte_short_then_it_is_interrupted() {
+    let (mut response, _server) = h2_response(script(Some(10), &[b"012345678"], End::ResetNoError))
+        .await
+        .expect("response");
+    let (bytes, outcome) = read_all(&mut response).await;
+    assert_eq!(bytes, b"012345678");
+    assert!(
+        matches!(outcome, Err(BodyError::Interrupted { .. })),
+        "{outcome:?}"
+    );
+}
+
+#[tokio::test]
 async fn given_an_http2_body_of_exactly_its_declared_length_then_it_ends_cleanly() {
     for end in [End::Fin, End::ResetNoError] {
         let (mut response, _server) = h2_response(script(Some(10), SHORT_TEN, end))
@@ -103,7 +116,8 @@ async fn given_an_http2_body_of_exactly_its_declared_length_then_it_ends_cleanly
 }
 
 #[tokio::test]
-async fn given_an_http2_body_longer_than_its_declared_length_then_it_is_a_protocol_failure() {
+async fn given_an_http2_body_that_had_already_delivered_its_whole_length_when_more_comes_then_it_is_a_protocol_failure()
+ {
     let (mut response, _server) = h2_response(script(Some(10), TEN_THEN_FIVE, End::Fin))
         .await
         .expect("response");

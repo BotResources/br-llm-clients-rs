@@ -49,8 +49,8 @@ async fn given_the_same_http2_fault_met_by_a_waiter_and_by_a_request_then_the_pr
     .await;
     let waited = texts(&waiting, 8).await;
     let request = texts(&carried, 1).await;
-    let prefix = format!("https://127.0.0.1:{}/x: ", waiting.addr.port());
-    assert!(waited[0].starts_with(&prefix), "{}", waited[0]);
+    let suffix = format!(" (https://127.0.0.1:{}/x)", waiting.addr.port());
+    assert!(waited[0].ends_with(&suffix), "{}", waited[0]);
     assert!(waited.iter().all(|text| *text == waited[0]), "{waited:?}");
     let expected = waited[0].replace(
         &waiting.addr.port().to_string(),

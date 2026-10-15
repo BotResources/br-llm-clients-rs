@@ -225,3 +225,65 @@ async fn given_concurrent_first_sends_and_a_one_stream_server_then_none_queues_i
     assert_eq!(server.accepted(), 3);
     assert_eq!(arrived.available_permits(), 3);
 }
+
+#[tokio::test]
+async fn given_a_send_that_waited_for_a_stream_and_dials_again_then_headers_timeout_restarts_when_the_new_connection_is_ready()
+ {
+    let received = Arc::new(AtomicUsize::new(0));
+    let release = Arc::new(Semaphore::new(0));
+    let service = {
+        let (received, release) = (Arc::clone(&received), Arc::clone(&release));
+        service(move |_| {
+            let (received, release) = (Arc::clone(&received), Arc::clone(&release));
+            async move {
+                received.fetch_add(1, Ordering::SeqCst);
+                let _ = release.acquire().await;
+                Ok(Response::new(ScriptBody::new([Step::Data(b"ok")])))
+            }
+        })
+    };
+    let server = TlsServer::start_with(
+        Pki::trusted().acceptor(&[b"h2"]),
+        service,
+        options(1, Duration::ZERO, 0),
+    )
+    .await;
+    let headers_timeout = Duration::from_millis(1500);
+    let client = trusting(Duration::from_secs(20), headers_timeout);
+    let mut holders = tokio::task::JoinSet::new();
+    for _ in 0..16 {
+        let (client, endpoint) = (client.clone(), server.endpoint("/"));
+        holders.spawn(async move {
+            client
+                .send(post(&endpoint, "a"), &NoAuthorizer)
+                .await
+                .map(|_| ())
+        });
+    }
+    let waiting_since = Instant::now();
+    while received.load(Ordering::SeqCst) < 16 {
+        assert!(
+            waiting_since.elapsed() < Duration::from_secs(10),
+            "only {} of 16 holders reached the server",
+            received.load(Ordering::SeqCst)
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    let waiter = {
+        let (client, endpoint) = (client.clone(), server.endpoint("/"));
+        tokio::spawn(async move { client.send(post(&endpoint, "waiter"), &NoAuthorizer).await })
+    };
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    server.set_handshake_delay(headers_timeout + Duration::from_millis(1000));
+    release.add_permits(100);
+    server.kill_connections();
+    let mut response = guarded(waiter)
+        .await
+        .expect("join")
+        .expect("the new connection is ready within a new headers deadline");
+    assert_eq!(
+        response.body_mut().collect(10).await.expect("body").bytes,
+        b"ok"
+    );
+    while holders.join_next().await.is_some() {}
+}

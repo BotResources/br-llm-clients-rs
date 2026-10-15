@@ -1,7 +1,9 @@
 mod attempts_end;
 mod authorizer;
 mod authorizer_failures;
+mod bodiless;
 mod body_length;
+mod body_overrun;
 mod canary;
 mod cold_bursts;
 mod collect;
@@ -29,6 +31,7 @@ mod settings;
 mod settings_ended;
 mod settings_silent;
 mod settings_size;
+mod settings_waiters;
 mod stream;
 #[allow(dead_code)] // the helpers are shared with the unit tests, which use the rest
 mod support;

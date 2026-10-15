@@ -3,7 +3,9 @@ use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+
+use std::time::Duration;
 
 use br_llm_clients_common_http::Endpoint;
 use hyper::body::Incoming;
@@ -32,6 +34,7 @@ pub struct TlsServer {
     accepted: Arc<AtomicUsize>,
     closed: Arc<AtomicUsize>,
     kill: Arc<Notify>,
+    delay_ms: Arc<AtomicU64>,
     task: tokio::task::JoinHandle<()>,
 }
 
@@ -60,6 +63,8 @@ impl TlsServer {
             handshake_delay,
             stall_first,
         } = options;
+        let delay_ms = Arc::new(AtomicU64::new(millis(handshake_delay)));
+        let delay = Arc::clone(&delay_ms);
         let kill = Arc::new(Notify::new());
         let killed = Arc::clone(&kill);
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
@@ -76,6 +81,7 @@ impl TlsServer {
                 };
                 let index = counter.fetch_add(1, Ordering::SeqCst);
                 let killed = Arc::clone(&killed);
+                let delay = Arc::clone(&delay);
                 let acceptor = acceptor.clone();
                 let service = Arc::clone(&service);
                 let closed_counter = Arc::clone(&closed_counter);
@@ -83,7 +89,8 @@ impl TlsServer {
                     if index < stall_first {
                         std::future::pending::<()>().await;
                     }
-                    tokio::time::sleep(handshake_delay).await;
+                    let wait = Duration::from_millis(delay.load(Ordering::SeqCst));
+                    tokio::time::sleep(wait).await;
                     let Ok(tls) = acceptor.accept(tcp).await else {
                         return;
                     };
@@ -119,12 +126,17 @@ impl TlsServer {
             accepted,
             closed,
             kill,
+            delay_ms,
             task,
         }
     }
 
     pub fn accepted(&self) -> usize {
         self.accepted.load(Ordering::SeqCst)
+    }
+
+    pub fn set_handshake_delay(&self, delay: Duration) {
+        self.delay_ms.store(millis(delay), Ordering::SeqCst);
     }
 
     pub fn kill_connections(&self) {
@@ -160,4 +172,8 @@ async fn drain(mut body: Incoming) {
         std::future::poll_fn(|cx| hyper::body::Body::poll_frame(std::pin::Pin::new(&mut body), cx))
             .await
     {}
+}
+
+fn millis(delay: Duration) -> u64 {
+    u64::try_from(delay.as_millis()).unwrap_or(u64::MAX)
 }

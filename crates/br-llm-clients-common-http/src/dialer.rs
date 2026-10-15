@@ -1,5 +1,9 @@
+use std::sync::Arc;
+
+use crate::claim::Landing;
 use crate::connect::Opened;
-use crate::pool::{Host, HostHandle, Proto};
+use crate::host::{H2Entry, Host, Proto};
+use crate::pool::HostHandle;
 use crate::transport::{Conn, bump};
 
 #[derive(Clone)]
@@ -11,17 +15,21 @@ pub(crate) enum DialFailure {
 
 pub(crate) struct Dialer {
     pub(crate) host: HostHandle,
-    gated: bool,
+    landing: Option<Arc<Landing>>,
     done: bool,
 }
 
 impl Dialer {
-    pub(crate) fn new(host: HostHandle, gated: bool) -> Self {
+    pub(crate) fn new(host: HostHandle, landing: Option<Arc<Landing>>) -> Self {
         Self {
             host,
-            gated,
+            landing,
             done: false,
         }
+    }
+
+    fn gated(&self) -> bool {
+        self.landing.is_some()
     }
 
     pub(crate) fn register(mut self, opened: Opened) -> Option<Conn> {
@@ -38,7 +46,10 @@ impl Dialer {
             Opened::H2 { sender, state } => {
                 host.proto = Some(Proto::H2);
                 let permit = state.force_acquire();
-                host.h2.push(crate::pool::H2Entry {
+                if let Some(landing) = &self.landing {
+                    landing.land(&state);
+                }
+                host.h2.push(H2Entry {
                     sender: sender.clone(),
                     state,
                 });
@@ -46,7 +57,7 @@ impl Dialer {
             }
         };
         host.clear_failure();
-        if self.gated {
+        if self.gated() {
             host.dialing = false;
         }
         bump(&host.signal);
@@ -55,7 +66,7 @@ impl Dialer {
 
     pub(crate) fn fail(mut self, failure: DialFailure) {
         self.done = true;
-        if !self.gated {
+        if !self.gated() {
             return;
         }
         if let Some(pool) = self.host.pool.upgrade() {
@@ -71,7 +82,7 @@ impl Dialer {
 
 impl Drop for Dialer {
     fn drop(&mut self) {
-        if !self.gated || self.done {
+        if !self.gated() || self.done {
             return;
         }
         if let Some(pool) = self.host.pool.upgrade() {

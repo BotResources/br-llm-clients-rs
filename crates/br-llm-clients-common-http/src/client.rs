@@ -60,6 +60,11 @@ impl HttpClient {
     }
 
     #[cfg(test)]
+    pub(crate) fn shared(&self) -> &Arc<Shared> {
+        &self.shared
+    }
+
+    #[cfg(test)]
     pub(crate) fn pool(&self) -> &Arc<Pool> {
         &self.shared.pool
     }

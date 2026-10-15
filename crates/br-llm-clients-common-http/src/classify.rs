@@ -24,7 +24,7 @@ pub(crate) fn server_broke_http2(error: &hyper::Error) -> bool {
     classify(error, true, true) == Cause::Protocol
 }
 
-pub(crate) fn is_stream_reset_for_length(error: &hyper::Error) -> bool {
+pub(crate) fn is_library_protocol_reset(error: &hyper::Error) -> bool {
     find_source::<h2::Error>(error).is_some_and(|h2_error| {
         h2_error.is_library()
             && h2_error.is_reset()

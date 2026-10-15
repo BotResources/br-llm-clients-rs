@@ -17,6 +17,7 @@ mod authorizers;
 mod body;
 mod body_error;
 mod body_state;
+mod claim;
 mod classify;
 mod client;
 mod config;
@@ -36,6 +37,7 @@ mod h2state;
 mod h2track;
 mod header;
 mod headers;
+mod host;
 mod idle;
 mod lease;
 mod limits;
@@ -74,6 +76,8 @@ pub use secret::Secret;
 pub use send_error::SendError;
 
 #[cfg(test)]
+mod acquire_tests;
+#[cfg(test)]
 mod authorize_tests;
 #[cfg(test)]
 mod config_tests;
@@ -102,7 +106,11 @@ mod secret_tests;
 #[cfg(test)]
 mod server_fault_tests;
 #[cfg(test)]
+mod spy_io_model_tests;
+#[cfg(test)]
 mod spy_io_tests;
+#[cfg(test)]
+mod sweep_tests;
 
 #[cfg(test)]
 extern crate self as br_llm_clients_common_http;

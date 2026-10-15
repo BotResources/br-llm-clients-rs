@@ -64,6 +64,7 @@ fn build_request(
     conn: &Conn,
     prepared: &Prepared,
     taken: &Arc<AtomicBool>,
+    redactor: &Redactor,
 ) -> Result<http::Request<Payload>, SendError> {
     let h2 = matches!(conn, Conn::H2 { .. });
     let uri = if h2 {
@@ -71,9 +72,7 @@ fn build_request(
     } else {
         prepared.endpoint.origin_uri()
     }
-    .map_err(|_| SendError::Protocol {
-        text: "the endpoint cannot be sent".to_owned(),
-    })?;
+    .map_err(|_| protocol_failure(redactor, &prepared.endpoint, "the endpoint cannot be sent"))?;
     let payload = Payload::new(prepared.body.clone(), Arc::clone(taken));
     let mut request = http::Request::new(payload);
     *request.method_mut() = http::Method::POST;
@@ -100,7 +99,7 @@ async fn attempt(
         headers_deadline,
     } = acquired;
     let taken = Arc::new(AtomicBool::new(false));
-    let request = match build_request(&conn, prepared, &taken) {
+    let request = match build_request(&conn, prepared, &taken, redactor) {
         Ok(request) => request,
         Err(error) => return Attempt::Failed(error),
     };
@@ -201,6 +200,7 @@ fn into_response(
         total_deadline,
         total_limit: shared.config.total_timeout,
         unsupported_encoding,
+        bodiless: matches!(parts.status.as_u16(), 204 | 304),
     });
     Attempt::Done(Box::new(Response::new(
         parts.status.as_u16(),
