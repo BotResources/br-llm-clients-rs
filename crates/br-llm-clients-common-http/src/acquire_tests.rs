@@ -278,3 +278,29 @@ async fn given_a_send_that_waited_behind_a_dial_and_then_dials_itself_then_its_o
     drop(first);
     assert!(matches!(outcome(waiter).await, Outcome::Ready));
 }
+
+#[tokio::test(start_paused = true)]
+async fn given_wakes_that_change_nothing_while_a_send_waits_behind_a_dial_then_its_connect_timeout_does_not_restart()
+ {
+    let rig = Rig::offline();
+    let _dialer = rig.dialer();
+    let waiter = rig.waiter();
+    rig.waiting(1).await;
+    for _ in 0..4 {
+        tokio::time::sleep(CONNECT_TIMEOUT / 5).await;
+        let signal = rig
+            .shared
+            .pool
+            .lock()
+            .get(&rig.key)
+            .map(|host| Arc::clone(&host.signal));
+        if let Some(signal) = signal {
+            crate::transport::bump(&signal);
+        }
+    }
+    let error = failed_after(waiter, CONNECT_TIMEOUT / 5).await;
+    assert!(
+        matches!(error, SendError::ConnectTimeout { .. }),
+        "{error:?}"
+    );
+}
