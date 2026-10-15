@@ -3,10 +3,19 @@ use std::io;
 
 use rustls::{CertificateError, Error as TlsError};
 
-pub(crate) const MAX_TEXT_CHARS: usize = 512;
+pub(crate) const MAX_TEXT_CHARS: usize = 400;
 
 pub(crate) fn bounded(text: &str) -> String {
-    text.chars().take(MAX_TEXT_CHARS).collect()
+    text.chars()
+        .map(|c| {
+            if c.is_ascii_graphic() && c != '"' && c != '\\' || c == ' ' {
+                c
+            } else {
+                '?'
+            }
+        })
+        .take(MAX_TEXT_CHARS)
+        .collect()
 }
 
 pub(crate) fn dns_failure(error: &io::Error) -> String {
@@ -23,8 +32,8 @@ pub(crate) fn tls_failure(error: &io::Error) -> String {
         .and_then(|inner| inner.downcast_ref::<TlsError>())
     {
         Some(TlsError::InvalidCertificate(reason)) => certificate_text(reason),
-        Some(TlsError::AlertReceived(alert)) => {
-            format!("the server ended the handshake with the alert {alert:?}")
+        Some(TlsError::AlertReceived(_)) => {
+            "the server ended the handshake with a TLS alert".to_owned()
         }
         Some(_) => "the TLS handshake failed".to_owned(),
         None => format!("the TLS handshake failed ({})", error.kind()),
@@ -105,6 +114,7 @@ mod tests {
     #[test]
     fn given_a_long_text_when_bounding_then_it_is_cut_at_the_limit() {
         assert_eq!(bounded(&"a".repeat(2000)).chars().count(), MAX_TEXT_CHARS);
+        assert_eq!(bounded("a\"b\\c\nd\u{e9}"), "a?b?c?d?");
         assert_eq!(bounded("short"), "short");
     }
 

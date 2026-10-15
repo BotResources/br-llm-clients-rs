@@ -15,7 +15,7 @@ pub(crate) fn merge(
     for header in &returned {
         let shown = describe_name(&header.name);
         let fail = |reason: &str| SendError::InvalidAuthorization {
-            text: redactor.clean(&format!("header `{shown}`: {reason}")),
+            text: redactor.finish(&format!("header `{shown}`: {reason}")),
         };
         let name = HeaderName::from_bytes(header.name.as_bytes())
             .map_err(|_| fail("the name is not a valid header name"))?;

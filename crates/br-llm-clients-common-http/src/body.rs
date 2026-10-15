@@ -95,7 +95,7 @@ impl BodyStream {
                 return Poll::Ready(Err(error));
             }
             if poll_deadline(&mut active.total_timer, cx) {
-                let text = active.redactor.clean(&format!(
+                let text = active.redactor.finish(&format!(
                     "the response did not end within the total timeout of {:?}",
                     active.total_limit.unwrap_or_default()
                 ));
@@ -127,7 +127,7 @@ impl BodyStream {
                         .idle_timer
                         .get_or_insert_with(|| Box::pin(sleep(limit)));
                     if timer.as_mut().poll(cx).is_ready() {
-                        let text = active.redactor.clean(&format!(
+                        let text = active.redactor.finish(&format!(
                             "no data arrived within the idle timeout of {limit:?}"
                         ));
                         self.state = State::Done;

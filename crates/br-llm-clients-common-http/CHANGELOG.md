@@ -24,28 +24,35 @@ form to decide whether a version ships.
   sent.
 - Connections. While the protocol of a host is unknown only one connection is
   opened for it and concurrent sends wait for its outcome (HTTP/2: they share
-  it; HTTP/1.1: each opens its own). When every stream of a host's HTTP/2
+  it; HTTP/1.1: each opens its own; a failed attempt is the failure of every send
+  that waited for it, and none of them dials again). When every stream of a host's HTTP/2
   connections is in use another connection is opened, up to 16 per host, then a
-  send waits within `headers_timeout`. The limit of streams is the server's
-  announced limit; it is read from the connection a moment after the connection
-  starts, so a burst in that first moment can queue inside the connection.
+  send waits within `headers_timeout`, which is one deadline shared by the wait
+  and the exchange. A new HTTP/2 connection counts as full until the first
+  SETTINGS frame of the server is applied, so a send never queues inside a
+  connection whose stream limit is unknown.
   Addresses of a name are tried with a fixed 250 ms pause between the starts of
   two attempts. HTTP/2 connections send keep-alive pings every 30 s, also when
   idle, and close when a ping gets no answer within 10 s. An idle connection is
   closed after 30 s by a timer, not only when looked at; at most 8 idle
-  connections are kept per host. These values are fixed.
-- Resend. A request is sent again, on a new connection, at most 3 attempts in
-  all, only when the stack proves the server did not process it: a pooled
-  connection closed before the request was written, an HTTP/2 stream the server
-  refused (REFUSED_STREAM), or an HTTP/2 stream excluded by a GOAWAY. The
+  connections are kept per host, whatever the protocol. These values are fixed.
+- Resend. A request is sent again, at most 3 attempts in all, through the same
+  gate and the same limit of 16 connections per host as any send, only when the
+  stack shows the server did not process it: a pooled connection closed before
+  the request was written, an HTTP/2 stream the server refused (REFUSED_STREAM),
+  or an HTTP/2 stream that a remote GOAWAY reports as failed (the classifier
+  cannot see the last stream id, so it relies on the HTTP/2 library failing only
+  the streams above it). The connection that failed is not used again. The
   authorizer is not called again. A failure after bytes may have reached the
-  server (a broken pipe, a reset, a close) is never resent.
+  server (a broken pipe, a reset, a close) is never resent. A GOAWAY that asks
+  for HTTP/1.1 is `Protocol` and is not resent.
 - Limits. A response head larger than 64 KiB, or with more than 1024 header
   lines, is refused with `SendError::Protocol`; on HTTP/2 the size is counted as
   RFC 9113 counts a header list, and exactly 64 KiB is accepted.
-- `HttpConfig`: `connect_timeout`, `headers_timeout` and `idle_timeout` (required,
-  no default, zero refused), optional `total_timeout`, `user_agent` and
-  `extra_root_certificates` (PEM texts).
+- `HttpConfig::new` takes `connect_timeout`, `headers_timeout` and
+  `idle_timeout` (required, no default, zero refused); `with_total_timeout`,
+  `with_user_agent` and `with_extra_root_certificates` (PEM texts) set the
+  optional fields.
 - `Endpoint` (`https`, `plain_http`, `join_segment`, `with_query_pair`) with the
   strict refusal rules of the intent; a text, or a result of `join_segment` or
   `with_query_pair`, longer than 8192 bytes is `InvalidEndpoint`. `Debug` and
@@ -69,13 +76,30 @@ form to decide whether a version ships.
   (each read starts a new wait; time between reads never counts) and total.
 - `ConfigError`, `SendError`, `BodyError`, `AuthorizerError` (all
   `#[non_exhaustive]`, every case carries a text). `Connect` and `Tls` come from
-  the stage of the connection that failed. `Connect` also covers a connection
+  the stage of the connection that failed. A TLS failure after the handshake (a
+  corrupt record, an alert) is `Interrupted` when a byte may have been written;
+  over TLS a body read until close ends cleanly only with a close_notify. `Connect` also covers a connection
   that could not carry the request when no byte of it had been written;
   `Interrupted` means at least one byte may have reached the server.
 - Texts. No text holds a header value, a body or a query, and no text of a lower
   layer is copied: the wording is the library's own, with an HTTP/2 reason or an
-  operating-system error kind at most. No text is longer than 512 characters.
+  operating-system error kind at most. Every text, `Display` and `Debug` prefix
+  included, is at most 512 characters, the text of an `AuthorizerError` too.
+  `Debug` of a `Response` shows the status and the number of headers only.
   The exact value of every credential is also removed from every text as a
   second barrier; this is best effort and the guarantee does not rest on it.
 - `Collected` and `AuthorizedHeader` are `#[non_exhaustive]`; the crate forbids
   unsafe code.
+
+### Public surface
+
+`Endpoint` (`https`, `plain_http`, `join_segment`, `with_query_pair`), `Secret`
+(`new`, `expose`), `Request` (`new`, `with_header`), `HttpConfig` (`new`,
+`with_total_timeout`, `with_user_agent`, `with_extra_root_certificates`),
+`HttpClient` (`new`, `send`), `Response` (`status`, `headers`, `retry_after`,
+`body_mut`, `into_parts`), `Headers` (`get`, `get_all`, `get_text`, `iter`),
+`BodyStream` (`next_chunk`, `poll_next_chunk`, `collect`), `Collected`,
+`Authorizer`, `AuthorizationRequest` (`method`, `path_and_query`, `host`,
+`headers`, `header`, `body`), `AuthorizedHeader`, `BoxFuture`,
+`ApiKeyAuthorizer`, `BearerAuthorizer`, `NoAuthorizer`, `ConfigError`,
+`SendError`, `BodyError`, `AuthorizerError`.

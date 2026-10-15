@@ -9,19 +9,15 @@ use crate::support::pki::Pki;
 use crate::support::raw::{RawServer, read_request, wait_for_close};
 use crate::support::script_body::ScriptBody;
 use crate::support::spy::Spy;
-use crate::support::{client, client_with, closed_port_endpoint, guarded};
+use crate::support::{client, client_with, guarded};
 
 #[tokio::test]
 async fn given_every_failure_before_the_headers_then_no_text_holds_a_secret_a_body_a_header_value_or_a_query()
  {
     let mut all = Vec::new();
 
-    let closed = closed_port_endpoint(false);
-    let closed = Endpoint::plain_http(&with_query(&format!(
-        "http://127.0.0.1:{}/p",
-        closed.port().expect("port")
-    )))
-    .expect("endpoint");
+    let closed =
+        Endpoint::plain_http(&with_query(&format!("http://127.0.0.1:{}/p", 1))).expect("endpoint");
     all.extend(texts_of_send(&send_failure(&client(), &closed).await));
 
     let invalid = Spy::returning(&[("x-bad", &format!("{CREDENTIAL}\n"))]);

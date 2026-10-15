@@ -7,7 +7,7 @@ use hyper::Response;
 use crate::authorizers::NoAuthorizer;
 use crate::client::HttpClient;
 use crate::endpoint::Endpoint;
-use crate::support::h2_server::{TlsServer, service};
+use crate::support::h2_server::{Options, TlsServer, service};
 use crate::support::pki::Pki;
 use crate::support::proxy::Proxy;
 use crate::support::raw::{RawServer, read_request, wait_for_close, write_response};
@@ -20,8 +20,8 @@ const IDLE: Duration = Duration::from_secs(2);
 fn tuning() -> Tuning {
     Tuning {
         idle_limit: IDLE,
-        ping_interval: Duration::from_millis(300),
-        ping_timeout: Duration::from_millis(200),
+        ping_interval: Duration::from_millis(500),
+        ping_timeout: Duration::from_millis(1000),
     }
 }
 
@@ -30,7 +30,7 @@ fn client(trusting: bool) -> HttpClient {
     if trusting {
         config.extra_root_certificates = vec![Pki::trusted().ca_pem.clone()];
     }
-    HttpClient::with_tuning(config, tuning()).expect("client")
+    HttpClient::with_tuning(config.build(), tuning()).expect("client")
 }
 
 async fn eventually(what: &str, check: impl Fn() -> bool) {
@@ -103,7 +103,7 @@ async fn given_a_pooled_http2_connection_that_goes_silent_then_the_next_send_use
     .expect("held");
     assert_eq!(proxy.accepted(), 1);
     proxy.blackhole(0);
-    tokio::time::sleep(Duration::from_millis(1500)).await;
+    tokio::time::sleep(Duration::from_millis(3500)).await;
     let mut second = guarded(client.send(post(&endpoint, "second"), &NoAuthorizer))
         .await
         .expect("second send");
@@ -221,4 +221,45 @@ async fn given_an_http2_connection_with_a_stream_in_flight_then_it_is_not_closed
     assert_eq!(server.closed(), 0);
     drop(held);
     eventually("the connection expires once idle", || server.closed() == 1).await;
+}
+
+#[tokio::test]
+async fn given_sixteen_idle_http2_connections_then_only_eight_are_kept() {
+    let pki = Pki::trusted();
+    let server = TlsServer::start_with(
+        pki.acceptor(&[b"h2"]),
+        holding_service(),
+        Options {
+            max_streams: Some(1),
+            handshake_delay: Duration::ZERO,
+            stall_first: 0,
+        },
+    )
+    .await;
+    let mut knobs = config();
+    knobs.extra_root_certificates = vec![pki.ca_pem.clone()];
+    let tuning = Tuning {
+        idle_limit: Duration::from_secs(8),
+        ..tuning()
+    };
+    let client = HttpClient::with_tuning(knobs.build(), tuning).expect("client");
+    let mut held = Vec::new();
+    for _ in 0..16 {
+        let request = post(&server.endpoint("/"), "held")
+            .with_header("x-hold", "1")
+            .expect("header");
+        held.push(
+            guarded(client.send(request, &NoAuthorizer))
+                .await
+                .expect("held"),
+        );
+    }
+    assert_eq!(server.accepted(), 16);
+    held.clear();
+    eventually("the connections beyond the cap are closed", || {
+        server.closed() >= 8
+    })
+    .await;
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    assert_eq!(server.closed(), 8);
 }

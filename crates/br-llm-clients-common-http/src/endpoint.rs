@@ -13,7 +13,7 @@ fn too_long() -> ConfigError {
     ConfigError::endpoint("it is longer than 8192 bytes")
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Endpoint {
     scheme: Scheme,
     host: String,
@@ -98,23 +98,26 @@ impl Endpoint {
         Ok(self)
     }
 
-    pub fn is_https(&self) -> bool {
+    pub(crate) fn is_https(&self) -> bool {
         self.scheme == Scheme::Https
     }
 
-    pub fn host(&self) -> &str {
+    #[cfg(test)]
+    pub(crate) fn host(&self) -> &str {
         &self.host
     }
 
-    pub fn port(&self) -> Option<u16> {
+    #[cfg(test)]
+    pub(crate) fn port(&self) -> Option<u16> {
         self.port
     }
 
-    pub fn path(&self) -> &str {
+    #[cfg(test)]
+    pub(crate) fn path(&self) -> &str {
         &self.path
     }
 
-    pub fn path_and_query(&self) -> String {
+    pub(crate) fn path_and_query(&self) -> String {
         match &self.query {
             Some(query) => format!("{}?{}", self.path, query),
             None => self.path.clone(),

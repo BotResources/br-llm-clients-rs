@@ -36,10 +36,6 @@ impl Response {
         &mut self.body
     }
 
-    pub fn into_body(self) -> BodyStream {
-        self.body
-    }
-
     pub fn into_parts(self) -> (u16, Headers, BodyStream) {
         (self.status, self.headers, self.body)
     }
@@ -47,11 +43,9 @@ impl Response {
 
 impl fmt::Debug for Response {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let names: Vec<&str> = self.headers.names().collect();
         f.debug_struct("Response")
             .field("status", &self.status)
-            .field("headers", &names)
-            .field("body", &self.body)
-            .finish()
+            .field("headers", &self.headers.len())
+            .finish_non_exhaustive()
     }
 }

@@ -1,10 +1,11 @@
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use hyper::client::conn::{http1, http2};
 use tokio::sync::watch;
 use tokio::task::AbortHandle;
 
+use crate::h2state::Permit;
 use crate::idle::IdleClock;
 use crate::payload::Payload;
 
@@ -56,64 +57,6 @@ impl H1Conn {
 impl Drop for H1Conn {
     fn drop(&mut self) {
         self.driver.abort();
-    }
-}
-
-pub(crate) struct H2State {
-    inflight: Mutex<usize>,
-    peer_max: AtomicUsize,
-    idle: IdleClock,
-    signal: Signal,
-}
-
-impl H2State {
-    pub(crate) fn new(idle: IdleClock, signal: Signal) -> Arc<Self> {
-        Arc::new(Self {
-            inflight: Mutex::new(0),
-            peer_max: AtomicUsize::new(usize::MAX),
-            idle,
-            signal,
-        })
-    }
-
-    fn count(&self) -> MutexGuard<'_, usize> {
-        self.inflight.lock().unwrap_or_else(PoisonError::into_inner)
-    }
-
-    pub(crate) fn set_max_streams(&self, max: usize) {
-        self.peer_max.store(max.max(1), Ordering::SeqCst);
-    }
-
-    pub(crate) fn arm_idle(&self) {
-        let count = self.count();
-        if *count == 0 {
-            self.idle.arm();
-        }
-    }
-
-    pub(crate) fn try_acquire(self: &Arc<Self>) -> Option<Permit> {
-        let mut count = self.count();
-        if *count >= self.peer_max.load(Ordering::SeqCst) {
-            return None;
-        }
-        *count = count.saturating_add(1);
-        self.idle.disarm();
-        Some(Permit(Arc::clone(self)))
-    }
-}
-
-pub(crate) struct Permit(Arc<H2State>);
-
-impl Drop for Permit {
-    fn drop(&mut self) {
-        {
-            let mut count = self.0.count();
-            *count = count.saturating_sub(1);
-            if *count == 0 {
-                self.0.idle.arm();
-            }
-        }
-        bump(&self.0.signal);
     }
 }
 

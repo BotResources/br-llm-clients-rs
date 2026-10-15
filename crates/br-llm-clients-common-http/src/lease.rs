@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
+use crate::h2state::Permit;
 use crate::pool::{Pool, PoolKey};
-use crate::transport::{H1Conn, Permit};
+use crate::transport::H1Conn;
 
 pub(crate) enum Lease {
     Shared(Permit),

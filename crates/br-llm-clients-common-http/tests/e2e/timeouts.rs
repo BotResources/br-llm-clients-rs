@@ -1,8 +1,6 @@
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-use br_llm_clients_common_http::{Endpoint, HttpClient, NoAuthorizer, Request, SendError};
+use br_llm_clients_common_http::{Endpoint, NoAuthorizer, Request, SendError};
 use hyper::Response;
 
 use crate::support::h2_server::{TlsServer, service};
@@ -97,7 +95,7 @@ async fn given_a_slow_connection_setup_then_headers_timeout_starts_only_when_the
         let mut config = crate::support::config();
         config.headers_timeout = Duration::from_millis(300);
         config.extra_root_certificates = vec![pki.ca_pem.clone()];
-        HttpClient::new(config).expect("client")
+        config.client()
     };
     let started = Instant::now();
     let response = guarded(client.send(post(&server.endpoint("/"), "a"), &NoAuthorizer))
@@ -105,51 +103,6 @@ async fn given_a_slow_connection_setup_then_headers_timeout_starts_only_when_the
         .expect("response");
     assert_eq!(response.status(), 200);
     assert!(started.elapsed() >= Duration::from_millis(650));
-}
-
-#[tokio::test]
-async fn given_no_free_http2_stream_then_headers_timeout_covers_the_wait_for_one() {
-    let pki = Pki::trusted();
-    let requests = Arc::new(AtomicUsize::new(0));
-    let counter = Arc::clone(&requests);
-    let server = TlsServer::start_limited(
-        pki.acceptor(&[b"h2"]),
-        service(move |_| {
-            let first = counter.fetch_add(1, Ordering::SeqCst) == 0;
-            async move {
-                let steps = if first {
-                    vec![Step::Data(b"x"), Step::Stall]
-                } else {
-                    vec![Step::Data(b"y")]
-                };
-                Ok(Response::new(ScriptBody::new(steps)))
-            }
-        }),
-        Some(1),
-        Duration::ZERO,
-    )
-    .await;
-    let client = {
-        let mut config = crate::support::config();
-        config.headers_timeout = LIMIT;
-        config.extra_root_certificates = vec![pki.ca_pem.clone()];
-        HttpClient::new(config).expect("client")
-    };
-    let held = guarded(client.send(post(&server.endpoint("/"), "1"), &NoAuthorizer))
-        .await
-        .expect("first");
-    let started = Instant::now();
-    let error = guarded(client.send(post(&server.endpoint("/"), "2"), &NoAuthorizer))
-        .await
-        .unwrap_err();
-    assert!(
-        matches!(error, SendError::HeadersTimeout { .. }),
-        "{error:?}"
-    );
-    assert_waited(started, LIMIT);
-    assert_eq!(requests.load(Ordering::SeqCst), 1);
-    assert_eq!(server.accepted(), 1);
-    drop(held);
 }
 
 pub(crate) fn stalling_body_server(

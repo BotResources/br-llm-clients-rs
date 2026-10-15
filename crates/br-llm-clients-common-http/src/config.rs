@@ -5,14 +5,13 @@ use http::HeaderValue;
 use crate::config_error::ConfigError;
 
 #[derive(Clone, PartialEq, Eq)]
-#[non_exhaustive]
 pub struct HttpConfig {
-    pub connect_timeout: Duration,
-    pub headers_timeout: Duration,
-    pub idle_timeout: Duration,
-    pub total_timeout: Option<Duration>,
-    pub user_agent: Option<String>,
-    pub extra_root_certificates: Vec<String>,
+    pub(crate) connect_timeout: Duration,
+    pub(crate) headers_timeout: Duration,
+    pub(crate) idle_timeout: Duration,
+    pub(crate) total_timeout: Option<Duration>,
+    pub(crate) user_agent: Option<String>,
+    pub(crate) extra_root_certificates: Vec<String>,
 }
 
 impl HttpConfig {
@@ -29,6 +28,24 @@ impl HttpConfig {
             user_agent: None,
             extra_root_certificates: Vec::new(),
         }
+    }
+
+    pub fn with_total_timeout(mut self, total_timeout: Duration) -> Self {
+        self.total_timeout = Some(total_timeout);
+        self
+    }
+
+    pub fn with_user_agent(mut self, user_agent: impl Into<String>) -> Self {
+        self.user_agent = Some(user_agent.into());
+        self
+    }
+
+    pub fn with_extra_root_certificates(
+        mut self,
+        certificates: impl IntoIterator<Item = String>,
+    ) -> Self {
+        self.extra_root_certificates = certificates.into_iter().collect();
+        self
     }
 
     pub(crate) fn validate(&self) -> Result<HeaderValue, ConfigError> {

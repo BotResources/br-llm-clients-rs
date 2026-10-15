@@ -205,3 +205,39 @@ async fn given_the_last_client_dropped_then_pooled_connections_close_and_their_t
     wait_closed(&closed).await;
     wait_for_alive_tasks(baseline).await;
 }
+
+#[tokio::test]
+async fn given_the_last_client_dropped_then_a_pooled_http2_connection_closes_and_its_tasks_end() {
+    let pki = crate::support::pki::Pki::trusted();
+    let server = crate::support::h2_server::TlsServer::start(
+        pki.acceptor(&[b"h2"]),
+        crate::support::h2_server::service(|_| async {
+            Ok(hyper::Response::new(
+                crate::support::script_body::ScriptBody::new([
+                    crate::support::script_body::Step::Data(b"ok"),
+                ]),
+            ))
+        }),
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    let baseline = tokio::runtime::Handle::current()
+        .metrics()
+        .num_alive_tasks();
+    let client = crate::support::trusting_client(&pki.ca_pem);
+    let mut response = guarded(client.send(post(&server.endpoint("/"), "a"), &NoAuthorizer))
+        .await
+        .expect("response");
+    response.body_mut().collect(10).await.expect("body");
+    drop(response);
+    drop(client);
+    let started = tokio::time::Instant::now();
+    while server.closed() == 0 {
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "the connection stayed open"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    wait_for_alive_tasks(baseline).await;
+}

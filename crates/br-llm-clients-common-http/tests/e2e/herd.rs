@@ -12,7 +12,7 @@ fn client_trusting(headers_timeout: Duration) -> HttpClient {
     let mut config = config();
     config.headers_timeout = headers_timeout;
     config.extra_root_certificates = vec![Pki::trusted().ca_pem.clone()];
-    HttpClient::new(config).expect("client")
+    config.client()
 }
 
 async fn quick_server(alpn: &[&[u8]], max_streams: Option<u32>) -> TlsServer {
@@ -31,16 +31,6 @@ async fn quick_server(alpn: &[&[u8]], max_streams: Option<u32>) -> TlsServer {
         Duration::ZERO,
     )
     .await
-}
-
-async fn warm_up(client: &HttpClient, endpoint: &Endpoint) {
-    for _ in 0..2 {
-        let mut response = guarded(client.send(post(endpoint, "warm"), &NoAuthorizer))
-            .await
-            .expect("warm-up");
-        response.body_mut().collect(10).await.expect("body");
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
 }
 
 async fn burst(client: &HttpClient, endpoint: &Endpoint, count: usize) -> usize {
@@ -87,7 +77,6 @@ async fn given_concurrent_first_sends_to_an_http1_host_then_each_opens_its_own_c
 async fn given_more_streams_than_the_server_allows_then_another_connection_is_opened() {
     let server = quick_server(&[b"h2"], Some(2)).await;
     let client = client_trusting(Duration::from_secs(20));
-    warm_up(&client, &server.endpoint("/")).await;
     let mut held = Vec::new();
     for _ in 0..5 {
         let request = post(&server.endpoint("/"), "held")
@@ -109,7 +98,6 @@ async fn given_all_sixteen_connections_full_then_a_send_waits_and_fails_within_t
 {
     let server = quick_server(&[b"h2"], Some(2)).await;
     let client = client_trusting(Duration::from_millis(400));
-    warm_up(&client, &server.endpoint("/")).await;
     let mut held = Vec::new();
     for _ in 0..32 {
         let request = post(&server.endpoint("/"), "held")
@@ -126,7 +114,6 @@ async fn given_all_sixteen_connections_full_then_a_send_waits_and_fails_within_t
                     )
                 }),
         );
-        tokio::time::sleep(Duration::from_millis(20)).await;
     }
     let started = std::time::Instant::now();
     let error = guarded(client.send(post(&server.endpoint("/"), "17th"), &NoAuthorizer))
@@ -145,7 +132,6 @@ async fn given_all_sixteen_connections_full_then_a_send_waits_and_fails_within_t
 async fn given_a_stream_freed_while_a_send_waits_then_the_send_uses_it() {
     let server = quick_server(&[b"h2"], Some(2)).await;
     let client = client_trusting(Duration::from_secs(20));
-    warm_up(&client, &server.endpoint("/")).await;
     let mut held = Vec::new();
     for _ in 0..32 {
         let request = post(&server.endpoint("/"), "held")

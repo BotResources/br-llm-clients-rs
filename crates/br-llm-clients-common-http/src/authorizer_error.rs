@@ -16,3 +16,17 @@ impl AuthorizerError {
         Self::FetchFailed { text: text.into() }
     }
 }
+
+impl AuthorizerError {
+    pub(crate) fn capped(self) -> Self {
+        let cleaned = |text: String| crate::redact::Redactor::default().finish(&text);
+        match self {
+            Self::Unavailable { text } => Self::Unavailable {
+                text: cleaned(text),
+            },
+            Self::FetchFailed { text } => Self::FetchFailed {
+                text: cleaned(text),
+            },
+        }
+    }
+}

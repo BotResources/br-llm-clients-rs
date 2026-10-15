@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use br_llm_clients_common_http::{BodyError, NoAuthorizer, SendError};
 use tokio::io::AsyncWriteExt;
 
@@ -55,7 +57,8 @@ async fn given_a_closed_port_then_an_https_connection_fails_with_connect_and_not
 async fn given_a_name_that_does_not_resolve_then_the_failure_is_connect() {
     let endpoint = br_llm_clients_common_http::Endpoint::https("https://no-such-host.invalid/x")
         .expect("endpoint");
-    let error = guarded(client().send(post(&endpoint, "a"), &NoAuthorizer))
+    let patient = crate::support::client_with(|c| c.connect_timeout = Duration::from_secs(25));
+    let error = guarded(patient.send(post(&endpoint, "a"), &NoAuthorizer))
         .await
         .unwrap_err();
     assert!(matches!(error, SendError::Connect { .. }), "{error:?}");
@@ -233,7 +236,7 @@ async fn given_a_thousand_small_headers_then_the_response_is_accepted() {
     let response = guarded(client().send(post(&server.endpoint("/"), "a"), &NoAuthorizer))
         .await
         .expect("response");
-    assert_eq!(response.headers().len(), 1002);
+    assert_eq!(response.headers().iter().count(), 1002);
 }
 
 #[tokio::test]

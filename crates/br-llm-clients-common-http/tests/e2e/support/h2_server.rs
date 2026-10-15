@@ -12,6 +12,7 @@ use hyper::service::service_fn;
 use hyper::{Request, Response};
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use tokio::net::TcpListener;
+use tokio::sync::Notify;
 use tokio::task::JoinSet;
 use tokio_rustls::TlsAcceptor;
 
@@ -20,10 +21,17 @@ use super::script_body::ScriptBody;
 pub type Reply = Pin<Box<dyn Future<Output = Result<Response<ScriptBody>, io::Error>> + Send>>;
 pub type Service = Arc<dyn Fn(http::request::Parts) -> Reply + Send + Sync>;
 
+pub struct Options {
+    pub max_streams: Option<u32>,
+    pub handshake_delay: std::time::Duration,
+    pub stall_first: usize,
+}
+
 pub struct TlsServer {
     pub addr: SocketAddr,
     accepted: Arc<AtomicUsize>,
     closed: Arc<AtomicUsize>,
+    kill: Arc<Notify>,
     task: tokio::task::JoinHandle<()>,
 }
 
@@ -38,6 +46,22 @@ impl TlsServer {
         max_streams: Option<u32>,
         handshake_delay: std::time::Duration,
     ) -> Self {
+        let options = Options {
+            max_streams,
+            handshake_delay,
+            stall_first: 0,
+        };
+        Self::start_with(acceptor, service, options).await
+    }
+
+    pub async fn start_with(acceptor: TlsAcceptor, service: Service, options: Options) -> Self {
+        let Options {
+            max_streams,
+            handshake_delay,
+            stall_first,
+        } = options;
+        let kill = Arc::new(Notify::new());
+        let killed = Arc::clone(&kill);
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
         let addr = listener.local_addr().expect("addr");
         let accepted = Arc::new(AtomicUsize::new(0));
@@ -50,11 +74,15 @@ impl TlsServer {
                 let Ok((tcp, _)) = listener.accept().await else {
                     break;
                 };
-                counter.fetch_add(1, Ordering::SeqCst);
+                let index = counter.fetch_add(1, Ordering::SeqCst);
+                let killed = Arc::clone(&killed);
                 let acceptor = acceptor.clone();
                 let service = Arc::clone(&service);
                 let closed_counter = Arc::clone(&closed_counter);
                 connections.spawn(async move {
+                    if index < stall_first {
+                        std::future::pending::<()>().await;
+                    }
                     tokio::time::sleep(handshake_delay).await;
                     let Ok(tls) = acceptor.accept(tcp).await else {
                         return;
@@ -69,12 +97,18 @@ impl TlsServer {
                             service(parts).await
                         }
                     });
-                    if h2 {
-                        let mut builder = http2::Builder::new(TokioExecutor::new());
-                        builder.max_concurrent_streams(max_streams);
-                        let _ = builder.serve_connection(io, svc).await;
-                    } else {
-                        let _ = http1::Builder::new().serve_connection(io, svc).await;
+                    let serving = async {
+                        if h2 {
+                            let mut builder = http2::Builder::new(TokioExecutor::new());
+                            builder.max_concurrent_streams(max_streams);
+                            let _ = builder.serve_connection(io, svc).await;
+                        } else {
+                            let _ = http1::Builder::new().serve_connection(io, svc).await;
+                        }
+                    };
+                    tokio::select! {
+                        () = serving => {}
+                        () = killed.notified() => {}
                     }
                     closed_counter.fetch_add(1, Ordering::SeqCst);
                 });
@@ -84,12 +118,17 @@ impl TlsServer {
             addr,
             accepted,
             closed,
+            kill,
             task,
         }
     }
 
     pub fn accepted(&self) -> usize {
         self.accepted.load(Ordering::SeqCst)
+    }
+
+    pub fn kill_connections(&self) {
+        self.kill.notify_waiters();
     }
 
     pub fn closed(&self) -> usize {

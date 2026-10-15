@@ -11,7 +11,7 @@ pub(crate) enum Cause {
     Protocol,
 }
 
-pub(crate) fn classify(error: &hyper::Error, request_taken: bool) -> Cause {
+pub(crate) fn classify(error: &hyper::Error, may_have_written: bool) -> Cause {
     if let Some(h2_error) = find_source::<h2::Error>(error) {
         return classify_h2(h2_error);
     }
@@ -19,19 +19,22 @@ pub(crate) fn classify(error: &hyper::Error, request_taken: bool) -> Cause {
         return Cause::Protocol;
     }
     if let Some(io_error) = find_source::<io::Error>(error) {
+        let tls = io_error
+            .get_ref()
+            .is_some_and(|inner| inner.downcast_ref::<rustls::Error>().is_some());
         return match io_error.kind() {
-            io::ErrorKind::InvalidData | io::ErrorKind::InvalidInput => Cause::Protocol,
-            _ => untaken_or(request_taken, Cause::Interrupted),
+            io::ErrorKind::InvalidData | io::ErrorKind::InvalidInput if !tls => Cause::Protocol,
+            _ => untaken_or(may_have_written, Cause::Interrupted),
         };
     }
     if error.is_user() || error.is_canceled() || error.is_closed() {
-        return untaken_or(request_taken, Cause::Interrupted);
+        return untaken_or(may_have_written, Cause::Interrupted);
     }
     Cause::Interrupted
 }
 
-fn untaken_or(request_taken: bool, otherwise: Cause) -> Cause {
-    if request_taken {
+fn untaken_or(may_have_written: bool, otherwise: Cause) -> Cause {
+    if may_have_written {
         otherwise
     } else {
         Cause::Unprocessed { written: false }
@@ -39,6 +42,9 @@ fn untaken_or(request_taken: bool, otherwise: Cause) -> Cause {
 }
 
 fn classify_h2(error: &h2::Error) -> Cause {
+    if error.is_remote() && error.reason() == Some(Reason::HTTP_1_1_REQUIRED) {
+        return Cause::Protocol;
+    }
     let refused = error.is_reset() && error.reason() == Some(Reason::REFUSED_STREAM);
     if error.is_remote() && (error.is_go_away() || refused) {
         return Cause::Unprocessed { written: true };

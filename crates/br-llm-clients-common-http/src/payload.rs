@@ -9,19 +9,27 @@ use hyper::body::{Body, Frame, SizeHint};
 
 pub(crate) struct Payload {
     data: Option<Bytes>,
-    taken: Arc<AtomicBool>,
+    empty: bool,
+    written: Arc<AtomicBool>,
 }
 
 impl Payload {
-    pub(crate) fn new(bytes: Bytes, taken: Arc<AtomicBool>) -> Self {
+    pub(crate) fn new(bytes: Bytes, written: Arc<AtomicBool>) -> Self {
         Self {
+            empty: bytes.is_empty(),
             data: (!bytes.is_empty()).then_some(bytes),
-            taken,
+            written,
         }
     }
 
     fn mark(&self) {
-        self.taken.store(true, Ordering::SeqCst);
+        self.written.store(true, Ordering::SeqCst);
+    }
+
+    fn mark_if_empty(&self) {
+        if self.empty {
+            self.mark();
+        }
     }
 }
 
@@ -38,12 +46,12 @@ impl Body for Payload {
     }
 
     fn is_end_stream(&self) -> bool {
-        self.mark();
+        self.mark_if_empty();
         self.data.is_none()
     }
 
     fn size_hint(&self) -> SizeHint {
-        self.mark();
+        self.mark_if_empty();
         let len = self.data.as_ref().map_or(0, Bytes::len);
         SizeHint::with_exact(u64::try_from(len).unwrap_or(u64::MAX))
     }

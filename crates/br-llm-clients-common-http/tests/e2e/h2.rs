@@ -194,7 +194,8 @@ async fn given_an_http2_header_block_under_the_limit_then_it_is_accepted() {
     assert_eq!(
         response
             .headers()
-            .names()
+            .iter()
+            .map(|(name, _)| name)
             .filter(|n| n.starts_with("x-pad"))
             .count(),
         12

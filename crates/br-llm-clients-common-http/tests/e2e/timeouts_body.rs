@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use br_llm_clients_common_http::{BodyError, HttpClient, NoAuthorizer, SendError};
+use br_llm_clients_common_http::{BodyError, NoAuthorizer, SendError};
 use hyper::Response;
 use tokio::io::AsyncWriteExt;
 
@@ -236,7 +236,7 @@ async fn given_http2_and_a_stalled_body_then_idle_timeout_applies() {
         let mut config = crate::support::config();
         config.idle_timeout = LIMIT;
         config.extra_root_certificates = vec![pki.ca_pem.clone()];
-        HttpClient::new(config).expect("client")
+        config.client()
     };
     let mut response = guarded(client.send(post(&server.endpoint("/"), "a"), &NoAuthorizer))
         .await

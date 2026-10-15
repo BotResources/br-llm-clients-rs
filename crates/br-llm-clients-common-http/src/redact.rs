@@ -31,7 +31,7 @@ impl Redactor {
     }
 
     pub(crate) fn finish(&self, text: &str) -> String {
-        self.clean(&bounded(text))
+        bounded(&self.clean(text))
     }
 }
 

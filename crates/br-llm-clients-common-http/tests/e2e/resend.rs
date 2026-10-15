@@ -1,3 +1,5 @@
+use std::sync::atomic::Ordering;
+
 use br_llm_clients_common_http::{HttpClient, Request, SendError};
 
 use crate::support::pki::Pki;
@@ -18,7 +20,12 @@ fn client() -> HttpClient {
 #[tokio::test]
 async fn given_a_stream_excluded_by_a_goaway_when_sent_then_it_is_sent_again_on_a_new_connection_once()
  {
-    let probe = Probe::start(Script::GoAwayOnFirstConnections(1)).await;
+    let probe = Probe::start(Script::GoAway {
+        first_connections: 1,
+        last_stream: 0,
+        code: 0,
+    })
+    .await;
     let spy = Spy::returning(&[("x-api-key", "k")]);
     let mut response = guarded(client().send(identified(&probe, "r1"), &spy))
         .await
@@ -30,7 +37,7 @@ async fn given_a_stream_excluded_by_a_goaway_when_sent_then_it_is_sent_again_on_
     );
     assert_eq!(probe.accepted.load(std::sync::atomic::Ordering::SeqCst), 2);
     assert_eq!(probe.processed(), ["r1"]);
-    assert_eq!(probe.arrivals(), ["r1"]);
+    assert_eq!(probe.arrivals(), ["?", "r1"]);
     assert_eq!(spy.calls(), 1);
 }
 
@@ -76,7 +83,12 @@ async fn given_a_connection_that_closes_after_the_request_arrived_then_it_is_not
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn given_connections_that_close_gracefully_under_load_then_no_request_ever_arrives_twice() {
-    let probe = Probe::start(Script::GoAwayOnFirstConnections(40)).await;
+    let probe = Probe::start(Script::GoAway {
+        first_connections: 6,
+        last_stream: 0,
+        code: 0,
+    })
+    .await;
     let client = client();
     let mut tasks = tokio::task::JoinSet::new();
     for i in 0..120 {
@@ -111,8 +123,98 @@ async fn given_connections_that_close_gracefully_under_load_then_no_request_ever
     );
     for failure in &failures {
         assert!(
-            failure.starts_with("Interrupted") || failure == "body",
+            failure.starts_with("Interrupted")
+                || failure.starts_with("Connect { text: \"no connection could carry")
+                || failure == "body",
             "{failure}"
         );
+    }
+}
+
+fn goaway(first_connections: usize, last_stream: u32, code: u32) -> Script {
+    Script::GoAway {
+        first_connections,
+        last_stream,
+        code,
+    }
+}
+
+async fn burst(client: &HttpClient, probe: &Probe, count: usize) -> Vec<Result<(), SendError>> {
+    let mut tasks = tokio::task::JoinSet::new();
+    for i in 0..count {
+        let (client, request) = (client.clone(), identified(probe, &format!("r{i}")));
+        tasks.spawn(async move {
+            let mut response = client.send(request, &Spy::returning(&[])).await?;
+            response
+                .body_mut()
+                .collect(10)
+                .await
+                .map(|_| ())
+                .map_err(|_| SendError::Protocol {
+                    text: "body".to_owned(),
+                })
+        });
+    }
+    let mut outcomes = Vec::new();
+    while let Some(outcome) = tasks.join_next().await {
+        outcomes.push(outcome.expect("join"));
+    }
+    outcomes
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn given_many_sends_on_a_connection_that_excludes_them_all_then_one_new_connection_is_opened()
+{
+    for count in [50usize, 100] {
+        let probe = Probe::start(goaway(1, 0, 0)).await;
+        let outcomes = guarded(burst(&client(), &probe, count)).await;
+        assert!(outcomes.iter().all(Result::is_ok), "{outcomes:?}");
+        assert_eq!(probe.accepted.load(Ordering::SeqCst), 2, "{count} sends");
+        let mut processed = probe.processed();
+        processed.sort();
+        processed.dedup();
+        assert_eq!(processed.len(), count);
+    }
+}
+
+#[tokio::test]
+async fn given_a_goaway_that_keeps_the_stream_and_closes_then_the_request_is_not_sent_again() {
+    let probe = Probe::start(goaway(1, 1, 0)).await;
+    let error = guarded(client().send(identified(&probe, "r1"), &Spy::returning(&[])))
+        .await
+        .unwrap_err();
+    assert!(matches!(error, SendError::Interrupted { .. }), "{error:?}");
+    assert_eq!(probe.arrivals(), ["?"]);
+    assert_eq!(probe.accepted.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn given_a_goaway_asking_for_http_1_1_then_the_send_fails_with_protocol_and_no_storm() {
+    let probe = Probe::start(goaway(100, 0, 13)).await;
+    let error = guarded(client().send(identified(&probe, "r1"), &Spy::returning(&[])))
+        .await
+        .unwrap_err();
+    assert!(matches!(error, SendError::Protocol { .. }), "{error:?}");
+    assert_eq!(probe.accepted.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn given_a_stream_reset_by_the_server_for_another_reason_then_the_request_is_not_sent_again()
+{
+    for reason in [
+        h2::Reason::INTERNAL_ERROR,
+        h2::Reason::CANCEL,
+        h2::Reason::STREAM_CLOSED,
+    ] {
+        let probe = Probe::start(Script::ResetAll(reason)).await;
+        let error = guarded(client().send(identified(&probe, "r1"), &Spy::returning(&[])))
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(error, SendError::Interrupted { .. }),
+            "{reason:?}: {error:?}"
+        );
+        assert_eq!(probe.arrivals(), ["r1"], "{reason:?}");
+        assert_eq!(probe.accepted.load(Ordering::SeqCst), 1, "{reason:?}");
     }
 }

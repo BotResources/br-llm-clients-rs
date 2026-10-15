@@ -1,6 +1,5 @@
 use std::future::poll_fn;
 use std::pin::{Pin, pin};
-use std::task::Poll;
 
 use hyper::client::conn::{http1, http2};
 use hyper_util::rt::{TokioExecutor, TokioIo, TokioTimer};
@@ -12,14 +11,14 @@ use tokio_rustls::TlsConnector;
 use crate::dial::{STAGGER, first_connected};
 use crate::driver::drive;
 use crate::endpoint::Endpoint;
+use crate::h2state::H2State;
 use crate::idle::IdleClock;
+use crate::limits::{MAX_HEAD_BYTES, MAX_HEADER_LINES};
 use crate::payload::Payload;
+use crate::pool::HostHandle;
 use crate::texts;
-use crate::transport::{H1Conn, H2Sender, H2State, Signal};
+use crate::transport::{H1Conn, H2Sender};
 use crate::tuning::Tuning;
-
-const MAX_HEAD_BYTES: usize = 64 * 1024;
-const MAX_RESPONSE_HEADERS: usize = 1024;
 
 pub(crate) enum ConnectFailure {
     Connect(String),
@@ -37,12 +36,12 @@ pub(crate) enum Opened {
 pub(crate) async fn open(
     tls: &TlsConnector,
     endpoint: &Endpoint,
-    signal: &Signal,
+    host: &HostHandle,
     tuning: Tuning,
 ) -> Result<Opened, ConnectFailure> {
     let tcp = connect_tcp(endpoint).await?;
     if !endpoint.is_https() {
-        return start(tcp, false, signal, tuning).await;
+        return start(tcp, false, host, tuning).await;
     }
     let name = ServerName::try_from(endpoint.dns_name().to_owned())
         .map_err(|_| ConnectFailure::Tls("the host is not a valid server name".to_owned()))?;
@@ -51,7 +50,7 @@ pub(crate) async fn open(
         .await
         .map_err(|error| ConnectFailure::Tls(texts::tls_failure(&error)))?;
     let h2 = stream.get_ref().1.alpn_protocol() == Some(b"h2".as_slice());
-    start(stream, h2, signal, tuning).await
+    start(stream, h2, host, tuning).await
 }
 
 async fn connect_tcp(endpoint: &Endpoint) -> Result<TcpStream, ConnectFailure> {
@@ -71,7 +70,7 @@ async fn connect_tcp(endpoint: &Endpoint) -> Result<TcpStream, ConnectFailure> {
 async fn start<IO>(
     io: IO,
     h2: bool,
-    signal: &Signal,
+    host: &HostHandle,
     tuning: Tuning,
 ) -> Result<Opened, ConnectFailure>
 where
@@ -88,14 +87,14 @@ where
             .keep_alive_interval(Some(tuning.ping_interval))
             .keep_alive_timeout(tuning.ping_timeout)
             .keep_alive_while_idle(true)
-            .initial_max_send_streams(usize::MAX)
+            .initial_max_send_streams(0)
             .max_header_list_size(
                 u32::try_from(MAX_HEAD_BYTES.saturating_add(1)).unwrap_or(u32::MAX),
             )
             .handshake::<_, Payload>(io)
             .await
             .map_err(failed)?;
-        let state = H2State::new(idle, std::sync::Arc::clone(signal));
+        let state = H2State::new(idle, host.clone());
         state.arm_idle();
         let tracked = track_streams(connection, std::sync::Arc::clone(&state));
         tokio::spawn(drive(tracked, idle_rx));
@@ -104,12 +103,21 @@ where
         let (sender, connection) = http1::Builder::new()
             .max_buf_size(MAX_HEAD_BYTES)
             .max_header_size(MAX_HEAD_BYTES)
-            .max_headers(MAX_RESPONSE_HEADERS)
+            .max_headers(MAX_HEADER_LINES)
             .handshake::<_, Payload>(io)
             .await
             .map_err(failed)?;
         let driver = tokio::spawn(drive(connection, idle_rx));
         Ok(Opened::H1(H1Conn::new(sender, idle, driver.abort_handle())))
+    }
+}
+
+struct Gone(std::sync::Arc<H2State>);
+
+impl Drop for Gone {
+    fn drop(&mut self) {
+        self.0.retire();
+        self.0.wake_host();
     }
 }
 
@@ -119,14 +127,14 @@ async fn track_streams<T>(
 ) where
     T: hyper::rt::Read + hyper::rt::Write + Unpin + Send + 'static,
 {
+    let _gone = Gone(std::sync::Arc::clone(&state));
     let mut connection = pin!(connection);
     let _ = poll_fn(|cx| {
         let polled = Pin::as_mut(&mut connection).poll(cx);
-        state.set_max_streams(connection.as_ref().current_max_send_streams());
-        match polled {
-            Poll::Ready(result) => Poll::Ready(result),
-            Poll::Pending => Poll::Pending,
+        if state.set_peer_max(connection.as_ref().current_max_send_streams()) {
+            state.wake_host();
         }
+        polled
     })
     .await;
 }

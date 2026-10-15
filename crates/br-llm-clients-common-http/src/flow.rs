@@ -29,7 +29,7 @@ pub(crate) async fn run(
         );
         let waiting = within(total_deadline, authorizer.authorize(&view)).await;
         match waiting {
-            Some(result) => result.map_err(SendError::Authorizer)?,
+            Some(result) => result.map_err(|error| SendError::Authorizer(error.capped()))?,
             None => return Err(total_timeout(shared, &Redactor::default())),
         }
     };
@@ -51,7 +51,7 @@ async fn within<F: Future>(deadline: Option<Instant>, work: F) -> Option<F::Outp
 fn total_timeout(shared: &Shared, redactor: &Redactor) -> SendError {
     let limit = shared.config.total_timeout.unwrap_or_default();
     SendError::TotalTimeout {
-        text: redactor.clean(&format!(
+        text: redactor.finish(&format!(
             "no response headers within the total timeout of {limit:?}"
         )),
     }

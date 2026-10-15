@@ -45,15 +45,12 @@ impl Request {
         Ok(self)
     }
 
-    pub fn endpoint(&self) -> &Endpoint {
-        &self.endpoint
-    }
-
-    pub fn header_names(&self) -> impl Iterator<Item = &str> {
+    pub(crate) fn header_names(&self) -> impl Iterator<Item = &str> {
         self.headers.iter().map(|(name, _)| name.as_str())
     }
 
-    pub fn body_len(&self) -> usize {
+    #[cfg(test)]
+    pub(crate) fn body_len(&self) -> usize {
         self.body.len()
     }
 

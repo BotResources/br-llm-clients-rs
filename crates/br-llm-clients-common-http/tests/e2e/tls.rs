@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use br_llm_clients_common_http::{HttpClient, NoAuthorizer, SendError};
+use br_llm_clients_common_http::{NoAuthorizer, SendError};
 use hyper::{Response, Version};
 
 use crate::support::h2_server::{TlsServer, service};
@@ -158,7 +158,7 @@ async fn given_two_extra_roots_then_either_one_is_trusted() {
     let second = Pki::other_ca();
     let mut config = config();
     config.extra_root_certificates = vec![first.ca_pem.clone(), second.ca_pem.clone()];
-    let client = HttpClient::new(config).expect("client");
+    let client = config.client();
     for pki in [first, second] {
         let versions = Arc::new(std::sync::Mutex::new(Vec::new()));
         let server = TlsServer::start(

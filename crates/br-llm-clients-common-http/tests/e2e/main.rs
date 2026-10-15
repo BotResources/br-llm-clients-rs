@@ -1,13 +1,17 @@
 mod authorizer;
 mod authorizer_failures;
 mod canary;
+mod cold_bursts;
 mod collect;
 mod drop;
 mod encoding;
 mod env_isolation;
 mod errors;
+mod gate;
+mod gate_dial;
 mod h2;
 mod herd;
+
 mod idle_reads;
 mod limits;
 mod resend;
@@ -19,7 +23,9 @@ mod send_sync;
 mod stream;
 #[allow(dead_code)] // the helpers are shared with the unit tests, which use the rest
 mod support;
+mod text_caps;
 mod timeouts;
 mod timeouts_body;
 mod tls;
+mod tls_after_handshake;
 mod wire;

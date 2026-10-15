@@ -62,7 +62,7 @@ async fn given_a_response_and_its_stream_then_they_can_be_moved_to_another_task(
         .await
         .expect("response");
     let body = tokio::spawn(async move {
-        let mut body = response.into_body();
+        let (_, _, mut body) = response.into_parts();
         body.collect(10).await.expect("body").bytes
     })
     .await

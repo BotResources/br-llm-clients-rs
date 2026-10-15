@@ -1,6 +1,6 @@
 use http::{HeaderMap, HeaderName};
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct Headers {
     map: HeaderMap,
 }
@@ -27,7 +27,8 @@ impl Headers {
             .and_then(|value| std::str::from_utf8(value).ok())
     }
 
-    pub fn contains(&self, name: &str) -> bool {
+    #[cfg(test)]
+    pub(crate) fn contains(&self, name: &str) -> bool {
         self.get(name).is_some()
     }
 
@@ -37,16 +38,12 @@ impl Headers {
             .map(|(name, value)| (name.as_str(), value.as_bytes()))
     }
 
-    pub fn names(&self) -> impl Iterator<Item = &str> {
+    pub(crate) fn names(&self) -> impl Iterator<Item = &str> {
         self.map.keys().map(HeaderName::as_str)
     }
 
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.map.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.map.is_empty()
     }
 }
 

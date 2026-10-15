@@ -15,8 +15,13 @@ use super::pki::Pki;
 pub enum Script {
     RefuseFirst(usize),
     RefuseAll,
-    GoAwayOnFirstConnections(usize),
+    GoAway {
+        first_connections: usize,
+        last_stream: u32,
+        code: u32,
+    },
     CloseAfterReceiving,
+    ResetAll(Reason),
 }
 
 pub struct Probe {
@@ -58,8 +63,16 @@ impl Probe {
                     let Ok(tls) = acceptor.accept(tcp).await else {
                         return;
                     };
-                    if matches!(script, Script::GoAwayOnFirstConnections(n) if index < n) {
-                        go_away_on_first_request(tls).await;
+                    if let Script::GoAway {
+                        first_connections,
+                        last_stream,
+                        code,
+                    } = script
+                        && index < first_connections
+                    {
+                        if go_away_with(tls, last_stream, code, b"").await {
+                            seen.lock().expect("lock").push("?".to_owned());
+                        }
                         return;
                     }
                     let Ok(mut conn) = h2::server::Builder::new()
@@ -84,6 +97,10 @@ impl Probe {
                         };
                         if refuse {
                             respond.send_reset(Reason::REFUSED_STREAM);
+                            continue;
+                        }
+                        if let Script::ResetAll(reason) = script {
+                            respond.send_reset(reason);
                             continue;
                         }
                         if matches!(script, Script::CloseAfterReceiving) {
@@ -152,9 +169,9 @@ pub async fn read_frame<S: AsyncReadExt + Unpin>(stream: &mut S) -> Option<(u8, 
     Some((head[3], head[4], payload))
 }
 
-pub fn goaway_frame(last_stream: u32, debug: &[u8]) -> Vec<u8> {
+pub fn goaway_frame(last_stream: u32, code: u32, debug: &[u8]) -> Vec<u8> {
     let mut payload = last_stream.to_be_bytes().to_vec();
-    payload.extend_from_slice(&0u32.to_be_bytes());
+    payload.extend_from_slice(&code.to_be_bytes());
     payload.extend_from_slice(debug);
     frame(7, 0, 0, &payload)
 }
@@ -162,11 +179,12 @@ pub fn goaway_frame(last_stream: u32, debug: &[u8]) -> Vec<u8> {
 pub async fn go_away_with<S: AsyncReadExt + AsyncWriteExt + Unpin>(
     mut stream: S,
     last_stream: u32,
+    code: u32,
     debug: &[u8],
-) {
+) -> bool {
     let mut preface = [0u8; 24];
     if stream.read_exact(&mut preface).await.is_err() {
-        return;
+        return false;
     }
     let _ = stream.write_all(&frame(4, 0, 0, &[])).await;
     while let Some((kind, flags, _)) = read_frame(&mut stream).await {
@@ -174,18 +192,17 @@ pub async fn go_away_with<S: AsyncReadExt + AsyncWriteExt + Unpin>(
             let _ = stream.write_all(&frame(4, 1, 0, &[])).await;
         }
         if kind == 1 {
-            let _ = stream.write_all(&goaway_frame(last_stream, debug)).await;
+            let _ = stream
+                .write_all(&goaway_frame(last_stream, code, debug))
+                .await;
             let _ = stream.flush().await;
             if last_stream > 0 {
-                return;
+                return true;
             }
             let mut sink = [0u8; 1024];
             while matches!(stream.read(&mut sink).await, Ok(n) if n > 0) {}
-            return;
+            return true;
         }
     }
-}
-
-async fn go_away_on_first_request<S: AsyncReadExt + AsyncWriteExt + Unpin>(stream: S) {
-    go_away_with(stream, 0, b"").await;
+    false
 }

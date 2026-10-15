@@ -2,7 +2,7 @@
 
 Provider clients for LLM calls: send a system prompt, tools and a chat history from `br-llm-messages`, get the reply. Provider clients are separate crates, versioned separately, each released by its own git tag `{crate}/v{version}`:
 
-- `br-llm-clients-common-http` — sends one HTTP POST and gives back the status, the headers and a stream of byte chunks, with every failure told apart; shared by the provider clients.
+- `br-llm-clients-common-http` — sends one HTTP POST and gives back the status, the headers and a stream of byte chunks, with every failure told apart; it is meant to be shared by the provider clients (none exists yet).
 - `br-llm-clients-core` — the core: provider-neutral request, settings, outcome, error and the `Client` and `StreamSink` traits every client library implements.
 - `br-llm-clients-mock` — a configurable mock `Client` for fast, parallel tests, used as a dev-dependency.
 - `br-llm-clients-common-sse` — a Server-Sent Events decoder: turns the bytes of a response body into frames, with a size limit and no hidden damage.

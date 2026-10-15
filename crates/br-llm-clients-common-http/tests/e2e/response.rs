@@ -70,10 +70,17 @@ async fn given_repeated_headers_when_sent_then_names_are_lower_case_and_values_k
     assert!(
         response
             .headers()
-            .names()
+            .iter()
+            .map(|(name, _)| name)
             .all(|n| n == n.to_ascii_lowercase())
     );
-    assert!(response.headers().names().any(|n| n == "x-multi"));
+    assert!(
+        response
+            .headers()
+            .iter()
+            .map(|(name, _)| name)
+            .any(|n| n == "x-multi")
+    );
     assert_eq!(response.headers().get_text("x-other"), Some("o"));
 }
 
@@ -96,7 +103,11 @@ async fn given_a_response_when_debugging_then_header_values_and_body_are_not_sho
     let server = serve_response("200 OK", &[("X-Leak", "HEADER-VALUE")], b"BODY-VALUE").await;
     let response = get(&server).await;
     let debug = format!("{response:?}");
-    assert!(debug.contains("x-leak") && debug.contains("200"));
+    assert!(
+        debug.contains("200") && debug.contains("headers: 3"),
+        "{debug}"
+    );
+    assert!(!debug.contains("x-leak"), "{debug}");
     assert!(
         !debug.contains("HEADER-VALUE") && !debug.contains("BODY-VALUE"),
         "{debug}"

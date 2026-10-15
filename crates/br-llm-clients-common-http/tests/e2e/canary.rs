@@ -11,7 +11,7 @@ async fn error_for(key: &str, debug: String, last_stream: u32) -> SendError {
         let (acceptor, debug) = (acceptor.clone(), debug.clone());
         async move {
             if let Ok(tls) = acceptor.accept(stream).await {
-                go_away_with(tls, last_stream, debug.as_bytes()).await;
+                go_away_with(tls, last_stream, 0, debug.as_bytes()).await;
             }
         }
     })

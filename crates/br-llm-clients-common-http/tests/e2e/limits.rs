@@ -13,7 +13,7 @@ async fn h1_lines(count: usize) -> Result<usize, SendError> {
     wire.extend_from_slice(b"content-length: 0\r\nconnection: close\r\n\r\n");
     let server = serve_bytes(wire).await;
     let response = guarded(client().send(post(&server.endpoint("/"), "a"), &NoAuthorizer)).await?;
-    Ok(response.headers().len())
+    Ok(response.headers().iter().count())
 }
 
 async fn h2_lines(count: usize) -> Result<usize, SendError> {
@@ -23,7 +23,7 @@ async fn h2_lines(count: usize) -> Result<usize, SendError> {
     let server = HeadersServer::start(headers).await;
     let client = trusting_client(&Pki::trusted().ca_pem);
     let response = guarded(client.send(post(&server.endpoint(), "a"), &NoAuthorizer)).await?;
-    Ok(response.headers().len())
+    Ok(response.headers().iter().count())
 }
 
 async fn h2_list_of(rfc_size: usize) -> Result<u16, SendError> {

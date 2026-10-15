@@ -24,6 +24,7 @@ mod config_error;
 mod connect;
 mod deadline;
 mod dial;
+mod dialer;
 mod driver;
 mod encoding;
 mod endpoint;
@@ -31,10 +32,12 @@ mod endpoint_parse;
 mod endpoint_scheme;
 mod exchange;
 mod flow;
+mod h2state;
 mod header;
 mod headers;
 mod idle;
 mod lease;
+mod limits;
 mod payload;
 mod percent;
 mod pool;
@@ -82,6 +85,8 @@ mod endpoint_tests;
 #[cfg(test)]
 mod headers_tests;
 #[cfg(test)]
+mod pool_tests;
+#[cfg(test)]
 mod request_tests;
 #[cfg(test)]
 mod retry_after_tests;
@@ -90,6 +95,8 @@ mod secret_tests;
 
 #[cfg(test)]
 extern crate self as br_llm_clients_common_http;
+#[cfg(test)]
+mod fixed_values_tests;
 #[cfg(test)]
 mod lifetime_tests;
 #[cfg(test)]
