@@ -27,15 +27,15 @@ async fn slow_chunks(first_at: Duration, second_at: Duration) -> RawServer {
 
 #[tokio::test]
 async fn given_a_read_dropped_before_data_arrived_when_reading_again_then_the_wait_starts_afresh() {
-    let server = slow_chunks(Duration::from_millis(2500), Duration::from_secs(60)).await;
-    let client = client_with(|c| c.idle_timeout = Duration::from_millis(1000));
+    let server = slow_chunks(Duration::from_millis(2600), Duration::from_secs(60)).await;
+    let client = client_with(|c| c.idle_timeout = Duration::from_millis(2000));
     let mut response = guarded(client.send(post(&server.endpoint("/"), "a"), &NoAuthorizer))
         .await
         .expect("response");
     let first =
         tokio::time::timeout(Duration::from_millis(100), response.body_mut().next_chunk()).await;
     assert!(first.is_err());
-    tokio::time::sleep(Duration::from_millis(1900)).await;
+    tokio::time::sleep(Duration::from_millis(2000)).await;
     let chunk = response
         .body_mut()
         .next_chunk()

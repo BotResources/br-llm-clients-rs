@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use br_llm_clients_common_http::{NoAuthorizer, SendError};
 
-use crate::support::gate_kit::{answering, options, run, trusting};
+use crate::support::gate_kit::{answering, options, run, trusting, until_accepted};
 use crate::support::h2_server::TlsServer;
 use crate::support::pki::Pki;
 use crate::support::{guarded, post};
@@ -69,7 +69,7 @@ async fn given_the_dialing_send_dropped_mid_dial_then_the_sends_that_waited_comp
                 .map(|_| ())
         })
     };
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    until_accepted(&server, 1).await;
     let mut waiters = tokio::task::JoinSet::new();
     for _ in 0..5 {
         let (client, endpoint) = (client.clone(), server.endpoint("/"));

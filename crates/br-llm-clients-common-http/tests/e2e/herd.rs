@@ -97,7 +97,7 @@ async fn given_more_streams_than_the_server_allows_then_another_connection_is_op
 async fn given_all_sixteen_connections_full_then_a_send_waits_and_fails_within_the_headers_timeout()
 {
     let server = quick_server(&[b"h2"], Some(2)).await;
-    let client = client_trusting(Duration::from_millis(400));
+    let client = client_trusting(Duration::from_millis(1500));
     let mut held = Vec::new();
     for _ in 0..32 {
         let request = post(&server.endpoint("/"), "held")
@@ -123,7 +123,7 @@ async fn given_all_sixteen_connections_full_then_a_send_waits_and_fails_within_t
         matches!(error, SendError::HeadersTimeout { .. }),
         "{error:?}"
     );
-    assert!(started.elapsed() >= Duration::from_millis(350));
+    assert!(started.elapsed() >= Duration::from_millis(1400));
     assert_eq!(server.accepted(), 16);
     drop(held);
 }

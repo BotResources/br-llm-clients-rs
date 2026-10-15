@@ -126,9 +126,9 @@ async fn given_requests_queued_behind_a_lowered_limit_then_every_send_ends_withi
 #[tokio::test]
 async fn given_a_server_that_refuses_each_attempt_late_then_every_attempt_has_its_own_headers_deadline()
  {
-    let headers_timeout = Duration::from_millis(800);
+    let headers_timeout = Duration::from_millis(2000);
     let refusing = Policy {
-        answer: Answer::RefuseAfter(Duration::from_millis(600)),
+        answer: Answer::RefuseAfter(Duration::from_millis(1200)),
         ..Policy::healthy()
     };
     let server = RawH2::start(move |_| refusing).await;
