@@ -22,6 +22,7 @@ mod reuse;
 mod secrets;
 mod secrets_body;
 mod send_sync;
+mod settings;
 mod stream;
 #[allow(dead_code)] // the helpers are shared with the unit tests, which use the rest
 mod support;

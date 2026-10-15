@@ -22,6 +22,7 @@ fn tuning() -> Tuning {
         idle_limit: IDLE,
         ping_interval: Duration::from_millis(500),
         ping_timeout: Duration::from_millis(1000),
+        dial_stagger: Tuning::FIXED.dial_stagger,
     }
 }
 

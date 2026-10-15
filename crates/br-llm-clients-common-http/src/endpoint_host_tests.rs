@@ -102,3 +102,32 @@ fn given_a_text_when_built_then_the_path_and_query_sent_are_the_ones_given() {
         assert_eq!(https(text).path_and_query(), expected, "{text}");
     }
 }
+
+fn host_of_length(length: usize) -> String {
+    let full = "a".repeat(63);
+    let tail = "a".repeat(length.saturating_sub(63 * 3 + 3));
+    format!("{full}.{full}.{full}.{tail}")
+}
+
+#[test]
+fn given_a_host_name_of_253_bytes_then_it_is_accepted_and_of_254_bytes_then_it_is_refused() {
+    let accepted = host_of_length(253);
+    assert_eq!(accepted.len(), 253);
+    assert!(Endpoint::https(&format!("https://{accepted}/")).is_ok());
+    let refused = host_of_length(254);
+    assert_eq!(refused.len(), 254);
+    refused_https(&format!("https://{refused}/"));
+}
+
+#[test]
+fn given_characters_a_host_name_cannot_hold_then_the_endpoint_is_refused() {
+    for host in [
+        "a$b.example",
+        "a!.example",
+        "a,b.example",
+        "a\u{e9}.example",
+        "a;b",
+    ] {
+        refused_https(&format!("https://{host}/"));
+    }
+}

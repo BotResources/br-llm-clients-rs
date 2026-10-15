@@ -55,6 +55,16 @@ impl HttpClient {
     }
 
     #[cfg(test)]
+    pub(crate) fn tuning(&self) -> Tuning {
+        self.shared.tuning
+    }
+
+    #[cfg(test)]
+    pub(crate) fn pool(&self) -> &Arc<Pool> {
+        &self.shared.pool
+    }
+
+    #[cfg(test)]
     pub(crate) fn h2_connections(&self) -> usize {
         self.shared.pool.h2_connections()
     }

@@ -9,7 +9,7 @@ use tokio::time::Instant;
 use crate::dialer::{DialFailure, Dialer};
 use crate::endpoint::Endpoint;
 use crate::h2state::H2State;
-use crate::transport::{Conn, H1Conn, H2Sender, Signal};
+use crate::transport::{Conn, H1Conn, H2Sender, LiveGuard, Signal};
 
 pub(crate) const MAX_IDLE_PER_HOST: usize = 8;
 pub(crate) const MAX_H2_PER_HOST: usize = 16;
@@ -65,6 +65,7 @@ pub(crate) struct Host {
     pub(crate) h2: Vec<H2Entry>,
     h1: Vec<Idle>,
     pub(crate) live_h1: Arc<AtomicUsize>,
+    waiting: Arc<AtomicUsize>,
     pub(crate) signal: Signal,
     failure: Option<Recorded>,
     failures: u64,
@@ -78,6 +79,7 @@ impl Host {
             h2: Vec::new(),
             h1: Vec::new(),
             live_h1: Arc::new(AtomicUsize::new(0)),
+            waiting: Arc::new(AtomicUsize::new(0)),
             signal: Arc::new(watch::channel(0u64).0),
             failure: None,
             failures: 0,
@@ -86,7 +88,7 @@ impl Host {
 
     fn in_use(&self) -> bool {
         self.dialing
-            || self.failure.is_some()
+            || self.waiting.load(Ordering::SeqCst) > 0
             || !self.h2.is_empty()
             || !self.h1.is_empty()
             || self.live_h1.load(Ordering::SeqCst) > 0
@@ -104,6 +106,11 @@ impl Host {
         self.failure = None;
     }
 
+    #[cfg(test)]
+    pub(crate) fn has_failure(&self) -> bool {
+        self.failure.is_some()
+    }
+
     fn idle_total(&self) -> usize {
         let idle_h2 = self.h2.iter().filter(|e| e.state.is_idle()).count();
         self.h1.len().saturating_add(idle_h2)
@@ -115,17 +122,26 @@ pub(crate) enum WaitKind {
     Stream,
 }
 
+pub(crate) struct Wait {
+    pub(crate) changed: watch::Receiver<u64>,
+    pub(crate) kind: WaitKind,
+    pub(crate) seq: u64,
+    pub(crate) guard: LiveGuard,
+}
+
 pub(crate) enum Plan {
     Reuse(Conn),
     TryIdle(H1Conn),
     Dial(Dialer),
-    Wait(watch::Receiver<u64>, WaitKind, u64),
+    Wait(Wait),
     Failed(DialFailure),
 }
 
 pub(crate) struct Pool {
     hosts: Mutex<HashMap<PoolKey, Host>>,
     idle_limit: Duration,
+    #[cfg(test)]
+    after_scan: Mutex<Option<Box<dyn Fn() + Send>>>,
 }
 
 impl Pool {
@@ -133,7 +149,37 @@ impl Pool {
         Self {
             hosts: Mutex::new(HashMap::new()),
             idle_limit,
+            #[cfg(test)]
+            after_scan: Mutex::new(None),
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn run_after_scan(&self, hook: impl Fn() + Send + 'static) {
+        *self
+            .after_scan
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(Box::new(hook));
+    }
+
+    fn reusable(&self, host: &Host) -> Option<Plan> {
+        for entry in &host.h2 {
+            if let Some(permit) = entry.state.try_acquire() {
+                return Some(Plan::Reuse(Conn::H2 {
+                    sender: entry.sender.clone(),
+                    permit,
+                }));
+            }
+        }
+        #[cfg(test)]
+        if let Some(hook) = &*self
+            .after_scan
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+        {
+            hook();
+        }
+        None
     }
 
     #[cfg(test)]
@@ -161,20 +207,23 @@ impl Pool {
             host.proto = None;
         }
         let limit_unknown = host.h2.iter().any(|entry| entry.state.limit_unknown());
-        for entry in &host.h2 {
-            if let Some(permit) = entry.state.try_acquire() {
-                return Plan::Reuse(Conn::H2 {
-                    sender: entry.sender.clone(),
-                    permit,
-                });
-            }
+        if let Some(reuse) = self.reusable(host) {
+            return reuse;
         }
         if let Some(idle) = host.h1.pop() {
             return Plan::TryIdle(idle.conn);
         }
         let seq = host.failure.as_ref().map_or(0, |recorded| recorded.seq);
+        let wait = |kind| {
+            Plan::Wait(Wait {
+                changed: changes,
+                kind,
+                seq,
+                guard: LiveGuard::new(&host.waiting),
+            })
+        };
         if limit_unknown {
-            return Plan::Wait(changes, WaitKind::Stream, seq);
+            return wait(WaitKind::Stream);
         }
         match host.proto {
             Some(Proto::H1) => Plan::Dial(self.dialer(key, host, false)),
@@ -182,8 +231,8 @@ impl Pool {
                 host.dialing = true;
                 Plan::Dial(self.dialer(key, host, true))
             }
-            Some(Proto::H2) => Plan::Wait(changes, WaitKind::Stream, seq),
-            None if host.dialing => Plan::Wait(changes, WaitKind::Dial, seq),
+            Some(Proto::H2) => wait(WaitKind::Stream),
+            None if host.dialing => wait(WaitKind::Dial),
             None => match (&host.failure, waited_from) {
                 (Some(recorded), Some(from)) if recorded.seq > from => {
                     Plan::Failed(recorded.failure.clone())

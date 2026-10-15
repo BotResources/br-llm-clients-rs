@@ -12,6 +12,7 @@ use crate::body::{BodyParts, BodyStream};
 use crate::classify::{Cause, classify};
 use crate::client::Shared;
 use crate::encoding;
+use crate::h2state::Permit;
 use crate::headers::Headers;
 use crate::lease::Lease;
 use crate::limits::{MAX_ATTEMPTS, MAX_HEADER_LINES};
@@ -127,7 +128,7 @@ async fn attempt(
             let outcome = timeout_at(headers_deadline, async {
                 tokio::select! {
                     biased;
-                    result = send_h2(&mut sender, request, &written) => result,
+                    result = send_h2(&mut sender, &permit, request, &written) => result,
                     () = never_taken(&mut gone, &written) => {
                         Err(Unsent::Unprocessed {
                             written: false,
@@ -188,16 +189,23 @@ async fn send_h1(
 
 async fn send_h2(
     sender: &mut H2Sender,
+    permit: &Permit,
     request: http::Request<Payload>,
     written: &Arc<AtomicBool>,
 ) -> Result<http::Response<Incoming>, Unsent> {
+    if permit.announced_limit().await == 0 {
+        return Err(Unsent::Unprocessed {
+            written: false,
+            retire: false,
+        });
+    }
     sender
         .try_send_request(request)
         .await
         .map_err(|error| into_unsent(error, written))
 }
 
-async fn never_taken(gone: &mut watch::Receiver<bool>, written: &Arc<AtomicBool>) {
+pub(crate) async fn never_taken(gone: &mut watch::Receiver<bool>, written: &Arc<AtomicBool>) {
     if gone.wait_for(|ended| *ended).await.is_ok() && !written.load(Ordering::SeqCst) {
         return;
     }

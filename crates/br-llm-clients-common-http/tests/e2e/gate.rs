@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use br_llm_clients_common_http::{NoAuthorizer, SendError};
 
-use crate::support::gate_kit::{answering, options, run, trusting};
+use crate::support::gate_kit::{answering, options, run, trusting, until_accepted};
 use crate::support::h2_server::TlsServer;
 use crate::support::pki::Pki;
 use crate::support::{guarded, post};
@@ -95,7 +95,7 @@ async fn given_a_wait_for_a_stream_and_the_exchange_then_headers_timeout_is_one_
                 .map(|_| ())
         });
     }
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    until_accepted(&server, 16).await;
     let started = Instant::now();
     let error = guarded(client.send(post(&server.endpoint("/"), "17th"), &NoAuthorizer))
         .await

@@ -10,6 +10,7 @@ use crate::transport::bump;
 pub(crate) struct H2State {
     inflight: Mutex<usize>,
     peer_max: AtomicUsize,
+    known: watch::Sender<bool>,
     retired: AtomicBool,
     gone: watch::Sender<bool>,
     idle: IdleClock,
@@ -21,6 +22,7 @@ impl H2State {
         Arc::new(Self {
             inflight: Mutex::new(0),
             peer_max: AtomicUsize::new(0),
+            known: watch::channel(false).0,
             retired: AtomicBool::new(false),
             gone: watch::channel(false).0,
             idle,
@@ -32,8 +34,20 @@ impl H2State {
         self.inflight.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    pub(crate) fn set_peer_max(&self, max: usize) -> bool {
-        self.peer_max.swap(max, Ordering::SeqCst) != max
+    pub(crate) fn apply_settings(&self, max_concurrent_streams: Option<u32>) {
+        let first = self.awaiting_settings();
+        let limit = match max_concurrent_streams {
+            Some(value) => usize::try_from(value).unwrap_or(usize::MAX),
+            None if first => usize::MAX,
+            None => return,
+        };
+        self.peer_max.store(limit, Ordering::SeqCst);
+        self.known.send_replace(true);
+        self.wake_host();
+    }
+
+    pub(crate) fn awaiting_settings(&self) -> bool {
+        !*self.known.borrow()
     }
 
     pub(crate) fn mark_gone(&self) {
@@ -45,7 +59,7 @@ impl H2State {
     }
 
     pub(crate) fn limit_unknown(&self) -> bool {
-        self.peer_max.load(Ordering::SeqCst) == 0 && !self.is_retired()
+        self.awaiting_settings() && !self.is_retired()
     }
 
     pub(crate) fn is_retired(&self) -> bool {
@@ -72,7 +86,7 @@ impl H2State {
             return None;
         }
         let mut count = self.count();
-        if *count >= self.peer_max.load(Ordering::SeqCst) {
+        if self.awaiting_settings() || *count >= self.peer_max.load(Ordering::SeqCst) {
             return None;
         }
         *count = count.saturating_add(1);
@@ -98,6 +112,12 @@ impl Permit {
     pub(crate) fn retire_connection(&self) {
         self.0.retire();
     }
+
+    pub(crate) async fn announced_limit(&self) -> usize {
+        let mut known = self.0.known.subscribe();
+        let _ = known.wait_for(|known| *known).await;
+        self.0.peer_max.load(Ordering::SeqCst)
+    }
 }
 
 impl Drop for Permit {
@@ -105,14 +125,26 @@ impl Drop for Permit {
         let became_idle = {
             let mut count = self.0.count();
             *count = count.saturating_sub(1);
+            if *count == 0 {
+                self.0.idle.arm();
+            }
             *count == 0
         };
-        if became_idle {
-            self.0.idle.arm();
-        }
         self.0.wake_host();
         if let Some(pool) = self.0.host.pool.upgrade().filter(|_| became_idle) {
             pool.trim_idle(&self.0.host.key);
         }
+    }
+}
+
+#[cfg(test)]
+impl H2State {
+    pub(crate) fn before_next_arm(&self, hook: impl FnOnce() + Send + 'static) {
+        self.idle.before_next_arm(hook);
+    }
+
+    pub(crate) fn violates_idle_invariant(&self) -> bool {
+        let count = self.count();
+        *count > 0 && self.idle.is_armed()
     }
 }

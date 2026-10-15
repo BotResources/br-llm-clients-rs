@@ -6,8 +6,6 @@ use std::time::Duration;
 use tokio::task::JoinSet;
 use tokio::time::sleep;
 
-pub(crate) const STAGGER: Duration = Duration::from_millis(250);
-
 pub(crate) async fn first_connected<T, F, Fut>(
     addresses: Vec<SocketAddr>,
     stagger: Duration,
@@ -62,6 +60,8 @@ mod tests {
     use tokio::time::Instant;
 
     use super::*;
+
+    const STAGGER: Duration = crate::tuning::Tuning::FIXED.dial_stagger;
 
     fn addresses(count: u8) -> Vec<SocketAddr> {
         (1..=count)

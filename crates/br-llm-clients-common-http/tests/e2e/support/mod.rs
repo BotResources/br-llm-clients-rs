@@ -8,6 +8,7 @@ pub mod pki;
 pub mod probe;
 pub mod proxy;
 pub mod raw;
+pub mod raw_h2;
 pub mod script_body;
 pub mod spy;
 

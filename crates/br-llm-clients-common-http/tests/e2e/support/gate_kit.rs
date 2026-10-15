@@ -63,3 +63,15 @@ pub fn options(max_streams: u32, handshake_delay: Duration, stall_first: usize) 
         stall_first,
     }
 }
+
+pub async fn until_accepted(server: &TlsServer, count: usize) {
+    let started = std::time::Instant::now();
+    while server.accepted() < count {
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "only {} of {count} connections were accepted",
+            server.accepted()
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+}
