@@ -9,6 +9,23 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.4.0
+
+### Changed
+
+- Breaking: the types of `br-llm-messages` in the public API (`Step`, `Usage`,
+  `StreamEvent`, `WireMessage`, `ModelId`, `ToolName`, `Text`, `StopReason`,
+  `ImageMime`) are now those of `br-llm-messages` 0.5.0 (tag
+  `br-llm-messages/v0.5.0`), its line 0.5. An importer that also uses
+  `br-llm-messages` must move to 0.5 too; the types of 0.4 and of 0.5 are not
+  the same types. These types keep the rules they had in 0.4: what 0.5
+  changes (a required id on a user input, entry ids unique in a
+  conversation, `DuplicateEntryId` in place of `DuplicateTurnId`, the
+  conversation schema `br-llm-messages/3`) lies in types this crate does not
+  use. The stored schema `br-llm-clients-core/1` and its JSON are unchanged.
+- Contract: the intent now states that the types of `br-llm-messages` it
+  names are those of its line 0.5. Nothing else in the contract changes.
+
 ## 0.3.0
 
 ### Added

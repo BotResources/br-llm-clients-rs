@@ -96,10 +96,10 @@ fn block_events(
             }
         }
         // `AssistantBlock` grows only by an intent change of br-llm-messages: a new minor,
-        // so a new 0.x line (0.5) outside the `^0.4.0` requirement. No lawful 0.4.x adds a
+        // so a new 0.x line (0.6) outside the `^0.5.0` requirement. No lawful 0.5.x adds a
         // block, so the five above are every block a `Step` holds here. A block with no
         // event mapping is never dropped from the stream.
-        _ => unreachable!("br-llm-messages 0.4 has no other assistant block"),
+        _ => unreachable!("br-llm-messages 0.5 has no other assistant block"),
     }
     events.push(StreamEvent::BlockEnd { index });
 }
