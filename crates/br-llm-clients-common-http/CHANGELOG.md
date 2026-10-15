@@ -32,12 +32,20 @@ form to decide whether a version ships.
   SETTINGS frame of the server has been read, and no request is handed to it
   before: the sends that arrive meanwhile wait for it, including the send that
   dialed it. A connection whose first SETTINGS frame has not been read within
-  `connect_timeout` after the connection is ready is closed, and the sends that
-  waited for it dial again, through the same gate and within the same limit of
-  16 connections. A server limit of zero makes the connection full, not unknown:
-  a send then uses or opens another connection. The stream limit is read from
-  the SETTINGS frames as they arrive on the wire, so a change by the server
-  (also a drop to zero) is seen at once.
+  `connect_timeout` after the connection is ready is closed. Each send that
+  waited for it, and the send that dialed it, counts that as one failed attempt
+  (no byte was written) and goes again through the same gate and within the same
+  limit of 16 connections, so a server that never sends SETTINGS ends every send
+  with `Connect` within three `connect_timeout`s, not one `connect_timeout` per
+  send and per attempt in turn. A server limit of zero makes the connection
+  full, not unknown: a send then uses or opens another connection. The stream
+  limit is read from the SETTINGS frames as they arrive on the wire, entry by
+  entry as the bytes stream through (an entry split across reads is carried, no
+  frame size is capped and memory stays bounded), so a SETTINGS frame of any
+  legal size is read exactly, a change by the server (also a drop to zero) is
+  seen at once, and when an entry repeats the last one wins. A first SETTINGS
+  frame without a stream-limit entry means no limit; an unreadable frame is
+  never read as no limit.
   Addresses of a name are tried with a fixed 250 ms pause between the starts of
   two attempts. HTTP/2 connections send keep-alive pings every 30 s, also when
   idle, and close when a ping gets no answer within 10 s. An idle connection is
@@ -47,19 +55,22 @@ form to decide whether a version ships.
   gate and the same limit of 16 connections per host as any send, only when the
   stack shows the server did not process it: a pooled connection closed before
   the request was written, an HTTP/2 stream the server refused (REFUSED_STREAM),
-  or an HTTP/2 stream that a remote GOAWAY reports as failed (the classifier
-  cannot see the last stream id, so it relies on the HTTP/2 library failing only
-  the streams above it). A GOAWAY retires the connection that carried the
-  request; a refused stream does not, the next attempt goes through the normal
-  plan and may use the same healthy connection. The authorizer is not called
-  again. A request counts as written as soon as the HTTP/2 or HTTP/1.1 library
+  or a request an HTTP/2 connection never took. A remote GOAWAY is never proof
+  that a request was not processed: the HTTP/2 library can hand a connection-level
+  GOAWAY error to a request whose stream it has already sent (a graceful shutdown
+  first announces the largest stream id, which covers every stream), so a request
+  that fails on a GOAWAY is `Interrupted` and is not sent again. A GOAWAY retires
+  the connection that carried the request; a refused stream does not, the next
+  attempt goes through the normal plan and may use the same healthy connection.
+  The authorizer is not called again. A request counts as written as soon as the HTTP/2 or HTTP/1.1 library
   has taken it, so a failure after that (a broken pipe, a reset, a close, also
   before the body was read) is never resent and is `Interrupted`. A request an
   HTTP/2 connection never took before it ended is resent, instead of waiting for
-  `headers_timeout`. A GOAWAY that asks for HTTP/1.1 is `Protocol` and is not
-  resent. Each attempt has its own connect and headers deadlines, so one send
-  makes at most three attempts and can last up to three times as long as one
-  attempt; `total_timeout` still bounds the whole send.
+  `headers_timeout`, unless the connection ended because the server broke an
+  HTTP/2 rule (see `Protocol` below). A GOAWAY that asks for HTTP/1.1 is
+  `Protocol` and is not resent. Each attempt has its own connect and headers
+  deadlines, so one send makes at most three attempts and can last up to three
+  times as long as one attempt; `total_timeout` still bounds the whole send.
 - Limits. A response head larger than 64 KiB, or with more than 1024 header
   lines, is refused with `SendError::Protocol`; on HTTP/2 the size is counted as
   RFC 9113 counts a header list, and exactly 64 KiB is accepted.
@@ -92,6 +103,14 @@ form to decide whether a version ships.
   `#[non_exhaustive]`, every case carries a text). `Connect` and `Tls` come from
   the stage of the connection that failed. A TLS failure after the handshake (a
   corrupt record, an alert) is `Interrupted` when a byte may have been written;
+  a server whose HTTP/2 frames break an HTTP/2 rule once the connection is
+  established (a SETTINGS value out of range, a SETTINGS frame of a wrong length
+  or on a stream, an oversize frame, a header block that cannot be decoded, a
+  SETTINGS ACK before any SETTINGS) is `Protocol` for the request that carried
+  it, for every send that waited for the first SETTINGS of that connection, and
+  for a request that the connection never took; one function classifies it
+  whatever the moment the request meets it, and `Connect` stays for a connection
+  that was never established or never carried an HTTP/2 SETTINGS frame;
   over TLS a body read until close ends cleanly only with a close_notify. `Connect` also covers a connection
   that could not carry the request when no byte of it had been written;
   `Interrupted` means at least one byte may have reached the server.
