@@ -55,6 +55,16 @@ pub fn settings_frame(max_concurrent_streams: Option<u32>) -> Vec<u8> {
     frame(SETTINGS, 0, 0, &payload)
 }
 
+pub fn settings_frame_padded(filler: usize, limit: u32) -> Vec<u8> {
+    let mut payload = Vec::new();
+    for _ in 0..filler {
+        payload.extend_from_slice(&[0x77, 0x77, 0, 0, 0, 9]);
+    }
+    payload.extend_from_slice(&MAX_CONCURRENT_STREAMS.to_be_bytes());
+    payload.extend_from_slice(&limit.to_be_bytes());
+    frame(SETTINGS, 0, 0, &payload)
+}
+
 pub fn goaway_frame(last_stream: u32, code: u32, debug: &[u8]) -> Vec<u8> {
     let mut payload = last_stream.to_be_bytes().to_vec();
     payload.extend_from_slice(&code.to_be_bytes());

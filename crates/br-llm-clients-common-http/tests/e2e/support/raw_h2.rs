@@ -11,7 +11,7 @@ use tokio::task::JoinSet;
 
 use super::frames::{
     ACK, DATA, END_STREAM, HEADERS, PING, SETTINGS, empty_response, frame, read_frame,
-    read_preface, settings_frame,
+    read_preface, settings_frame, settings_frame_padded,
 };
 use super::pki::Pki;
 
@@ -24,6 +24,9 @@ pub enum Announce {
     Nothing,
     Unlimited,
     Limit(u32),
+    Padded { filler: usize, limit: u32 },
+    Raw(&'static [u8]),
+    RawAfter(Duration, &'static [u8]),
 }
 
 #[derive(Clone, Copy)]
@@ -62,7 +65,15 @@ pub struct RawH2 {
     pub addr: SocketAddr,
     accepted: Arc<AtomicUsize>,
     streams: Arc<AtomicUsize>,
+    closed: Arc<AtomicUsize>,
+    peak: Arc<AtomicUsize>,
     task: tokio::task::JoinHandle<()>,
+}
+
+struct Counters {
+    opened: Arc<AtomicUsize>,
+    closed: Arc<AtomicUsize>,
+    peak: Arc<AtomicUsize>,
 }
 
 impl RawH2 {
@@ -71,17 +82,25 @@ impl RawH2 {
         let addr = listener.local_addr().expect("addr");
         let accepted = Arc::new(AtomicUsize::new(0));
         let streams = Arc::new(AtomicUsize::new(0));
+        let closed = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
         let acceptor = Pki::trusted().acceptor(&[b"h2"]);
         let (count, opened) = (Arc::clone(&accepted), Arc::clone(&streams));
+        let (ended, tallest) = (Arc::clone(&closed), Arc::clone(&peak));
         let task = tokio::spawn(async move {
             let mut connections = JoinSet::new();
             while let Ok((tcp, _)) = listener.accept().await {
                 let index = count.fetch_add(1, Ordering::SeqCst);
-                let (acceptor, opened) = (acceptor.clone(), Arc::clone(&opened));
+                let acceptor = acceptor.clone();
+                let counters = Counters {
+                    opened: Arc::clone(&opened),
+                    closed: Arc::clone(&ended),
+                    peak: Arc::clone(&tallest),
+                };
                 let policy = policy(index);
                 connections.spawn(async move {
                     if let Ok(tls) = acceptor.accept(tcp).await {
-                        serve(tls, policy, opened).await;
+                        serve(tls, policy, counters).await;
                     }
                 });
             }
@@ -90,8 +109,18 @@ impl RawH2 {
             addr,
             accepted,
             streams,
+            closed,
+            peak,
             task,
         }
+    }
+
+    pub fn closed(&self) -> usize {
+        self.closed.load(Ordering::SeqCst)
+    }
+
+    pub fn peak_streams_on_one_connection(&self) -> usize {
+        self.peak.load(Ordering::SeqCst)
     }
 
     pub fn accepted(&self) -> usize {
@@ -113,7 +142,7 @@ impl Drop for RawH2 {
     }
 }
 
-async fn serve<S>(tls: S, policy: Policy, opened: Arc<AtomicUsize>)
+async fn serve<S>(tls: S, policy: Policy, counters: Counters)
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + 'static,
 {
@@ -130,11 +159,28 @@ where
         Announce::Nothing => {}
         Announce::Unlimited => drop(out.send(settings_frame(None))),
         Announce::Limit(limit) => drop(out.send(settings_frame(Some(limit)))),
+        Announce::Padded { filler, limit } => {
+            drop(out.send(settings_frame_padded(filler, limit)));
+        }
+        Announce::Raw(bytes) => drop(out.send(bytes.to_vec())),
+        Announce::RawAfter(delay, bytes) => {
+            let out = out.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(delay).await;
+                drop(out.send(bytes.to_vec()));
+            });
+        }
     }
     if !read_preface(&mut reader).await {
         return;
     }
     let mut seen = 0usize;
+    let live = Arc::new(AtomicUsize::new(0));
+    let Counters {
+        opened,
+        closed,
+        peak,
+    } = counters;
     while let Some(received) = read_frame(&mut reader).await {
         match received.kind {
             SETTINGS if received.flags & ACK == 0 => drop(out.send(frame(SETTINGS, ACK, 0, &[]))),
@@ -156,6 +202,8 @@ where
         if received.kind == HEADERS {
             seen += 1;
             opened.fetch_add(1, Ordering::SeqCst);
+            let now = live.fetch_add(1, Ordering::SeqCst).saturating_add(1);
+            peak.fetch_max(now, Ordering::SeqCst);
             if let Some((limit, after)) = policy.lower_to_after
                 && seen == after
             {
@@ -163,26 +211,37 @@ where
             }
         }
         if matches!(received.kind, HEADERS | DATA) && received.flags & END_STREAM != 0 {
-            answer(&out, policy.answer, received.stream);
+            answer(&out, policy.answer, received.stream, &live);
         }
     }
+    closed.fetch_add(1, Ordering::SeqCst);
 }
 
-fn answer(out: &mpsc::UnboundedSender<Vec<u8>>, answer: Answer, stream: u32) {
+fn answer(
+    out: &mpsc::UnboundedSender<Vec<u8>>,
+    answer: Answer,
+    stream: u32,
+    live: &Arc<AtomicUsize>,
+) {
     match answer {
         Answer::Never => {}
-        Answer::Refuse => refuse(out, stream),
+        Answer::Refuse => {
+            live.fetch_sub(1, Ordering::SeqCst);
+            refuse(out, stream);
+        }
         Answer::RefuseAfter(delay) => {
-            let out = out.clone();
+            let (out, live) = (out.clone(), Arc::clone(live));
             tokio::spawn(async move {
                 tokio::time::sleep(delay).await;
+                live.fetch_sub(1, Ordering::SeqCst);
                 refuse(&out, stream);
             });
         }
         Answer::After(delay) => {
-            let out = out.clone();
+            let (out, live) = (out.clone(), Arc::clone(live));
             tokio::spawn(async move {
                 tokio::time::sleep(delay).await;
+                live.fetch_sub(1, Ordering::SeqCst);
                 drop(out.send(empty_response(stream)));
             });
         }
