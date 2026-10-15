@@ -9,7 +9,7 @@ use crate::h2state::H2State;
 use crate::idle::IdleClock;
 use crate::pool::{HostHandle, Pool, PoolKey};
 
-fn bare_state() -> Arc<H2State> {
+pub(crate) fn bare_state() -> Arc<H2State> {
     let pool = Arc::new(Pool::new(Duration::from_secs(30)));
     let key = PoolKey::of(&Endpoint::https("https://h.example/").expect("endpoint"));
     let host = HostHandle {
@@ -21,7 +21,7 @@ fn bare_state() -> Arc<H2State> {
     H2State::new(idle, host)
 }
 
-fn state_with_limit(limit: u32) -> Arc<H2State> {
+pub(crate) fn state_with_limit(limit: u32) -> Arc<H2State> {
     let state = bare_state();
     state.apply_settings(Some(limit));
     state
@@ -120,4 +120,31 @@ fn given_a_later_settings_without_a_limit_then_the_previous_limit_stays() {
     let first = state.try_acquire();
     assert!(first.is_some());
     assert!(state.try_acquire().is_none());
+}
+
+#[test]
+fn given_an_idle_expiry_already_claimed_then_the_connection_gives_no_permit() {
+    let pool = Arc::new(Pool::new(Duration::from_secs(30)));
+    let key = PoolKey::of(&Endpoint::https("https://h.example/").expect("endpoint"));
+    let host = HostHandle {
+        signal: Arc::new(watch::channel(0u64).0),
+        pool: Arc::downgrade(&pool),
+        key,
+    };
+    let (idle, mut idle_watch) = IdleClock::new(Duration::from_secs(30));
+    let state = H2State::new(idle, host);
+    state.apply_settings(Some(10));
+    state.arm_idle();
+    let armed = idle_watch.armed_until().expect("armed");
+    assert!(idle_watch.expire(armed));
+    assert!(state.try_acquire().is_none());
+    assert!(state.is_idle());
+}
+
+#[test]
+fn given_a_connection_marked_silent_then_it_is_retired_in_the_same_step() {
+    let state = bare_state();
+    state.mark_silent();
+    assert!(state.is_silent());
+    assert!(state.is_retired());
 }

@@ -19,13 +19,14 @@ use crate::prepare::Prepared;
 use crate::redact::Redactor;
 use crate::response::Response;
 use crate::send_error::SendError;
+use crate::server_fault::protocol_failure;
 use crate::texts::hyper_text;
 use crate::transport::Conn;
-use crate::unsent::{Unsent, never_taken, retires_connection, send_h1, send_h2};
+use crate::unsent::{Unsent, must_retire, never_taken, send_h1, send_h2};
 
 enum Attempt {
     Done(Box<Response>),
-    Unprocessed { written: bool },
+    Unprocessed { taken: bool },
     Failed(SendError),
 }
 
@@ -36,22 +37,19 @@ pub(crate) async fn exchange(
     total_deadline: Option<Instant>,
 ) -> Result<Response, SendError> {
     let key = PoolKey::of(&prepared.endpoint);
-    let mut last = false;
+    let mut any_taken = false;
     for _ in 0..MAX_ATTEMPTS {
         let acquired = match acquire(shared, &prepared.endpoint, &key, redactor).await? {
             Acquisition::Ready(acquired) => acquired,
-            Acquisition::Spent => {
-                last = false;
-                continue;
-            }
+            Acquisition::Spent => continue,
         };
         match attempt(shared, prepared, &key, redactor, total_deadline, acquired).await {
             Attempt::Done(response) => return Ok(*response),
-            Attempt::Unprocessed { written } => last = written,
+            Attempt::Unprocessed { taken } => any_taken |= taken,
             Attempt::Failed(error) => return Err(error),
         }
     }
-    Err(if last {
+    Err(if any_taken {
         SendError::Interrupted {
             text: redactor.finish("the server did not process the request on any of the attempts"),
         }
@@ -65,7 +63,7 @@ pub(crate) async fn exchange(
 fn build_request(
     conn: &Conn,
     prepared: &Prepared,
-    written: &Arc<AtomicBool>,
+    taken: &Arc<AtomicBool>,
 ) -> Result<http::Request<Payload>, SendError> {
     let h2 = matches!(conn, Conn::H2 { .. });
     let uri = if h2 {
@@ -76,7 +74,7 @@ fn build_request(
     .map_err(|_| SendError::Protocol {
         text: "the endpoint cannot be sent".to_owned(),
     })?;
-    let payload = Payload::new(prepared.body.clone(), Arc::clone(written));
+    let payload = Payload::new(prepared.body.clone(), Arc::clone(taken));
     let mut request = http::Request::new(payload);
     *request.method_mut() = http::Method::POST;
     *request.uri_mut() = uri;
@@ -101,8 +99,8 @@ async fn attempt(
         conn,
         headers_deadline,
     } = acquired;
-    let written = Arc::new(AtomicBool::new(false));
-    let request = match build_request(&conn, prepared, &written) {
+    let taken = Arc::new(AtomicBool::new(false));
+    let request = match build_request(&conn, prepared, &taken) {
         Ok(request) => request,
         Err(error) => return Attempt::Failed(error),
     };
@@ -110,7 +108,7 @@ async fn attempt(
     let h2 = matches!(conn, Conn::H2 { .. });
     let sent = match conn {
         Conn::H1(mut conn) => {
-            let outcome = timeout_at(headers_deadline, send_h1(&mut conn, request, &written)).await;
+            let outcome = timeout_at(headers_deadline, send_h1(&mut conn, request, &taken)).await;
             outcome.map(|result| {
                 result.map(|response| {
                     let lease = Lease::Exclusive {
@@ -127,10 +125,10 @@ async fn attempt(
             let outcome = timeout_at(headers_deadline, async {
                 tokio::select! {
                     biased;
-                    result = send_h2(&mut sender, &permit, request, &written) => result,
-                    () = never_taken(&mut gone, &written) => {
+                    result = send_h2(&mut sender, &permit, request, &taken) => result,
+                    () = never_taken(&mut gone, &taken) => {
                         Err(Unsent::Unprocessed {
-                            written: false,
+                            taken: false,
                             retire: true,
                         })
                     }
@@ -144,7 +142,7 @@ async fn attempt(
                         Some(text) => Unsent::Violation(text),
                         None => unsent,
                     };
-                    if retires_connection(&unsent, &written) {
+                    if must_retire(&unsent) {
                         permit.retire_connection();
                     }
                     Ok(Err(unsent))
@@ -157,27 +155,30 @@ async fn attempt(
         Err(_) => Attempt::Failed(SendError::HeadersTimeout {
             text: redactor.finish(&format!("no response headers within {limit:?}")),
         }),
-        Ok(Err(Unsent::Unprocessed { written, .. })) => Attempt::Unprocessed { written },
-        Ok(Err(Unsent::Violation(text))) => Attempt::Failed(SendError::Protocol {
-            text: redactor.finish(&text),
-        }),
-        Ok(Err(Unsent::Failed(error, written))) => match classify(&error, written, h2) {
-            Cause::Unprocessed { written, .. } => Attempt::Unprocessed { written },
+        Ok(Err(Unsent::Unprocessed { taken, .. })) => Attempt::Unprocessed { taken },
+        Ok(Err(Unsent::Violation(text))) => {
+            Attempt::Failed(protocol_failure(redactor, &prepared.endpoint, &text))
+        }
+        Ok(Err(Unsent::Failed(error, taken))) => match classify(&error, taken, h2) {
+            Cause::Unprocessed { taken, .. } => Attempt::Unprocessed { taken },
             Cause::Interrupted { .. } => Attempt::Failed(SendError::Interrupted {
                 text: redactor.finish(&hyper_text(&error)),
             }),
-            Cause::Protocol => Attempt::Failed(SendError::Protocol {
-                text: redactor.finish(&hyper_text(&error)),
-            }),
+            Cause::Protocol => Attempt::Failed(protocol_failure(
+                redactor,
+                &prepared.endpoint,
+                &hyper_text(&error),
+            )),
         },
         Ok(Ok((response, lease))) => {
-            into_response(shared, response, lease, redactor, total_deadline)
+            into_response(shared, prepared, response, lease, redactor, total_deadline)
         }
     }
 }
 
 fn into_response(
     shared: &Arc<Shared>,
+    prepared: &Prepared,
     response: http::Response<Incoming>,
     lease: Lease,
     redactor: &Arc<Redactor>,
@@ -185,9 +186,11 @@ fn into_response(
 ) -> Attempt {
     let (parts, incoming) = response.into_parts();
     if parts.headers.len() > MAX_HEADER_LINES {
-        return Attempt::Failed(SendError::Protocol {
-            text: redactor.finish("the response has more than 1024 header lines"),
-        });
+        return Attempt::Failed(protocol_failure(
+            redactor,
+            &prepared.endpoint,
+            "the response has more than 1024 header lines",
+        ));
     }
     let unsupported_encoding = encoding::unsupported(&parts.headers);
     let body = BodyStream::new(BodyParts {

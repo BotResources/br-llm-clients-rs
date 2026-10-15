@@ -144,3 +144,18 @@ async fn given_a_server_that_refuses_each_attempt_late_then_every_attempt_has_it
     assert!(elapsed > headers_timeout, "{elapsed:?}");
     assert!(elapsed < headers_timeout * 3, "{elapsed:?}");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn given_a_connection_with_a_limit_of_zero_then_the_client_does_not_close_it() {
+    let closed = Policy {
+        answer: Answer::Refuse,
+        ..Policy::announcing(Announce::Limit(0))
+    };
+    let server = RawH2::start(first_connection_then_healthy(closed)).await;
+    let client = trusting(Duration::from_secs(5), Duration::from_secs(10));
+    let outcomes = burst(&client, &server.endpoint(), 3).await;
+    assert!(outcomes.iter().all(Result::is_ok), "{outcomes:?}");
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    assert_eq!(server.accepted(), 2);
+    assert_eq!(server.closed(), 0);
+}

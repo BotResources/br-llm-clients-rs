@@ -12,6 +12,7 @@ use crate::h2state::H2State;
 use crate::pool::{Plan, PoolKey, Wait, WaitKind};
 use crate::redact::Redactor;
 use crate::send_error::SendError;
+use crate::server_fault::protocol_failure;
 use crate::transport::{Conn, LiveGuard};
 
 pub(crate) const READY_GRACE: Duration = Duration::from_millis(250);
@@ -71,13 +72,6 @@ impl Waiting<'_> {
         }
     }
 
-    fn protocol(&self, text: &str) -> SendError {
-        let endpoint = self.endpoint;
-        SendError::Protocol {
-            text: self.redactor.finish(&format!("{endpoint}: {text}")),
-        }
-    }
-
     fn stream_timeout(&self) -> SendError {
         let limit = self.shared.config.headers_timeout;
         SendError::HeadersTimeout {
@@ -110,7 +104,7 @@ pub(crate) async fn acquire(
                 return Ok(Acquisition::Spent);
             }
             if let Some(text) = awaited.violation() {
-                return Err(state.protocol(&text));
+                return Err(protocol_failure(redactor, endpoint, &text));
             }
         }
         let plan = shared.pool.plan(key, waited_from);
@@ -128,8 +122,8 @@ pub(crate) async fn acquire(
         match plan {
             Plan::Reuse(conn) => return Ok(Acquisition::Ready(state.ready(conn))),
             Plan::TryIdle(mut idle) => {
-                if matches!(timeout(READY_GRACE, idle.sender.ready()).await, Ok(Ok(()))) {
-                    idle.idle.disarm();
+                let ready = matches!(timeout(READY_GRACE, idle.sender.ready()).await, Ok(Ok(())));
+                if ready && idle.idle.disarm() {
                     return Ok(Acquisition::Ready(state.ready(Conn::H1(idle))));
                 }
             }

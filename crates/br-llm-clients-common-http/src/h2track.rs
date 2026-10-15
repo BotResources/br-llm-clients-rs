@@ -13,8 +13,8 @@ struct Gone(Arc<H2State>);
 
 impl Drop for Gone {
     fn drop(&mut self) {
-        self.0.mark_gone();
         self.0.retire();
+        self.0.mark_gone();
         self.0.wake_host();
     }
 }
@@ -32,6 +32,9 @@ where
             {
                 state.record_violation(hyper_text(&error));
             }
+            if state.awaiting_settings() && state.violation().is_none() {
+                state.mark_silent();
+            }
         }
         () = settings_missing(&state, settings_wait) => {
             state.mark_silent();
@@ -45,3 +48,7 @@ async fn settings_missing(state: &H2State, wait: Duration) {
         pending::<()>().await;
     }
 }
+
+#[cfg(test)]
+#[path = "h2track_tests.rs"]
+mod tests;

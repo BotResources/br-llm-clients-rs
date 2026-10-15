@@ -256,6 +256,7 @@ async fn given_occasional_refusals_then_the_healthy_connection_is_kept_and_nothi
         probe.accepted.load(Ordering::SeqCst)
     );
     let mut processed = probe.processed();
+    assert_eq!(processed.len(), 400, "a request was processed twice");
     processed.sort();
     processed.dedup();
     assert_eq!(processed.len(), 400);

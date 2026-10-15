@@ -102,10 +102,35 @@ fn given_a_limit_repeated_in_one_frame_then_the_last_one_wins() {
 }
 
 #[test]
-fn given_a_payload_that_is_not_a_multiple_of_six_then_only_whole_entries_count() {
-    let mut payload = limit(9);
-    payload.extend_from_slice(&[0, 3, 0, 0]);
-    assert_eq!(watched(&[&frame(4, 0, &payload)]), [Some(9)]);
+fn given_a_payload_that_is_not_a_multiple_of_six_then_it_is_not_read_as_a_settings_frame() {
+    for extra in 1..ENTRY {
+        let mut payload = limit(9);
+        payload.extend_from_slice(&vec![0u8; extra]);
+        assert!(watched(&[&frame(4, 0, &payload)]).is_empty(), "{extra}");
+        let bytes = frame(4, 0, &payload);
+        let one_by_one: Vec<&[u8]> = bytes.chunks(1).collect();
+        assert!(watched(&one_by_one).is_empty(), "{extra}");
+    }
+    assert!(watched(&[&frame(4, 0, &[0, 3, 0])]).is_empty());
+}
+
+#[test]
+fn given_a_malformed_settings_frame_between_two_good_ones_then_only_the_good_ones_are_read() {
+    let mut bytes = frame(4, 0, &limit(1));
+    bytes.extend_from_slice(&frame(4, 0, &[0, 3, 0, 0, 0, 5, 7]));
+    bytes.extend_from_slice(&frame(4, 0, &limit(3)));
+    assert_eq!(watched(&[&bytes]), [Some(1), Some(3)]);
+}
+
+#[test]
+fn given_a_frame_whose_length_needs_all_three_bytes_then_the_next_settings_frame_is_still_read() {
+    for length in [65_536usize, 70_000, 0xFF_FFFF] {
+        let mut bytes = frame(0, 0, &vec![0u8; length]);
+        bytes.extend_from_slice(&frame(4, 0, &limit(3)));
+        assert_eq!(watched(&[&bytes]), [Some(3)], "{length} bytes");
+        let chunks: Vec<&[u8]> = bytes.chunks(4093).collect();
+        assert_eq!(watched(&chunks), [Some(3)], "{length} bytes chunked");
+    }
 }
 
 #[test]
@@ -180,7 +205,7 @@ fn reference(bytes: &[u8]) -> Vec<Option<u32>> {
         let Some(payload) = bytes.get(at + FRAME_HEADER..at + FRAME_HEADER + length) else {
             break;
         };
-        if head[3] == SETTINGS_FRAME && head[4] & ACK_FLAG == 0 {
+        if head[3] == SETTINGS_FRAME && head[4] & ACK_FLAG == 0 && length % ENTRY == 0 {
             seen.push(
                 payload
                     .as_chunks::<ENTRY>()

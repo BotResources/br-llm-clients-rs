@@ -74,3 +74,55 @@ async fn given_a_large_first_settings_frame_without_a_limit_then_the_connection_
     assert!(peak >= 2, "{peak}");
     assert_eq!(accepted, 1);
 }
+
+fn settings_of(payload_len: usize, limit_entry_last: bool) -> &'static [u8] {
+    let mut payload = vec![0x77, 0x77, 0, 0, 0, 9]
+        .into_iter()
+        .cycle()
+        .take(payload_len)
+        .collect::<Vec<u8>>();
+    if limit_entry_last {
+        let at = payload_len - payload_len % 6 - 6;
+        payload[at..at + 6].copy_from_slice(&[0, 3, 0, 0, 0, 1]);
+    }
+    Box::leak(frame(SETTINGS, 0, 0, &payload).into_boxed_slice())
+}
+
+async fn outcomes_with(announce: Announce) -> Vec<Result<(), SendError>> {
+    let server = RawH2::start(move |_| Policy {
+        answer: Answer::Never,
+        ..Policy::announcing(announce)
+    })
+    .await;
+    let client = trusting(Duration::from_secs(5), Duration::from_secs(10));
+    let started = std::time::Instant::now();
+    let outcomes = tokio::time::timeout(Duration::from_secs(20), burst(&client, &server, 6))
+        .await
+        .expect("the sends hung");
+    assert!(started.elapsed() < Duration::from_secs(6));
+    outcomes
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn given_a_settings_frame_above_the_default_maximum_frame_size_then_every_send_fails_with_protocol_in_bounded_time()
+ {
+    let outcomes = outcomes_with(Announce::Raw(settings_of(16385, false))).await;
+    assert!(
+        outcomes
+            .iter()
+            .all(|outcome| matches!(outcome, Err(SendError::Protocol { .. }))),
+        "{outcomes:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn given_a_settings_frame_of_16384_bytes_that_is_not_a_whole_number_of_entries_then_every_send_fails_with_protocol_in_bounded_time()
+ {
+    let outcomes = outcomes_with(Announce::Raw(settings_of(16384, true))).await;
+    assert!(
+        outcomes
+            .iter()
+            .all(|outcome| matches!(outcome, Err(SendError::Protocol { .. }))),
+        "{outcomes:?}"
+    );
+}

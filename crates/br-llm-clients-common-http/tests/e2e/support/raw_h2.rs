@@ -30,11 +30,18 @@ pub enum Announce {
 }
 
 #[derive(Clone, Copy)]
+pub enum Ending {
+    Eof,
+    Reset,
+}
+
+#[derive(Clone, Copy)]
 pub enum Answer {
     After(Duration),
     Refuse,
     RefuseAfter(Duration),
     Never,
+    Frames(fn(u32) -> Vec<u8>),
 }
 
 #[derive(Clone, Copy)]
@@ -42,6 +49,7 @@ pub struct Policy {
     pub announce: Announce,
     pub answer: Answer,
     pub lower_to_after: Option<(u32, usize)>,
+    pub ends_after: Option<(Duration, Ending)>,
 }
 
 impl Policy {
@@ -50,6 +58,7 @@ impl Policy {
             announce: Announce::Limit(100),
             answer: Answer::After(Duration::ZERO),
             lower_to_after: None,
+            ends_after: None,
         }
     }
 
@@ -100,6 +109,9 @@ impl RawH2 {
                 let policy = policy(index);
                 connections.spawn(async move {
                     if let Ok(tls) = acceptor.accept(tcp).await {
+                        if matches!(policy.ends_after, Some((_, Ending::Reset))) {
+                            reset_on_close(tls.get_ref().0);
+                        }
                         serve(tls, policy, counters).await;
                     }
                 });
@@ -142,7 +154,30 @@ impl Drop for RawH2 {
     }
 }
 
+#[allow(deprecated)] // SO_LINGER 0 is the only portable way to make the kernel send a reset
+fn reset_on_close(tcp: &tokio::net::TcpStream) {
+    let _ = tcp.set_linger(Some(Duration::ZERO));
+}
+
 async fn serve<S>(tls: S, policy: Policy, counters: Counters)
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + 'static,
+{
+    let Counters {
+        opened,
+        closed,
+        peak,
+    } = counters;
+    match policy.ends_after {
+        Some((after, _)) => {
+            let _ = tokio::time::timeout(after, session(tls, policy, opened, peak)).await;
+        }
+        None => session(tls, policy, opened, peak).await,
+    }
+    closed.fetch_add(1, Ordering::SeqCst);
+}
+
+async fn session<S>(tls: S, policy: Policy, opened: Arc<AtomicUsize>, peak: Arc<AtomicUsize>)
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + 'static,
 {
@@ -176,11 +211,6 @@ where
     }
     let mut seen = 0usize;
     let live = Arc::new(AtomicUsize::new(0));
-    let Counters {
-        opened,
-        closed,
-        peak,
-    } = counters;
     while let Some(received) = read_frame(&mut reader).await {
         match received.kind {
             SETTINGS if received.flags & ACK == 0 => drop(out.send(frame(SETTINGS, ACK, 0, &[]))),
@@ -214,7 +244,6 @@ where
             answer(&out, policy.answer, received.stream, &live);
         }
     }
-    closed.fetch_add(1, Ordering::SeqCst);
 }
 
 fn answer(
@@ -225,6 +254,10 @@ fn answer(
 ) {
     match answer {
         Answer::Never => {}
+        Answer::Frames(build) => {
+            live.fetch_sub(1, Ordering::SeqCst);
+            drop(out.send(build(stream)));
+        }
         Answer::Refuse => {
             live.fetch_sub(1, Ordering::SeqCst);
             refuse(out, stream);

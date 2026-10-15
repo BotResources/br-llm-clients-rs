@@ -9,19 +9,19 @@ use hyper::body::{Body, Frame, SizeHint};
 
 pub(crate) struct Payload {
     data: Option<Bytes>,
-    written: Arc<AtomicBool>,
+    taken: Arc<AtomicBool>,
 }
 
 impl Payload {
-    pub(crate) fn new(bytes: Bytes, written: Arc<AtomicBool>) -> Self {
+    pub(crate) fn new(bytes: Bytes, taken: Arc<AtomicBool>) -> Self {
         Self {
             data: (!bytes.is_empty()).then_some(bytes),
-            written,
+            taken,
         }
     }
 
     fn mark(&self) {
-        self.written.store(true, Ordering::SeqCst);
+        self.taken.store(true, Ordering::SeqCst);
     }
 }
 

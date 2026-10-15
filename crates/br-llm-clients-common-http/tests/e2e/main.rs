@@ -1,5 +1,7 @@
+mod attempts_end;
 mod authorizer;
 mod authorizer_failures;
+mod body_length;
 mod canary;
 mod cold_bursts;
 mod collect;
@@ -16,6 +18,7 @@ mod herd;
 
 mod idle_reads;
 mod limits;
+mod protocol_texts;
 mod resend;
 mod response;
 mod reuse;
@@ -23,6 +26,7 @@ mod secrets;
 mod secrets_body;
 mod send_sync;
 mod settings;
+mod settings_ended;
 mod settings_silent;
 mod settings_size;
 mod stream;

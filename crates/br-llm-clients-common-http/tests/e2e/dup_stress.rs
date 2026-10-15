@@ -64,7 +64,8 @@ async fn given_a_goaway_that_keeps_the_stream_and_closes_then_no_request_arrives
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn given_graceful_shutdowns_after_few_requests_under_load_then_no_request_arrives_twice() {
+async fn given_graceful_shutdowns_after_few_requests_under_load_then_no_request_arrives_twice_smoke()
+ {
     for after in [2usize, 10, 40] {
         let (sent, duplicated) = rounds(Script::Graceful(after), 60, 64).await;
         assert_eq!(

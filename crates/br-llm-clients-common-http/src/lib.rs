@@ -49,6 +49,7 @@ mod response;
 mod retry_after;
 mod secret;
 mod send_error;
+mod server_fault;
 mod settings_watch;
 mod spy_io;
 mod texts;
@@ -98,6 +99,10 @@ mod request_tests;
 mod retry_after_tests;
 #[cfg(test)]
 mod secret_tests;
+#[cfg(test)]
+mod server_fault_tests;
+#[cfg(test)]
+mod spy_io_tests;
 
 #[cfg(test)]
 extern crate self as br_llm_clients_common_http;
@@ -105,6 +110,8 @@ extern crate self as br_llm_clients_common_http;
 mod cap_tests;
 #[cfg(test)]
 mod classify_tests;
+#[cfg(test)]
+mod driver_tests;
 #[cfg(test)]
 mod exchange_tests;
 #[cfg(test)]

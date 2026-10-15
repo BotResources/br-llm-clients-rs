@@ -11,7 +11,7 @@ use tokio::time::{Instant, sleep, sleep_until};
 
 use crate::body_error::BodyError;
 use crate::body_state::{Active, State};
-use crate::classify::{Cause, classify};
+use crate::classify::{Cause, classify, is_stream_reset_for_length};
 use crate::lease::Lease;
 use crate::redact::Redactor;
 use crate::texts::hyper_text;
@@ -112,11 +112,17 @@ impl BodyStream {
                 },
                 Poll::Ready(Some(Err(error))) => {
                     let h2 = matches!(active.lease, Lease::Shared(_));
-                    let failure = body_failure(&error, &active.redactor, h2);
+                    let short = declared_bytes_missing(&active.incoming);
+                    let failure = body_failure(&error, &active.redactor, h2, short);
                     self.state = State::Done;
                     return Poll::Ready(Err(failure));
                 }
                 Poll::Ready(None) => {
+                    if declared_bytes_missing(&active.incoming) {
+                        let failure = ended_short(&active.redactor);
+                        self.state = State::Done;
+                        return Poll::Ready(Err(failure));
+                    }
                     if let State::Active(done) = std::mem::replace(&mut self.state, State::Done) {
                         done.lease.finish_clean();
                     }
@@ -147,9 +153,22 @@ fn poll_deadline(timer: &mut Option<Pin<Box<tokio::time::Sleep>>>, cx: &mut Cont
         .is_some_and(|sleep| sleep.as_mut().poll(cx).is_ready())
 }
 
-fn body_failure(error: &hyper::Error, redactor: &Redactor, h2: bool) -> BodyError {
+fn declared_bytes_missing(incoming: &Incoming) -> bool {
+    incoming.size_hint().exact().is_some_and(|left| left > 0)
+}
+
+fn ended_short(redactor: &Redactor) -> BodyError {
+    BodyError::Interrupted {
+        text: redactor.finish("the response body ended before its declared length"),
+    }
+}
+
+fn body_failure(error: &hyper::Error, redactor: &Redactor, h2: bool, short: bool) -> BodyError {
     let text = redactor.finish(&hyper_text(error));
     match classify(error, true, h2) {
+        Cause::Protocol if short && is_stream_reset_for_length(error) => {
+            BodyError::Interrupted { text }
+        }
         Cause::Protocol => BodyError::Protocol { text },
         Cause::Interrupted { .. } | Cause::Unprocessed { .. } => BodyError::Interrupted { text },
     }

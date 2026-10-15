@@ -11,7 +11,7 @@ use crate::payload::Payload;
 use crate::transport::{H1Conn, H2Sender};
 
 pub(crate) enum Unsent {
-    Unprocessed { written: bool, retire: bool },
+    Unprocessed { taken: bool, retire: bool },
     Failed(hyper::Error, bool),
     Violation(String),
 }
@@ -19,62 +19,60 @@ pub(crate) enum Unsent {
 pub(crate) async fn send_h1(
     conn: &mut H1Conn,
     request: http::Request<Payload>,
-    written: &Arc<AtomicBool>,
+    taken: &Arc<AtomicBool>,
 ) -> Result<http::Response<Incoming>, Unsent> {
     if conn.sender.ready().await.is_err() {
         return Err(Unsent::Unprocessed {
-            written: false,
+            taken: false,
             retire: true,
         });
     }
     conn.sender
         .try_send_request(request)
         .await
-        .map_err(|error| into_unsent(error, written))
+        .map_err(|error| into_unsent(error, taken))
 }
 
 pub(crate) async fn send_h2(
     sender: &mut H2Sender,
     permit: &Permit,
     request: http::Request<Payload>,
-    written: &Arc<AtomicBool>,
+    taken: &Arc<AtomicBool>,
 ) -> Result<http::Response<Incoming>, Unsent> {
     if permit.announced_limit().await == 0 {
         return Err(Unsent::Unprocessed {
-            written: false,
+            taken: false,
             retire: false,
         });
     }
     sender
         .try_send_request(request)
         .await
-        .map_err(|error| into_unsent(error, written))
+        .map_err(|error| into_unsent(error, taken))
 }
 
-pub(crate) async fn never_taken(gone: &mut watch::Receiver<bool>, written: &Arc<AtomicBool>) {
-    if gone.wait_for(|ended| *ended).await.is_ok() && !written.load(Ordering::SeqCst) {
+pub(crate) async fn never_taken(gone: &mut watch::Receiver<bool>, taken: &Arc<AtomicBool>) {
+    if gone.wait_for(|ended| *ended).await.is_ok() && !taken.load(Ordering::SeqCst) {
         return;
     }
     std::future::pending::<()>().await;
 }
 
-pub(crate) fn retires_connection(unsent: &Unsent, written: &Arc<AtomicBool>) -> bool {
+pub(crate) fn must_retire(unsent: &Unsent) -> bool {
     match unsent {
         Unsent::Unprocessed { retire, .. } => *retire,
-        Unsent::Failed(error, _) => {
-            classify(error, written.load(Ordering::SeqCst), true).retires_connection()
-        }
+        Unsent::Failed(error, taken) => classify(error, *taken, true).retires_connection(),
         Unsent::Violation(_) => true,
     }
 }
 
-fn into_unsent(error: TrySendError<http::Request<Payload>>, written: &Arc<AtomicBool>) -> Unsent {
+fn into_unsent(error: TrySendError<http::Request<Payload>>, taken: &Arc<AtomicBool>) -> Unsent {
     if error.message().is_some() {
         Unsent::Unprocessed {
-            written: false,
+            taken: false,
             retire: true,
         }
     } else {
-        Unsent::Failed(error.into_error(), written.load(Ordering::SeqCst))
+        Unsent::Failed(error.into_error(), taken.load(Ordering::SeqCst))
     }
 }

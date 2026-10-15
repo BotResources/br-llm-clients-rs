@@ -72,6 +72,21 @@ pub fn goaway_frame(last_stream: u32, code: u32, debug: &[u8]) -> Vec<u8> {
     frame(GOAWAY, 0, 0, &payload)
 }
 
+pub fn response_head(stream: u32, content_length: Option<&str>, end_stream: bool) -> Vec<u8> {
+    let mut block = vec![STATUS_200];
+    if let Some(length) = content_length {
+        block.extend_from_slice(&[0x0f, 0x0d]);
+        block.push(u8::try_from(length.len()).expect("length"));
+        block.extend_from_slice(length.as_bytes());
+    }
+    let flags = END_HEADERS | if end_stream { END_STREAM } else { 0 };
+    frame(HEADERS, flags, stream, &block)
+}
+
+pub fn reset_frame(stream: u32, code: u32) -> Vec<u8> {
+    frame(3, 0, stream, &code.to_be_bytes())
+}
+
 pub fn empty_response(stream: u32) -> Vec<u8> {
     frame(HEADERS, END_STREAM | END_HEADERS, stream, &[STATUS_200])
 }

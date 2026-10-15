@@ -6,7 +6,7 @@ use crate::texts::find_source;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Cause {
-    Unprocessed { written: bool, retire: bool },
+    Unprocessed { taken: bool, retire: bool },
     Interrupted { retire: bool },
     Protocol,
 }
@@ -24,7 +24,15 @@ pub(crate) fn server_broke_http2(error: &hyper::Error) -> bool {
     classify(error, true, true) == Cause::Protocol
 }
 
-pub(crate) fn classify(error: &hyper::Error, may_have_written: bool, h2: bool) -> Cause {
+pub(crate) fn is_stream_reset_for_length(error: &hyper::Error) -> bool {
+    find_source::<h2::Error>(error).is_some_and(|h2_error| {
+        h2_error.is_library()
+            && h2_error.is_reset()
+            && h2_error.reason() == Some(Reason::PROTOCOL_ERROR)
+    })
+}
+
+pub(crate) fn classify(error: &hyper::Error, may_have_been_taken: bool, h2: bool) -> Cause {
     if let Some(h2_error) = find_source::<h2::Error>(error) {
         return classify_h2(h2_error);
     }
@@ -39,21 +47,21 @@ pub(crate) fn classify(error: &hyper::Error, may_have_written: bool, h2: bool) -
             io::ErrorKind::InvalidData | io::ErrorKind::InvalidInput if !tls && !h2 => {
                 Cause::Protocol
             }
-            _ => untaken_or(may_have_written),
+            _ => untaken_or(may_have_been_taken),
         };
     }
     if error.is_user() || error.is_canceled() || error.is_closed() {
-        return untaken_or(may_have_written);
+        return untaken_or(may_have_been_taken);
     }
     Cause::Interrupted { retire: false }
 }
 
-fn untaken_or(may_have_written: bool) -> Cause {
-    if may_have_written {
+fn untaken_or(may_have_been_taken: bool) -> Cause {
+    if may_have_been_taken {
         Cause::Interrupted { retire: false }
     } else {
         Cause::Unprocessed {
-            written: false,
+            taken: false,
             retire: true,
         }
     }
@@ -68,7 +76,7 @@ fn classify_h2(error: &h2::Error) -> Cause {
     }
     if error.is_remote() && error.is_reset() && error.reason() == Some(Reason::REFUSED_STREAM) {
         return Cause::Unprocessed {
-            written: true,
+            taken: true,
             retire: false,
         };
     }

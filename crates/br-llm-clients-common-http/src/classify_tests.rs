@@ -2,8 +2,6 @@ use std::time::Duration;
 
 use std::convert::Infallible;
 use std::pin::Pin;
-use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
 use std::task::{Context, Poll};
 
 use bytes::Bytes;
@@ -14,7 +12,7 @@ use tokio::io::{AsyncWriteExt, duplex};
 
 use crate::classify::{Cause, classify, server_broke_http2};
 use crate::support::frames::{GOAWAY, HEADERS, SETTINGS, frame, goaway_frame, read_frame};
-use crate::unsent::{Unsent, retires_connection};
+use crate::unsent::{Unsent, must_retire};
 
 struct Empty;
 
@@ -99,21 +97,11 @@ async fn given_a_remote_goaway_that_excludes_the_stream_then_the_request_is_inte
 #[tokio::test]
 async fn given_a_request_that_a_goaway_failed_then_the_connection_is_retired_but_a_refusal_keeps_it()
  {
-    let written = Arc::new(AtomicBool::new(true));
     let excluded = error_after_headers(goaway(0, 0)).await;
-    assert!(retires_connection(
-        &Unsent::Failed(excluded, true),
-        &written
-    ));
+    assert!(must_retire(&Unsent::Failed(excluded, true)));
     let refused = error_after_headers(reset(REFUSED_STREAM)).await;
-    assert!(!retires_connection(
-        &Unsent::Failed(refused, true),
-        &written
-    ));
-    assert!(retires_connection(
-        &Unsent::Violation(String::new()),
-        &written
-    ));
+    assert!(!must_retire(&Unsent::Failed(refused, true)));
+    assert!(must_retire(&Unsent::Violation(String::new())));
 }
 
 #[tokio::test]
@@ -128,7 +116,7 @@ async fn given_a_refused_stream_then_the_request_is_unprocessed_and_the_connecti
     assert_eq!(
         classify(&error, true, true),
         Cause::Unprocessed {
-            written: true,
+            taken: true,
             retire: false
         }
     );
@@ -158,7 +146,7 @@ fn given_each_cause_then_only_unprocessed_and_goaway_interruptions_ask_to_retire
     assert!(Cause::Interrupted { retire: true }.retires_connection());
     assert!(
         Cause::Unprocessed {
-            written: false,
+            taken: false,
             retire: true
         }
         .retires_connection()
@@ -166,7 +154,7 @@ fn given_each_cause_then_only_unprocessed_and_goaway_interruptions_ask_to_retire
     assert!(!Cause::Interrupted { retire: false }.retires_connection());
     assert!(
         !Cause::Unprocessed {
-            written: true,
+            taken: true,
             retire: false
         }
         .retires_connection()

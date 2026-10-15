@@ -53,6 +53,11 @@ async fn given_a_server_that_never_sends_settings_then_fifty_sends_all_end_with_
         elapsed < connect_timeout * 3 + Duration::from_secs(3),
         "{elapsed:?}"
     );
+    assert!(
+        elapsed >= connect_timeout * 3,
+        "{elapsed:?}: every send spends three attempts of a connect timeout each"
+    );
+    assert!(server.accepted() >= 3, "{} connections", server.accepted());
     assert!(server.accepted() <= 6, "{} connections", server.accepted());
 }
 
@@ -98,4 +103,39 @@ async fn given_a_connection_whose_settings_never_arrive_then_the_client_closes_i
         );
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn given_a_healthy_connection_then_it_is_not_closed_when_the_connect_timeout_passes() {
+    let server = RawH2::start(|_| Policy::healthy()).await;
+    let client = trusting(Duration::from_millis(300), Duration::from_secs(30));
+    let first = burst(&client, &server, 1).await;
+    assert!(first[0].is_ok(), "{first:?}");
+    tokio::time::sleep(Duration::from_millis(900)).await;
+    let second = burst(&client, &server, 1).await;
+    assert!(second[0].is_ok(), "{second:?}");
+    assert_eq!(server.accepted(), 1);
+    assert_eq!(server.closed(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn given_a_server_that_never_sends_settings_then_six_sends_end_with_headers_timeout_not_connect()
+ {
+    let server = RawH2::start(|_| silent()).await;
+    let headers_timeout = Duration::from_millis(500);
+    let client = trusting(Duration::from_secs(5), headers_timeout);
+    let started = Instant::now();
+    let outcomes = tokio::time::timeout(Duration::from_secs(20), burst(&client, &server, 6))
+        .await
+        .expect("the sends hung");
+    let elapsed = started.elapsed();
+    assert!(
+        outcomes
+            .iter()
+            .all(|outcome| matches!(outcome, Err(SendError::HeadersTimeout { .. }))),
+        "{outcomes:?}"
+    );
+    assert!(elapsed >= headers_timeout, "{elapsed:?}");
+    assert!(elapsed < headers_timeout * 3, "{elapsed:?}");
+    assert_eq!(server.accepted(), 1);
 }

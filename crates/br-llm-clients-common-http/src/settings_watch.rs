@@ -44,10 +44,10 @@ impl SettingsWatch {
         });
         let kind = self.head.get(3).copied();
         let flags = self.head.get(4).copied().unwrap_or_default();
-        self.settings = kind == Some(SETTINGS_FRAME) && flags & ACK_FLAG == 0;
+        let whole_entries = length.checked_rem(ENTRY) == Some(0);
+        self.settings = kind == Some(SETTINGS_FRAME) && flags & ACK_FLAG == 0 && whole_entries;
         self.remaining = length;
         self.entry.clear();
-        self.limit = None;
         if length == 0 {
             self.finish_frame(found);
         }
@@ -86,7 +86,6 @@ impl SettingsWatch {
         }
         self.settings = false;
         self.entry.clear();
-        self.limit = None;
         self.head.clear();
     }
 }

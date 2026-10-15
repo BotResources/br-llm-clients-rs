@@ -62,6 +62,7 @@ impl H2State {
     }
 
     pub(crate) fn mark_silent(&self) {
+        self.retire();
         self.silent.store(true, Ordering::SeqCst);
     }
 
@@ -85,7 +86,7 @@ impl H2State {
     }
 
     pub(crate) fn limit_unknown(&self) -> bool {
-        self.awaiting_settings() && !self.is_retired()
+        self.awaiting_settings()
     }
 
     pub(crate) fn is_retired(&self) -> bool {
@@ -101,10 +102,7 @@ impl H2State {
     }
 
     pub(crate) fn arm_idle(&self) {
-        let count = self.count();
-        if *count == 0 {
-            self.idle.arm();
-        }
+        self.idle.arm();
     }
 
     pub(crate) fn try_acquire(self: &Arc<Self>) -> Option<Permit> {
@@ -112,11 +110,13 @@ impl H2State {
             return None;
         }
         let mut count = self.count();
-        if self.awaiting_settings() || *count >= self.peer_max.load(Ordering::SeqCst) {
+        if *count >= self.peer_max.load(Ordering::SeqCst) {
+            return None;
+        }
+        if !self.idle.disarm() {
             return None;
         }
         *count = count.saturating_add(1);
-        self.idle.disarm();
         Some(Permit(Arc::clone(self)))
     }
 

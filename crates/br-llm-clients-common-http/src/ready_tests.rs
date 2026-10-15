@@ -76,3 +76,48 @@ async fn given_a_pooled_http1_connection_whose_readiness_stalls_then_it_is_aband
     assert_eq!(accepted.load(Ordering::SeqCst), 2);
     assert_eq!(requests.load(Ordering::SeqCst), 1);
 }
+
+#[tokio::test]
+async fn given_a_pooled_http1_connection_whose_idle_expiry_was_claimed_then_it_is_not_used_even_if_it_is_ready()
+ {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    let accepted = Arc::new(AtomicUsize::new(0));
+    let count = Arc::clone(&accepted);
+    tokio::spawn(async move {
+        while let Ok((mut stream, _)) = listener.accept().await {
+            count.fetch_add(1, Ordering::SeqCst);
+            tokio::spawn(async move {
+                while read_request(&mut stream).await.is_ok() {
+                    let reply = b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nok";
+                    if stream.write_all(reply).await.is_err() {
+                        return;
+                    }
+                }
+            });
+        }
+    });
+    let endpoint = Endpoint::plain_http(&format!("http://{addr}/x")).expect("endpoint");
+    let client = HttpClient::new(config().build()).expect("client");
+    let stream = TcpStream::connect(addr).await.expect("connect");
+    let (sender, connection) = http1::Builder::new()
+        .handshake::<_, Payload>(TokioIo::new(stream))
+        .await
+        .expect("handshake");
+    let driver = tokio::spawn(connection);
+    let (idle, mut watch) = IdleClock::new(Duration::from_secs(30));
+    idle.arm();
+    let armed = watch.armed_until().expect("armed");
+    assert!(watch.expire(armed));
+    let expired = H1Conn::new(sender, idle, driver.abort_handle());
+    client.pool().release_h1(&PoolKey::of(&endpoint), expired);
+
+    let mut response = guarded(client.send(post(&endpoint, "x"), &NoAuthorizer))
+        .await
+        .expect("response");
+    assert_eq!(
+        response.body_mut().collect(10).await.expect("body").bytes,
+        Bytes::from_static(b"ok")
+    );
+    assert_eq!(accepted.load(Ordering::SeqCst), 2);
+}

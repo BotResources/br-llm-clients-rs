@@ -46,6 +46,7 @@ struct Fault {
     name: &'static str,
     bytes: Vec<u8>,
     expected: Kind,
+    reps: usize,
 }
 
 fn faults() -> Vec<Fault> {
@@ -53,6 +54,13 @@ fn faults() -> Vec<Fault> {
         name,
         bytes,
         expected,
+        reps: 1,
+    };
+    let zero_limit = |name, bytes| Fault {
+        name,
+        bytes,
+        expected: Kind::Protocol,
+        reps: 30,
     };
     vec![
         broken(
@@ -116,6 +124,18 @@ fn faults() -> Vec<Fault> {
             Kind::Protocol,
         ),
         broken("no frame at all", Vec::new(), Kind::Connect),
+        zero_limit(
+            "MCS=0 then DATA on stream 0",
+            [settings_frame(Some(0)), frame(DATA, 0, 0, b"x")].concat(),
+        ),
+        zero_limit(
+            "MCS=0 with ENABLE_PUSH=2 in one frame",
+            frame(SETTINGS, 0, 0, &entries(&[(3, 0), (2, 2)])),
+        ),
+        zero_limit(
+            "MCS=0 with one stray byte",
+            frame(SETTINGS, 0, 0, &[entries(&[(3, 0)]), vec![0]].concat()),
+        ),
     ]
 }
 
@@ -142,42 +162,47 @@ async fn given_a_server_that_breaks_an_http2_rule_then_every_send_fails_with_the
  {
     for fault in faults() {
         for sends in [1usize, 6] {
-            let bytes = leaked(fault.bytes.clone());
-            let server = RawH2::start(move |_| Policy {
-                answer: Answer::Never,
-                ..Policy::announcing(Announce::Raw(bytes))
-            })
-            .await;
-            let client = trusting(Duration::from_millis(500), Duration::from_secs(10));
-            let started = Instant::now();
-            let outcomes =
-                tokio::time::timeout(Duration::from_secs(20), burst(&client, &server, sends))
-                    .await
-                    .expect("the sends hung");
-            let elapsed = started.elapsed();
-            let kinds: Vec<_> = outcomes
-                .iter()
-                .map(|outcome| outcome.as_ref().err().and_then(kind_of))
-                .collect();
-            assert!(
-                kinds.iter().all(|kind| *kind == Some(fault.expected)),
-                "{} with {sends} sends: expected {:?}, got {outcomes:?}",
-                fault.name,
-                fault.expected
-            );
-            assert!(
-                elapsed < Duration::from_secs(6),
-                "{} with {sends} sends took {elapsed:?}",
-                fault.name
-            );
-            assert!(
-                server.accepted() <= sends.saturating_mul(3),
-                "{} with {sends} sends opened {} connections",
-                fault.name,
-                server.accepted()
-            );
+            for _ in 0..fault.reps {
+                assert_fault(&fault, sends).await;
+            }
         }
     }
+}
+
+async fn assert_fault(fault: &Fault, sends: usize) {
+    let bytes = leaked(fault.bytes.clone());
+    let server = RawH2::start(move |_| Policy {
+        answer: Answer::Never,
+        ..Policy::announcing(Announce::Raw(bytes))
+    })
+    .await;
+    let client = trusting(Duration::from_millis(500), Duration::from_secs(10));
+    let started = Instant::now();
+    let outcomes = tokio::time::timeout(Duration::from_secs(20), burst(&client, &server, sends))
+        .await
+        .expect("the sends hung");
+    let elapsed = started.elapsed();
+    let kinds: Vec<_> = outcomes
+        .iter()
+        .map(|outcome| outcome.as_ref().err().and_then(kind_of))
+        .collect();
+    assert!(
+        kinds.iter().all(|kind| *kind == Some(fault.expected)),
+        "{} with {sends} sends: expected {:?}, got {outcomes:?}",
+        fault.name,
+        fault.expected
+    );
+    assert!(
+        elapsed < Duration::from_secs(6),
+        "{} with {sends} sends took {elapsed:?}",
+        fault.name
+    );
+    assert!(
+        server.accepted() <= sends.saturating_mul(3),
+        "{} with {sends} sends opened {} connections",
+        fault.name,
+        server.accepted()
+    );
 }
 
 #[tokio::test]

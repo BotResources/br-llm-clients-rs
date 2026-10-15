@@ -12,6 +12,7 @@ pub(crate) struct SettingsSpy<T> {
     inner: T,
     watch: SettingsWatch,
     state: Arc<H2State>,
+    announced: Vec<Option<u32>>,
 }
 
 impl<T> SettingsSpy<T> {
@@ -20,6 +21,7 @@ impl<T> SettingsSpy<T> {
             inner,
             watch: SettingsWatch::default(),
             state,
+            announced: Vec::new(),
         }
     }
 }
@@ -30,13 +32,17 @@ impl<T: AsyncRead + Unpin> AsyncRead for SettingsSpy<T> {
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
+        let this = &mut *self;
+        for max in this.announced.drain(..) {
+            this.state.apply_settings(max);
+        }
         let before = buf.filled().len();
         let polled = Pin::new(&mut self.inner).poll_read(cx, buf);
         if matches!(polled, Poll::Ready(Ok(()))) {
             let this = &mut *self;
             let fresh = buf.filled().get(before..).unwrap_or_default();
-            let state = &this.state;
-            this.watch.feed(fresh, &mut |max| state.apply_settings(max));
+            let announced = &mut this.announced;
+            this.watch.feed(fresh, &mut |max| announced.push(max));
         }
         polled
     }
