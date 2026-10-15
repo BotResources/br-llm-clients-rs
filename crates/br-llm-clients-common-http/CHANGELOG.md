@@ -25,9 +25,9 @@ form to decide whether a version ships.
 - Connections. While the protocol of a host is unknown only one connection is
   opened for it and concurrent sends wait for its outcome (HTTP/2: they share
   it; HTTP/1.1: each opens its own; a failed attempt is the failure of every send
-  that waited for it, and none of them dials again). When every stream of a host's HTTP/2
-  connections is in use another connection is opened, up to 16 per host, then a
-  send waits within `headers_timeout`, which is one deadline shared by the wait
+  that waited for it, and none of them dials again). When every stream of a
+  host's HTTP/2 connections is in use another connection is opened, up to 16
+  per host, then a send waits within `headers_timeout`, which is one deadline shared by the wait
   and the exchange. A new HTTP/2 connection counts as full until the first
   SETTINGS frame of the server has been read, and no request is handed to it
   before: the sends that arrive meanwhile wait for it, including the send that
@@ -44,8 +44,14 @@ form to decide whether a version ships.
   frame size is capped and memory stays bounded), so a SETTINGS frame of any
   legal size is read exactly, a change by the server (also a drop to zero) is
   seen at once, and when an entry repeats the last one wins. A first SETTINGS
-  frame without a stream-limit entry means no limit; an unreadable frame is
-  never read as no limit.
+  frame without a stream-limit entry means no limit. A SETTINGS frame whose
+  length is not a whole number of entries is not read as a limit at all (the
+  HTTP/2 library closes the connection for it, which is `Protocol`). A limit is
+  applied only once the HTTP/2 library has accepted the bytes that carried it,
+  so a server that announces a limit, even zero, and then breaks a rule is
+  `Protocol` for every send, not `Connect`. A connection that ends before its
+  first SETTINGS frame (closed, reset, or a GOAWAY and nothing else) counts as
+  a silent one: each send that waited for it spends one attempt.
   Addresses of a name are tried with a fixed 250 ms pause between the starts of
   two attempts. HTTP/2 connections send keep-alive pings every 30 s, also when
   idle, and close when a ping gets no answer within 10 s. An idle connection is
@@ -62,15 +68,33 @@ form to decide whether a version ships.
   that fails on a GOAWAY is `Interrupted` and is not sent again. A GOAWAY retires
   the connection that carried the request; a refused stream does not, the next
   attempt goes through the normal plan and may use the same healthy connection.
-  The authorizer is not called again. A request counts as written as soon as the HTTP/2 or HTTP/1.1 library
-  has taken it, so a failure after that (a broken pipe, a reset, a close, also
-  before the body was read) is never resent and is `Interrupted`. A request an
+  The authorizer is not called again. A request counts as taken as soon as the
+  HTTP/2 or HTTP/1.1 library has taken it. A failure after that is never resent,
+  except a refused HTTP/2 stream: it is `Interrupted` (a broken pipe, a reset, a
+  close, a GOAWAY, also before the body was read) or `Protocol` (the server
+  broke an HTTP/2 rule). When the three attempts are used, the failure is
+  `Interrupted` if any attempt was taken by a connection and `Connect` if none
+  was. A request an
   HTTP/2 connection never took before it ended is resent, instead of waiting for
   `headers_timeout`, unless the connection ended because the server broke an
   HTTP/2 rule (see `Protocol` below). A GOAWAY that asks for HTTP/1.1 is
   `Protocol` and is not resent. Each attempt has its own connect and headers
   deadlines, so one send makes at most three attempts and can last up to three
   times as long as one attempt; `total_timeout` still bounds the whole send.
+- Bodies. A body that ends before its declared length is `Interrupted` on
+  HTTP/1.1 and on HTTP/2 alike, also when an HTTP/2 stream is reset with
+  NO_ERROR before the declared bytes came (the HTTP/2 library reads such a
+  reset as a clean end; the library compares what arrived with the declared
+  length), and also for the HTTP/2 stream reset that follows a body shorter than
+  its length. A body longer than its declared length stays `Protocol` on HTTP/2;
+  an HTTP/2 stream reset with NO_ERROR when no length was declared cannot be
+  told from an end, so the importer relies on its own end marker. A response
+  whose HEADERS frame ends the stream while declaring a length above zero is a
+  `Protocol` failure of the send. One function builds every `Protocol` text of
+  a send, endpoint prefix included, whether the fault meets a waiter or the
+  request. An idle connection is closed under a claim: a connection that is
+  being taken is never closed by its idle timer, and an expired one is never
+  taken.
 - Limits. A response head larger than 64 KiB, or with more than 1024 header
   lines, is refused with `SendError::Protocol`; on HTTP/2 the size is counted as
   RFC 9113 counts a header list, and exactly 64 KiB is accepted.
@@ -111,8 +135,9 @@ form to decide whether a version ships.
   for a request that the connection never took; one function classifies it
   whatever the moment the request meets it, and `Connect` stays for a connection
   that was never established or never carried an HTTP/2 SETTINGS frame;
-  over TLS a body read until close ends cleanly only with a close_notify. `Connect` also covers a connection
-  that could not carry the request when no byte of it had been written;
+  over TLS a body read until close ends cleanly only with a close_notify.
+  `Connect` also covers a connection that could not carry the request when no
+  byte of it had been written;
   `Interrupted` means at least one byte may have reached the server.
 - Texts. No text holds a header value, a body or a query, and no text of a lower
   layer is copied: the wording is the library's own, with an HTTP/2 reason or an
