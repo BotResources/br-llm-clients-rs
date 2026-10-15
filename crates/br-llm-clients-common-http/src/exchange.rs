@@ -31,7 +31,7 @@ enum Attempt {
 }
 
 enum Unsent {
-    Unprocessed { written: bool },
+    Unprocessed { written: bool, retire: bool },
     Failed(hyper::Error, bool),
 }
 
@@ -107,6 +107,7 @@ async fn attempt(
         Err(error) => return Attempt::Failed(error),
     };
     let limit = shared.config.headers_timeout;
+    let h2 = matches!(conn, Conn::H2 { .. });
     let sent = match conn {
         Conn::H1(mut conn) => {
             let outcome = timeout_at(headers_deadline, send_h1(&mut conn, request, &written)).await;
@@ -128,7 +129,10 @@ async fn attempt(
                     biased;
                     result = send_h2(&mut sender, request, &written) => result,
                     () = never_taken(&mut gone, &written) => {
-                        Err(Unsent::Unprocessed { written: false })
+                        Err(Unsent::Unprocessed {
+                            written: false,
+                            retire: true,
+                        })
                     }
                 }
             })
@@ -136,7 +140,7 @@ async fn attempt(
             match outcome {
                 Ok(Ok(response)) => Ok(Ok((response, Lease::Shared(permit)))),
                 Ok(Err(unsent)) => {
-                    if unprocessed(&unsent, &written) {
+                    if retires_connection(&unsent, &written) {
                         permit.retire_connection();
                     }
                     Ok(Err(unsent))
@@ -149,9 +153,9 @@ async fn attempt(
         Err(_) => Attempt::Failed(SendError::HeadersTimeout {
             text: redactor.finish(&format!("no response headers within {limit:?}")),
         }),
-        Ok(Err(Unsent::Unprocessed { written })) => Attempt::Unprocessed { written },
-        Ok(Err(Unsent::Failed(error, written))) => match classify(&error, written) {
-            Cause::Unprocessed { written } => Attempt::Unprocessed { written },
+        Ok(Err(Unsent::Unprocessed { written, .. })) => Attempt::Unprocessed { written },
+        Ok(Err(Unsent::Failed(error, written))) => match classify(&error, written, h2) {
+            Cause::Unprocessed { written, .. } => Attempt::Unprocessed { written },
             Cause::Interrupted => Attempt::Failed(SendError::Interrupted {
                 text: redactor.finish(&hyper_text(&error)),
             }),
@@ -171,7 +175,10 @@ async fn send_h1(
     written: &Arc<AtomicBool>,
 ) -> Result<http::Response<Incoming>, Unsent> {
     if conn.sender.ready().await.is_err() {
-        return Err(Unsent::Unprocessed { written: false });
+        return Err(Unsent::Unprocessed {
+            written: false,
+            retire: true,
+        });
     }
     conn.sender
         .try_send_request(request)
@@ -197,21 +204,22 @@ async fn never_taken(gone: &mut watch::Receiver<bool>, written: &Arc<AtomicBool>
     std::future::pending::<()>().await;
 }
 
-fn unprocessed(unsent: &Unsent, written: &Arc<AtomicBool>) -> bool {
+fn retires_connection(unsent: &Unsent, written: &Arc<AtomicBool>) -> bool {
     match unsent {
-        Unsent::Unprocessed { .. } => true,
-        Unsent::Failed(error, _) => {
-            matches!(
-                classify(error, written.load(Ordering::SeqCst)),
-                Cause::Unprocessed { .. }
-            )
-        }
+        Unsent::Unprocessed { retire, .. } => *retire,
+        Unsent::Failed(error, _) => matches!(
+            classify(error, written.load(Ordering::SeqCst), true),
+            Cause::Unprocessed { retire: true, .. }
+        ),
     }
 }
 
 fn into_unsent(error: TrySendError<http::Request<Payload>>, written: &Arc<AtomicBool>) -> Unsent {
     if error.message().is_some() {
-        Unsent::Unprocessed { written: false }
+        Unsent::Unprocessed {
+            written: false,
+            retire: true,
+        }
     } else {
         Unsent::Failed(error.into_error(), written.load(Ordering::SeqCst))
     }

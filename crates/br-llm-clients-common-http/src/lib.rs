@@ -85,6 +85,8 @@ mod endpoint_tests;
 #[cfg(test)]
 mod headers_tests;
 #[cfg(test)]
+mod payload_tests;
+#[cfg(test)]
 mod pool_tests;
 #[cfg(test)]
 mod request_tests;

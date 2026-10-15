@@ -9,6 +9,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::task::JoinSet;
 
+use super::frames::{ACK, HEADERS, SETTINGS, frame, goaway_frame, read_frame, settings_frame};
 use super::pki::Pki;
 
 #[derive(Clone, Copy)]
@@ -22,6 +23,10 @@ pub enum Script {
     },
     CloseAfterReceiving,
     ResetAll(Reason),
+    GoAwayAfterReceiving,
+    ZeroWindowClose,
+    ZeroWindowGoAway,
+    RefuseEvery(usize),
 }
 
 pub struct Probe {
@@ -75,11 +80,12 @@ impl Probe {
                         }
                         return;
                     }
-                    let Ok(mut conn) = h2::server::Builder::new()
-                        .max_concurrent_streams(1000)
-                        .handshake::<_, Bytes>(tls)
-                        .await
-                    else {
+                    let mut builder = h2::server::Builder::new();
+                    builder.max_concurrent_streams(1000);
+                    if matches!(script, Script::ZeroWindowClose | Script::ZeroWindowGoAway) {
+                        builder.initial_window_size(0);
+                    }
+                    let Ok(mut conn) = builder.handshake::<_, Bytes>(tls).await else {
                         return;
                     };
                     while let Some(Ok((request, mut respond))) = conn.accept().await {
@@ -93,6 +99,16 @@ impl Probe {
                         let refuse = match script {
                             Script::RefuseAll => true,
                             Script::RefuseFirst(n) => refusals.fetch_add(1, Ordering::SeqCst) < n,
+                            Script::RefuseEvery(n) => {
+                                let arrivals = seen.lock().expect("lock");
+                                let first_copy =
+                                    arrivals.iter().filter(|seen| **seen == id).count() == 1;
+                                first_copy
+                                    && id
+                                        .trim_start_matches('r')
+                                        .parse::<usize>()
+                                        .is_ok_and(|number| number % n == 0)
+                            }
                             _ => false,
                         };
                         if refuse {
@@ -103,7 +119,20 @@ impl Probe {
                             respond.send_reset(reason);
                             continue;
                         }
-                        if matches!(script, Script::CloseAfterReceiving) {
+                        if matches!(
+                            script,
+                            Script::CloseAfterReceiving | Script::ZeroWindowClose
+                        ) {
+                            gather_more(&mut conn, &seen).await;
+                            return;
+                        }
+                        if matches!(
+                            script,
+                            Script::GoAwayAfterReceiving | Script::ZeroWindowGoAway
+                        ) {
+                            gather_more(&mut conn, &seen).await;
+                            conn.abrupt_shutdown(Reason::NO_ERROR);
+                            while conn.accept().await.is_some() {}
                             return;
                         }
                         done.lock().expect("lock").push(id);
@@ -140,40 +169,30 @@ impl Probe {
     }
 }
 
+async fn gather_more<T>(conn: &mut h2::server::Connection<T, Bytes>, seen: &Mutex<Vec<String>>)
+where
+    T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+    let mut held = Vec::new();
+    let _ = tokio::time::timeout(std::time::Duration::from_millis(20), async {
+        while let Some(Ok((request, respond))) = conn.accept().await {
+            let id = request
+                .headers()
+                .get("x-id")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or_default()
+                .to_owned();
+            seen.lock().expect("lock").push(id);
+            held.push((request, respond));
+        }
+    })
+    .await;
+}
+
 impl Drop for Probe {
     fn drop(&mut self) {
         self.task.abort();
     }
-}
-
-fn frame(kind: u8, flags: u8, stream: u32, payload: &[u8]) -> Vec<u8> {
-    let length = u32::try_from(payload.len()).expect("length");
-    let mut out = vec![
-        (length >> 16) as u8,
-        (length >> 8) as u8,
-        length as u8,
-        kind,
-        flags,
-    ];
-    out.extend_from_slice(&stream.to_be_bytes());
-    out.extend_from_slice(payload);
-    out
-}
-
-pub async fn read_frame<S: AsyncReadExt + Unpin>(stream: &mut S) -> Option<(u8, u8, Vec<u8>)> {
-    let mut head = [0u8; 9];
-    stream.read_exact(&mut head).await.ok()?;
-    let length = (usize::from(head[0]) << 16) | (usize::from(head[1]) << 8) | usize::from(head[2]);
-    let mut payload = vec![0u8; length];
-    stream.read_exact(&mut payload).await.ok()?;
-    Some((head[3], head[4], payload))
-}
-
-pub fn goaway_frame(last_stream: u32, code: u32, debug: &[u8]) -> Vec<u8> {
-    let mut payload = last_stream.to_be_bytes().to_vec();
-    payload.extend_from_slice(&code.to_be_bytes());
-    payload.extend_from_slice(debug);
-    frame(7, 0, 0, &payload)
 }
 
 pub async fn go_away_with<S: AsyncReadExt + AsyncWriteExt + Unpin>(
@@ -186,12 +205,12 @@ pub async fn go_away_with<S: AsyncReadExt + AsyncWriteExt + Unpin>(
     if stream.read_exact(&mut preface).await.is_err() {
         return false;
     }
-    let _ = stream.write_all(&frame(4, 0, 0, &[])).await;
-    while let Some((kind, flags, _)) = read_frame(&mut stream).await {
-        if kind == 4 && flags & 1 == 0 {
-            let _ = stream.write_all(&frame(4, 1, 0, &[])).await;
+    let _ = stream.write_all(&settings_frame(None)).await;
+    while let Some(received) = read_frame(&mut stream).await {
+        if received.kind == SETTINGS && received.flags & ACK == 0 {
+            let _ = stream.write_all(&frame(SETTINGS, ACK, 0, &[])).await;
         }
-        if kind == 1 {
+        if received.kind == HEADERS {
             let _ = stream
                 .write_all(&goaway_frame(last_stream, code, debug))
                 .await;

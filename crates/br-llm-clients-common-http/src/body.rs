@@ -111,7 +111,8 @@ impl BodyStream {
                     _ => continue,
                 },
                 Poll::Ready(Some(Err(error))) => {
-                    let failure = body_failure(&error, &active.redactor);
+                    let h2 = matches!(active.lease, Lease::Shared(_));
+                    let failure = body_failure(&error, &active.redactor, h2);
                     self.state = State::Done;
                     return Poll::Ready(Err(failure));
                 }
@@ -146,9 +147,9 @@ fn poll_deadline(timer: &mut Option<Pin<Box<tokio::time::Sleep>>>, cx: &mut Cont
         .is_some_and(|sleep| sleep.as_mut().poll(cx).is_ready())
 }
 
-fn body_failure(error: &hyper::Error, redactor: &Redactor) -> BodyError {
+fn body_failure(error: &hyper::Error, redactor: &Redactor, h2: bool) -> BodyError {
     let text = redactor.finish(&hyper_text(error));
-    match classify(error, true) {
+    match classify(error, true, h2) {
         Cause::Protocol => BodyError::Protocol { text },
         Cause::Interrupted | Cause::Unprocessed { .. } => BodyError::Interrupted { text },
     }

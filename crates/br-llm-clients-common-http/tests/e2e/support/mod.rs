@@ -1,4 +1,5 @@
 pub mod canned;
+pub mod frames;
 pub mod gate_kit;
 pub mod h2_headers;
 pub mod h2_server;

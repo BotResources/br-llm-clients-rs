@@ -42,7 +42,8 @@ async fn given_a_stream_excluded_by_a_goaway_when_sent_then_it_is_sent_again_on_
 }
 
 #[tokio::test]
-async fn given_a_refused_stream_when_sent_then_it_is_sent_again_on_a_new_connection_once() {
+async fn given_a_refused_stream_when_sent_then_it_is_sent_again_through_the_same_healthy_connection_once()
+ {
     let probe = Probe::start(Script::RefuseFirst(1)).await;
     let spy = Spy::returning(&[("x-api-key", "k")]);
     let mut response = guarded(client().send(identified(&probe, "r1"), &spy))
@@ -52,7 +53,7 @@ async fn given_a_refused_stream_when_sent_then_it_is_sent_again_on_a_new_connect
         response.body_mut().collect(10).await.expect("body").bytes,
         b"ok"
     );
-    assert_eq!(probe.accepted.load(std::sync::atomic::Ordering::SeqCst), 2);
+    assert_eq!(probe.accepted.load(std::sync::atomic::Ordering::SeqCst), 1);
     assert_eq!(probe.arrivals(), ["r1", "r1"]);
     assert_eq!(probe.processed(), ["r1"]);
     assert_eq!(spy.calls(), 1);
@@ -68,7 +69,7 @@ async fn given_a_server_that_always_refuses_when_sent_then_it_stops_after_three_
     assert!(matches!(error, SendError::Interrupted { .. }), "{error:?}");
     assert_eq!(probe.arrivals().len(), 3);
     assert!(probe.processed().is_empty());
-    assert_eq!(probe.accepted.load(std::sync::atomic::Ordering::SeqCst), 3);
+    assert_eq!(probe.accepted.load(std::sync::atomic::Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
@@ -217,4 +218,21 @@ async fn given_a_stream_reset_by_the_server_for_another_reason_then_the_request_
         assert_eq!(probe.arrivals(), ["r1"], "{reason:?}");
         assert_eq!(probe.accepted.load(Ordering::SeqCst), 1, "{reason:?}");
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn given_occasional_refusals_then_the_healthy_connection_is_kept_and_nothing_is_processed_twice()
+ {
+    let probe = Probe::start(Script::RefuseEvery(20)).await;
+    let outcomes = guarded(burst(&client(), &probe, 400)).await;
+    assert!(outcomes.iter().all(Result::is_ok), "{outcomes:?}");
+    assert!(
+        probe.accepted.load(Ordering::SeqCst) <= 2,
+        "{} connections",
+        probe.accepted.load(Ordering::SeqCst)
+    );
+    let mut processed = probe.processed();
+    processed.sort();
+    processed.dedup();
+    assert_eq!(processed.len(), 400);
 }

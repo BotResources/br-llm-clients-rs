@@ -4,6 +4,7 @@ mod canary;
 mod cold_bursts;
 mod collect;
 mod drop;
+mod dup_stress;
 mod encoding;
 mod env_isolation;
 mod errors;

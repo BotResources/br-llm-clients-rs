@@ -6,12 +6,12 @@ use crate::texts::find_source;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Cause {
-    Unprocessed { written: bool },
+    Unprocessed { written: bool, retire: bool },
     Interrupted,
     Protocol,
 }
 
-pub(crate) fn classify(error: &hyper::Error, may_have_written: bool) -> Cause {
+pub(crate) fn classify(error: &hyper::Error, may_have_written: bool, h2: bool) -> Cause {
     if let Some(h2_error) = find_source::<h2::Error>(error) {
         return classify_h2(h2_error);
     }
@@ -23,7 +23,9 @@ pub(crate) fn classify(error: &hyper::Error, may_have_written: bool) -> Cause {
             .get_ref()
             .is_some_and(|inner| inner.downcast_ref::<rustls::Error>().is_some());
         return match io_error.kind() {
-            io::ErrorKind::InvalidData | io::ErrorKind::InvalidInput if !tls => Cause::Protocol,
+            io::ErrorKind::InvalidData | io::ErrorKind::InvalidInput if !tls && !h2 => {
+                Cause::Protocol
+            }
             _ => untaken_or(may_have_written, Cause::Interrupted),
         };
     }
@@ -37,7 +39,10 @@ fn untaken_or(may_have_written: bool, otherwise: Cause) -> Cause {
     if may_have_written {
         otherwise
     } else {
-        Cause::Unprocessed { written: false }
+        Cause::Unprocessed {
+            written: false,
+            retire: true,
+        }
     }
 }
 
@@ -47,7 +52,10 @@ fn classify_h2(error: &h2::Error) -> Cause {
     }
     let refused = error.is_reset() && error.reason() == Some(Reason::REFUSED_STREAM);
     if error.is_remote() && (error.is_go_away() || refused) {
-        return Cause::Unprocessed { written: true };
+        return Cause::Unprocessed {
+            written: true,
+            retire: !refused,
+        };
     }
     let violation = matches!(
         error.reason(),
