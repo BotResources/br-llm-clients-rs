@@ -76,6 +76,8 @@ pub use secret::Secret;
 pub use send_error::SendError;
 
 #[cfg(test)]
+mod acquire_deadline_tests;
+#[cfg(test)]
 mod acquire_tests;
 #[cfg(test)]
 mod authorize_tests;

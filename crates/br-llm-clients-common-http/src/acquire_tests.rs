@@ -3,7 +3,6 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use tokio::task::JoinHandle;
-use tokio::time::Instant;
 
 use crate::acquire::{Acquisition, acquire};
 use crate::client::{HttpClient, Shared};
@@ -20,27 +19,30 @@ use crate::support::raw_h2::{Announce, Answer, Policy, RawH2};
 use crate::transport::Conn;
 
 const SETTINGS_WAIT: Duration = Duration::from_secs(60);
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+pub(crate) const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
-enum Outcome {
+pub(crate) enum Outcome {
     Spent,
     Ready,
     Failed(SendError),
 }
 
-struct Rig {
-    shared: Arc<Shared>,
-    endpoint: Endpoint,
-    key: PoolKey,
+pub(crate) struct Rig {
+    pub(crate) shared: Arc<Shared>,
+    pub(crate) endpoint: Endpoint,
+    pub(crate) key: PoolKey,
     _server: Option<RawH2>,
 }
 
 impl Rig {
-    async fn silent_server() -> Self {
+    pub(crate) async fn silent_server() -> Self {
         Self::slow_silent_server(Duration::ZERO, CONNECT_TIMEOUT).await
     }
 
-    async fn slow_silent_server(accept_delay: Duration, connect_timeout: Duration) -> Self {
+    pub(crate) async fn slow_silent_server(
+        accept_delay: Duration,
+        connect_timeout: Duration,
+    ) -> Self {
         let server = RawH2::start(move |_| Policy {
             answer: Answer::Never,
             accept_delay,
@@ -51,7 +53,7 @@ impl Rig {
         Self::new(endpoint, Some(server), connect_timeout)
     }
 
-    fn offline() -> Self {
+    pub(crate) fn offline() -> Self {
         let endpoint = Endpoint::https("https://h.example/x").expect("endpoint");
         Self::new(endpoint, None, CONNECT_TIMEOUT)
     }
@@ -69,14 +71,14 @@ impl Rig {
         }
     }
 
-    fn dialer(&self) -> Dialer {
+    pub(crate) fn dialer(&self) -> Dialer {
         match self.shared.pool.plan(&self.key, None) {
             Plan::Dial(dialer) => dialer,
             _ => panic!("the send dials"),
         }
     }
 
-    fn waiter(&self) -> JoinHandle<Outcome> {
+    pub(crate) fn waiter(&self) -> JoinHandle<Outcome> {
         let (shared, endpoint, key) = (
             Arc::clone(&self.shared),
             self.endpoint.clone(),
@@ -91,7 +93,7 @@ impl Rig {
         })
     }
 
-    async fn waiting(&self, count: usize) {
+    pub(crate) async fn waiting(&self, count: usize) {
         loop {
             let waiting = self
                 .shared
@@ -106,7 +108,7 @@ impl Rig {
         }
     }
 
-    async fn land(&self, dialer: Dialer) -> (Arc<H2State>, Conn) {
+    pub(crate) async fn land(&self, dialer: Dialer) -> (Arc<H2State>, Conn) {
         let Ok(opened) = open(
             &self.shared.tls,
             &self.endpoint,
@@ -127,7 +129,7 @@ impl Rig {
     }
 }
 
-async fn outcome(waiter: JoinHandle<Outcome>) -> Outcome {
+pub(crate) async fn outcome(waiter: JoinHandle<Outcome>) -> Outcome {
     tokio::time::timeout(Duration::from_secs(120), waiter)
         .await
         .expect("the waiter ends")
@@ -225,82 +227,4 @@ async fn given_a_send_waiting_for_a_stream_while_another_connection_is_dialed_wh
     extra.retire();
     extra.mark_gone();
     assert!(matches!(outcome(waiter).await, Outcome::Spent));
-}
-
-async fn failed_after(waiter: JoinHandle<Outcome>, elapsed: Duration) -> SendError {
-    let started = Instant::now();
-    let Outcome::Failed(error) = outcome(waiter).await else {
-        panic!("the waiter fails");
-    };
-    assert_eq!(started.elapsed(), elapsed);
-    error
-}
-
-#[tokio::test(start_paused = true)]
-async fn given_a_send_waiting_behind_a_dial_that_never_ends_then_it_fails_with_connect_timeout_after_one_connect_timeout()
- {
-    let rig = Rig::offline();
-    let _dialer = rig.dialer();
-    let waiter = rig.waiter();
-    let error = failed_after(waiter, CONNECT_TIMEOUT).await;
-    assert!(
-        matches!(error, SendError::ConnectTimeout { .. }),
-        "{error:?}"
-    );
-}
-
-#[tokio::test(start_paused = true)]
-async fn given_a_send_waiting_behind_one_dial_and_then_behind_another_then_the_connect_timeout_restarts_for_the_second()
- {
-    let rig = Rig::offline();
-    let first = rig.dialer();
-    let waiter = rig.waiter();
-    rig.waiting(1).await;
-    tokio::time::sleep(CONNECT_TIMEOUT / 2).await;
-    drop(first);
-    let _second = rig.dialer();
-    let error = failed_after(waiter, CONNECT_TIMEOUT).await;
-    assert!(
-        matches!(error, SendError::ConnectTimeout { .. }),
-        "{error:?}"
-    );
-}
-
-#[tokio::test]
-async fn given_a_send_that_waited_behind_a_dial_and_then_dials_itself_then_its_own_connect_timeout_starts_with_its_own_dial()
- {
-    let connect_timeout = Duration::from_secs(2);
-    let rig = Rig::slow_silent_server(Duration::from_millis(1500), connect_timeout).await;
-    let first = rig.dialer();
-    let waiter = rig.waiter();
-    rig.waiting(1).await;
-    tokio::time::sleep(Duration::from_secs(1)).await;
-    drop(first);
-    assert!(matches!(outcome(waiter).await, Outcome::Ready));
-}
-
-#[tokio::test(start_paused = true)]
-async fn given_wakes_that_change_nothing_while_a_send_waits_behind_a_dial_then_its_connect_timeout_does_not_restart()
- {
-    let rig = Rig::offline();
-    let _dialer = rig.dialer();
-    let waiter = rig.waiter();
-    rig.waiting(1).await;
-    for _ in 0..4 {
-        tokio::time::sleep(CONNECT_TIMEOUT / 5).await;
-        let signal = rig
-            .shared
-            .pool
-            .lock()
-            .get(&rig.key)
-            .map(|host| Arc::clone(&host.signal));
-        if let Some(signal) = signal {
-            crate::transport::bump(&signal);
-        }
-    }
-    let error = failed_after(waiter, CONNECT_TIMEOUT / 5).await;
-    assert!(
-        matches!(error, SendError::ConnectTimeout { .. }),
-        "{error:?}"
-    );
 }
