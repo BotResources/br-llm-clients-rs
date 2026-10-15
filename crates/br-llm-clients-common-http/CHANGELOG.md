@@ -27,36 +27,52 @@ form to decide whether a version ships.
   it; HTTP/1.1: each opens its own; a failed attempt is the failure of every send
   that waited for it, and none of them dials again). When every stream of a
   host's HTTP/2 connections is in use another connection is opened, up to 16
-  per host, then a send waits within `headers_timeout`, which is one deadline shared by the wait
-  and the exchange. A new HTTP/2 connection counts as full until the first
+  per host, then a send waits within `headers_timeout`, which is one deadline
+  per attempt: it restarts when the send dials again, and runs from the moment a
+  connection is ready. A new HTTP/2 connection counts as full until the first
   SETTINGS frame of the server has been read, and no request is handed to it
   before: the sends that arrive meanwhile wait for it, including the send that
   dialed it. A connection whose first SETTINGS frame has not been read within
-  `connect_timeout` after the connection is ready is closed. Each send that
-  waited for it, and the send that dialed it, counts that as one failed attempt
-  (no byte was written) and goes again through the same gate and within the same
-  limit of 16 connections, so a server that never sends SETTINGS ends every send
-  with `Connect` within three `connect_timeout`s, not one `connect_timeout` per
-  send and per attempt in turn. A server limit of zero makes the connection
-  full, not unknown: a send then uses or opens another connection. The stream
+  `connect_timeout` after the connection is ready is closed.
+- Attempts of the sends that wait. Every connection that a send waited for (the
+  dial in flight, the first SETTINGS of a connection, or the dial of a new
+  connection while every stream is in use) and then cannot use costs that send
+  exactly one of its three attempts, whatever the reason: the connection never
+  sent SETTINGS, ended before or after them (EOF, reset, GOAWAY), was retired,
+  or announced a limit of zero in its first SETTINGS. The send does not dial its
+  own connection for it. So connections stay in the order of the attempts, not
+  of the sends: a server that never sends SETTINGS, that announces a limit of
+  zero, or that closes or resets right after its SETTINGS ends every send with
+  `Connect` after three attempts on a handful of connections. A connection that
+  breaks an HTTP/2 rule is `Protocol` for every send that waited for it. A limit
+  that a server lowers to zero after a usable first SETTINGS costs no attempt.
+  A connection that announced zero stays pooled until it is idle for 30 s and is
+  never trimmed to keep 8 idle ones, so the 16 connections of a host cap also
+  holds for them; sends beyond it wait within `headers_timeout` and end with
+  `HeadersTimeout`. The connect deadline starts with each dial the send itself
+  makes and never counts the time spent behind the dial of another send; a wait
+  behind a dial that does not end is bounded by `connect_timeout` from the start
+  of that wait. A host whose last connection ended leaves the pool at once.
+- Settings and limits. A server limit of zero makes the connection full, not
+  unknown. The stream
   limit is read from the SETTINGS frames as they arrive on the wire, entry by
   entry as the bytes stream through (an entry split across reads is carried, no
   frame size is capped and memory stays bounded), so a SETTINGS frame of any
   legal size is read exactly, a change by the server (also a drop to zero) is
-  seen at once, and when an entry repeats the last one wins. A first SETTINGS
-  frame without a stream-limit entry means no limit. A SETTINGS frame whose
-  length is not a whole number of entries is not read as a limit at all (the
-  HTTP/2 library closes the connection for it, which is `Protocol`). A limit is
-  applied only once the HTTP/2 library has accepted the bytes that carried it,
-  so a server that announces a limit, even zero, and then breaks a rule is
-  `Protocol` for every send, not `Connect`. A connection that ends before its
-  first SETTINGS frame (closed, reset, or a GOAWAY and nothing else) counts as
-  a silent one: each send that waited for it spends one attempt.
+  seen at once, and when an entry repeats the last one wins; several frames read
+  together are applied in order. A first SETTINGS frame without a stream-limit
+  entry means no limit. A SETTINGS frame whose length is not a whole number of
+  entries is not read as a limit at all (the HTTP/2 library closes the
+  connection for it, which is `Protocol`). A limit is applied only once the
+  HTTP/2 library has accepted the bytes that carried it, so a server that
+  announces a limit, even zero, and then breaks a rule is `Protocol` for every
+  send, not `Connect`.
   Addresses of a name are tried with a fixed 250 ms pause between the starts of
-  two attempts. HTTP/2 connections send keep-alive pings every 30 s, also when
-  idle, and close when a ping gets no answer within 10 s. An idle connection is
-  closed after 30 s by a timer, not only when looked at; at most 8 idle
-  connections are kept per host, whatever the protocol. These values are fixed.
+  two attempts. HTTP/2 connections send keep-alive pings after 30 s without
+  anything received from the server, also when idle, and close when a ping gets
+  no answer within 10 s. An idle connection is closed after 30 s by a timer, not
+  only when looked at; at most 8 idle connections are kept per host, whatever
+  the protocol. These values are fixed.
 - Resend. A request is sent again, at most 3 attempts in all, through the same
   gate and the same limit of 16 connections per host as any send, only when the
   stack shows the server did not process it: a pooled connection closed before
@@ -86,14 +102,26 @@ form to decide whether a version ships.
   NO_ERROR before the declared bytes came (the HTTP/2 library reads such a
   reset as a clean end; the library compares what arrived with the declared
   length), and also for the HTTP/2 stream reset that follows a body shorter than
-  its length. A body longer than its declared length stays `Protocol` on HTTP/2;
-  an HTTP/2 stream reset with NO_ERROR when no length was declared cannot be
-  told from an end, so the importer relies on its own end marker. A response
-  whose HEADERS frame ends the stream while declaring a length above zero is a
-  `Protocol` failure of the send. One function builds every `Protocol` text of
-  a send, endpoint prefix included, whether the fault meets a waiter or the
-  request. An idle connection is closed under a claim: a connection that is
-  being taken is never closed by its idle timer, and an expired one is never
+  its length. On HTTP/2 a frame that goes past the declared length is
+  `Interrupted` when declared bytes were still missing before that frame, and
+  `Protocol` when the whole length had already been delivered. The library
+  reads any stream reset that the HTTP/2 library itself makes with
+  PROTOCOL_ERROR while declared bytes are missing as that cut, whatever rule the
+  server broke. On HTTP/1.1 a body longer than its declared length is cut
+  silently at the declared length. An HTTP/2 stream reset with NO_ERROR, or a
+  GOAWAY with NO_ERROR that excludes the stream, when no length was declared
+  cannot be told from an end, so the importer relies on its own end marker (with
+  a declared length both are `Interrupted`). A response whose HEADERS frame ends
+  the stream while declaring a length above zero is a `Protocol` failure of the
+  send, other than a 204 or a 304. A 204 or a 304 is a response without a body
+  whatever length it declares and whatever frames follow its headers (HTTP/2
+  allows empty DATA or trailers after a head that declared a length; the HTTP/2
+  library rejects them, so the library does not read the body of such a
+  response). One function builds every `Protocol` text of a send, a text that
+  names the fault first and the endpoint after it so that a long path cannot
+  crowd the fault out, whether the fault meets a waiter or the request. Texts
+  keep ASCII only. An idle connection is closed under a claim: a connection that
+  is being taken is never closed by its idle timer, and an expired one is never
   taken.
 - Limits. A response head larger than 64 KiB, or with more than 1024 header
   lines, is refused with `SendError::Protocol`; on HTTP/2 the size is counted as
