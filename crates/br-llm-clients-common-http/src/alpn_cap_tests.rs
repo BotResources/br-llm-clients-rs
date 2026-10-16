@@ -119,9 +119,9 @@ fn assert_capped(flip: &Flip, sends: usize) {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn given_a_host_that_answered_http1_and_then_answers_http2_when_twenty_sends_dial_together_then_sixteen_http2_connections_are_pooled()
+async fn given_a_host_that_answered_http1_and_then_answers_http2_when_forty_sends_dial_together_then_sixteen_http2_connections_are_pooled()
  {
-    assert_capped(&burst_after_one_http1_connection(20).await, 20);
+    assert_capped(&burst_after_one_http1_connection(40).await, 40);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

@@ -19,7 +19,7 @@ const SLOW_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 const SENDS: usize = 64;
 const BUMPERS: usize = 3;
 const REPETITIONS: usize = 16;
-const ROUND_LIMIT: Duration = Duration::from_secs(60);
+const ROUND_LIMIT: Duration = Duration::from_secs(30);
 const STORM_LIMIT: Duration = Duration::from_secs(240);
 
 struct Round {
