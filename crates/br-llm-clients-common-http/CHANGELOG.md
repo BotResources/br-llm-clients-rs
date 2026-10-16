@@ -33,11 +33,15 @@ form to decide whether a version ships.
   (any stream freed on the host) never makes it miss the failure and dial again.
   A send that arrives after the failure was told is not affected by it and dials
   for itself. A send that waits for a dial keeps no timer of its own: the dial
-  always ends (it registers, it fails, or its send is dropped and the gate
-  opens), so the waiters get its outcome, also a success or a `ConnectTimeout`
+  always ends (it registers, it fails, its send is dropped and the gate opens,
+  or its task panics and the waiters get one `Connect` failure), so the waiters
+  get its outcome, also a success or a `ConnectTimeout`
   that falls a few milliseconds after the connect timeout the waiters would have
-  counted from their own start. `total_timeout` still bounds the wait, and so
-  does `headers_timeout` for a send that waits for a free stream. A dial makes
+  counted from their own start. The waiters are not served in the order they
+  arrived: a send without `total_timeout` that waits while other sends start
+  dials and are dropped again and again can wait for a long time, and
+  `total_timeout` bounds it. `headers_timeout` bounds the wait of a send that
+  waits for a free stream. A dial makes
   progress whether or not the send that started it is polled again: it runs in a
   task that the send owns and that stops when the send is dropped, so a send
   that started a dial and is never polled again does not hold up the other
@@ -60,7 +64,13 @@ form to decide whether a version ships.
   connection while every stream is in use) and then cannot use costs that send
   exactly one of its three attempts, whatever the reason: the connection never
   sent SETTINGS, ended before or after them (EOF, reset, GOAWAY), was retired,
-  or kept a limit of zero since its first SETTINGS. The send does not dial its
+  or kept a limit of zero since its first SETTINGS. This holds however late the
+  send wakes: a connection is retired before the pool lets it go, whichever of
+  the pool and the task that follows the connection sees its end first, and a
+  send reads the state of the connection it waited for after it has read the
+  rest of the pool, so a wake that comes while the connection ends, or while its
+  first SETTINGS are read, never costs the send one more connection or one more
+  wait. The send does not dial its
   own connection for it, neither when the connection opened and could not be
   used, nor when the dial failed (then the send fails with the failure of that
   dial, see Connections). So connections stay in the order of the attempts, not
