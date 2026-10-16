@@ -205,7 +205,7 @@ async fn given_a_send_waiting_for_a_dial_when_the_connection_is_gone_before_it_w
     rig.waiting(1).await;
     let (state, _conn) = rig.land(dialer).await;
     state.apply_settings(Some(5));
-    state.retire();
+    state.end();
     state.mark_gone();
     assert!(matches!(outcome(waiter).await, Outcome::Spent));
 }
@@ -243,7 +243,7 @@ async fn given_a_send_waiting_for_a_dial_when_the_connection_broke_a_rule_then_i
     rig.waiting(1).await;
     let (state, _conn) = rig.land(dialer).await;
     state.record_violation("a rule was broken".to_owned());
-    state.retire();
+    state.end();
     let Outcome::Failed(error) = outcome(waiter).await else {
         panic!("the waiter fails");
     };
@@ -268,7 +268,7 @@ async fn given_a_send_waiting_for_the_first_settings_when_the_connection_is_reti
     let (state, _conn) = rig.land(rig.dialer()).await;
     let waiter = rig.waiter();
     rig.waiting(1).await;
-    state.retire();
+    state.end();
     state.mark_gone();
     state.wake_host();
     assert!(matches!(outcome(waiter).await, Outcome::Spent));
@@ -284,7 +284,7 @@ async fn given_a_send_waiting_for_a_stream_while_another_connection_is_dialed_wh
     let waiter = rig.waiter();
     rig.waiting(1).await;
     let (extra, _conn) = rig.land(capacity).await;
-    extra.retire();
+    extra.end();
     extra.mark_gone();
     assert!(matches!(outcome(waiter).await, Outcome::Spent));
 }

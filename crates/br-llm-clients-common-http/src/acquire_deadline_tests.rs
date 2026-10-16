@@ -160,7 +160,7 @@ async fn given_a_send_that_waited_for_a_stream_and_then_waits_behind_another_dia
     let waiter = tokio::spawn(rig.acquisition());
     tokio::time::sleep(headers_timeout * 6 / 10).await;
     for (state, _) in &kept {
-        state.retire();
+        state.end();
         state.mark_gone();
     }
     let Plan::Dial(dialer) = rig.shared.pool.plan(&rig.key, None) else {

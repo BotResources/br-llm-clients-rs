@@ -15,9 +15,6 @@ use crate::pool_hooks::Hooks;
 use crate::settled::Settled;
 use crate::transport::{Conn, H1Conn, LiveGuard, Signal, bump};
 
-pub(crate) const MAX_IDLE_PER_HOST: usize = 8;
-pub(crate) const MAX_H2_PER_HOST: usize = 16;
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct PoolKey {
     https: bool,
@@ -114,7 +111,7 @@ impl Pool {
         hosts.retain(|other, host| other == key || host.in_use());
         let host = hosts.entry(key.clone()).or_insert_with(Host::new);
         let changes = host.signal.subscribe();
-        let room = host.has_h2_room();
+        let room = host.reclaim_h2_room();
         host.h1.retain(|idle| {
             !idle.conn.sender.is_closed() && idle.since.elapsed() <= self.idle_limit
         });
@@ -181,13 +178,13 @@ impl Pool {
         let mut hosts = self.lock();
         let host = hosts.entry(key.clone()).or_insert_with(Host::new);
         host.h1.retain(|idle| !idle.conn.sender.is_closed());
-        while host.idle_total() >= MAX_IDLE_PER_HOST && !host.h1.is_empty() {
-            host.h1.remove(0);
-        }
         host.h1.push(Idle {
             conn,
             since: Instant::now(),
         });
+        if host.trim_to_cap() {
+            bump(&host.signal);
+        }
     }
 
     pub(crate) fn forget_if_unused(&self, key: &PoolKey) {
@@ -207,21 +204,7 @@ impl Pool {
         let Some(host) = hosts.get_mut(key) else {
             return;
         };
-        let mut trimmed = false;
-        while host.idle_total() > MAX_IDLE_PER_HOST {
-            let oldest_idle = host
-                .h2
-                .iter()
-                .position(|entry| entry.state.is_trimmable() && !entry.state.is_retired());
-            match oldest_idle {
-                Some(index) => {
-                    host.trim_h2(index);
-                    trimmed = true;
-                }
-                None => break,
-            }
-        }
-        if trimmed {
+        if host.trim_to_cap() {
             bump(&host.signal);
         }
     }

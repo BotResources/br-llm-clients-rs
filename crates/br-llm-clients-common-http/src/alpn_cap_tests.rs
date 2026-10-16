@@ -6,7 +6,7 @@ use hyper::Response;
 
 use crate::authorizers::NoAuthorizer;
 use crate::client::HttpClient;
-use crate::pool::MAX_H2_PER_HOST;
+use crate::limits::MAX_H2_PER_HOST;
 use crate::send_error::SendError;
 use crate::support::h2_server::{Options, TlsServer, service};
 use crate::support::pki::Pki;

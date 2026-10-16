@@ -57,6 +57,13 @@ impl IdleClock {
         });
     }
 
+    pub(crate) fn armed_until(&self) -> Option<Instant> {
+        match *self.tx.borrow() {
+            Slot::Idle(at) => Some(at),
+            Slot::Busy | Slot::Expired => None,
+        }
+    }
+
     pub(crate) fn disarm(&self) -> bool {
         let mut live = true;
         self.tx.send_if_modified(|slot| {

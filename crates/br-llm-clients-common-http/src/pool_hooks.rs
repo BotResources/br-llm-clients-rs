@@ -11,7 +11,7 @@ pub(crate) struct Hooks {
     after_unannounced: Slot,
     settings_step: Slot,
     settled_step: Slot,
-    retire_step: Slot,
+    end_step: Slot,
 }
 
 fn set(slot: &Slot, hook: impl Fn() + Send + Sync + 'static) {
@@ -62,12 +62,12 @@ impl Hooks {
         run(&self.settled_step);
     }
 
-    pub(crate) fn on_retire_step(&self, hook: impl Fn() + Send + Sync + 'static) {
-        set(&self.retire_step, hook);
+    pub(crate) fn on_end_step(&self, hook: impl Fn() + Send + Sync + 'static) {
+        set(&self.end_step, hook);
     }
 
-    pub(crate) fn run_retire_step(&self) {
-        run(&self.retire_step);
+    pub(crate) fn run_end_step(&self) {
+        run(&self.end_step);
     }
 
     pub(crate) fn run_before_scan(&self) {

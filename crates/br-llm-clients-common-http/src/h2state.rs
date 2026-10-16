@@ -2,6 +2,7 @@ use std::future::pending;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use tokio::sync::watch;
+use tokio::time::Instant;
 
 use crate::announced::Announced;
 use crate::idle::IdleClock;
@@ -87,9 +88,9 @@ impl H2State {
         self.gone.send_replace(true);
     }
 
-    pub(crate) fn retire(&self) {
+    pub(crate) fn end(&self) {
         #[cfg(test)]
-        self.step_retire();
+        self.step_end();
         self.retirement.end();
     }
 
@@ -110,7 +111,13 @@ impl H2State {
     }
 
     pub(crate) fn is_trimmable(&self) -> bool {
-        self.is_idle() && matches!(self.announcement(), Announced::Usable(limit) if limit > 0)
+        !self.is_retired()
+            && self.is_idle()
+            && matches!(self.announcement(), Announced::Usable(limit) if limit > 0)
+    }
+
+    pub(crate) fn idle_since(&self) -> Option<Instant> {
+        self.idle.armed_until()
     }
 
     pub(crate) fn settled(&self) -> Option<Settled> {
@@ -156,7 +163,7 @@ impl H2State {
         let mut count = self.count();
         *count = count.saturating_add(1);
         if !self.idle.disarm() {
-            self.retire();
+            self.end();
         }
         Permit(Arc::clone(self))
     }
@@ -169,8 +176,8 @@ impl Permit {
         self.0.gone.subscribe()
     }
 
-    pub(crate) fn retire_connection(&self) {
-        self.0.retire();
+    pub(crate) fn end_connection(&self) {
+        self.0.end();
     }
 
     pub(crate) fn violation(&self) -> Option<String> {
@@ -215,9 +222,9 @@ impl H2State {
         }
     }
 
-    fn step_retire(&self) {
+    fn step_end(&self) {
         if let Some(pool) = self.host.pool.upgrade() {
-            pool.hooks.run_retire_step();
+            pool.hooks.run_end_step();
         }
     }
 

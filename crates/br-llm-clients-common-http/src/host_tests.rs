@@ -4,7 +4,8 @@ use std::time::Duration;
 use crate::acquire_tests::Rig;
 use crate::endpoint::Endpoint;
 use crate::host::Host;
-use crate::pool::{MAX_H2_PER_HOST, Plan, Pool, PoolKey, WaitKind};
+use crate::limits::MAX_H2_PER_HOST;
+use crate::pool::{Plan, Pool, PoolKey, WaitKind};
 use crate::transport::LiveGuard;
 
 fn key(host: &str) -> PoolKey {
@@ -69,8 +70,8 @@ async fn given_sixteen_connections_of_which_one_is_retired_then_the_host_has_roo
     }
     let mut hosts = rig.shared.pool.lock();
     let host = hosts.get_mut(&rig.key).expect("host");
-    assert!(!host.has_h2_room());
-    kept[0].0.retire();
-    assert!(host.has_h2_room());
+    assert!(!host.reclaim_h2_room());
+    kept[0].0.end();
+    assert!(host.reclaim_h2_room());
     assert_eq!(host.h2.len(), MAX_H2_PER_HOST - 1);
 }

@@ -24,7 +24,7 @@ fn given_a_connection_that_is_alive_then_a_send_that_waited_for_it_has_lost_noth
 fn given_a_connection_that_was_retired_after_its_settings_then_a_send_that_waited_for_it_has_lost_an_attempt()
  {
     let state = state_with_limit(5);
-    state.retire();
+    state.end();
     assert!(is_spent(&state));
 }
 
@@ -32,7 +32,7 @@ fn given_a_connection_that_was_retired_after_its_settings_then_a_send_that_waite
 fn given_a_connection_that_never_sent_its_settings_then_a_send_that_waited_for_it_has_lost_an_attempt()
  {
     let state = bare_state();
-    state.retire();
+    state.end();
     assert!(state.limit_unknown());
     assert!(is_spent(&state));
 }
@@ -158,7 +158,7 @@ fn given_a_violation_recorded_and_the_connection_retired_between_the_two_reads_o
         let state = Arc::clone(&state);
         move || {
             state.record_violation("the server broke a rule".to_owned());
-            state.retire();
+            state.end();
         }
     });
     assert!(matches!(
@@ -182,7 +182,7 @@ fn given_a_violation_then_a_retirement_while_other_threads_look_then_no_look_rep
         },
         |state| {
             state.record_violation("the server broke a rule".to_owned());
-            state.retire();
+            state.end();
         },
     );
     assert!(looks > 0);

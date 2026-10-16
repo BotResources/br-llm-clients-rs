@@ -205,7 +205,7 @@ fn given_an_idle_connection_that_was_lowered_to_zero_after_usable_settings_then_
 #[test]
 fn given_a_retired_connection_that_never_sent_its_settings_then_its_limit_is_still_unknown() {
     let state = bare_state();
-    state.retire();
+    state.end();
     assert!(state.limit_unknown());
 }
 

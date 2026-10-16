@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::acquire_tests::{Outcome, Rig, outcome};
 use crate::h2state::H2State;
 use crate::h2state_tests::state_with_limit;
-use crate::pool::MAX_IDLE_PER_HOST;
+use crate::limits::MAX_IDLE_PER_HOST;
 use crate::settled::Settled;
 use crate::transport::Conn;
 
@@ -54,7 +54,7 @@ async fn given_a_connection_that_ended_and_a_send_waiting_for_it_then_the_send_l
     let (state, _conn) = rig.land(rig.dialer()).await;
     let waiter = rig.waiter();
     rig.waiting(1).await;
-    state.retire();
+    state.end();
     state.wake_host();
     assert!(matches!(outcome(waiter).await, Outcome::Spent));
 }
@@ -89,7 +89,7 @@ fn given_a_trimmed_connection_then_a_send_that_claimed_it_is_not_told_the_attemp
 #[test]
 fn given_a_connection_that_ended_then_a_send_that_claimed_it_is_told_the_attempt_is_spent() {
     let state = state_with_limit(5);
-    state.retire();
+    state.end();
     assert!(matches!(state.settled(), Some(Settled::Spent)));
 }
 
@@ -97,6 +97,6 @@ fn given_a_connection_that_ended_then_a_send_that_claimed_it_is_told_the_attempt
 fn given_a_trimmed_connection_that_then_ends_then_a_send_that_claimed_it_still_loses_nothing() {
     let state = state_with_limit(5);
     state.trim();
-    state.retire();
+    state.end();
     assert!(state.settled().is_none());
 }

@@ -4,7 +4,7 @@ use crate::acquire_tests::{Outcome, Rig};
 use crate::dialer::Dialer;
 use crate::h2track::track_streams;
 use crate::host::Host;
-use crate::pool::MAX_H2_PER_HOST;
+use crate::limits::MAX_H2_PER_HOST;
 
 const SOON: Duration = Duration::from_secs(5);
 const SETTINGS_WAIT: Duration = Duration::from_secs(60);

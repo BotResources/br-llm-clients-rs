@@ -4,7 +4,7 @@ use crate::acquire::READY_GRACE;
 use crate::client::HttpClient;
 use crate::config::HttpConfig;
 use crate::limits::{MAX_ATTEMPTS, MAX_HEAD_BYTES, MAX_HEADER_LINES};
-use crate::pool::{MAX_H2_PER_HOST, MAX_IDLE_PER_HOST};
+use crate::limits::{MAX_H2_PER_HOST, MAX_IDLE_PER_HOST};
 use crate::tuning::Tuning;
 
 #[test]

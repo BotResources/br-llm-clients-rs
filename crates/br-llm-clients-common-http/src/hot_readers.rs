@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use crate::h2state::H2State;
 
-const LOOKS_BEFORE_THE_WRITE: usize = 25;
+pub(crate) const LOOKS_BEFORE_THE_WRITE: usize = 25;
 const TIME_FOR_THE_LOOKS: Duration = Duration::from_secs(60);
 
 struct Release<'a> {

@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use crate::h2state::H2State;
 use crate::h2state_tests::bare_state;
-use crate::hot_readers::while_looked_at;
+use crate::hot_readers::{LOOKS_BEFORE_THE_WRITE, while_looked_at};
 
 const LONG_ENOUGH: Duration = Duration::from_secs(20);
 
@@ -56,5 +56,5 @@ fn given_readers_and_writes_then_every_state_is_written_once_after_enough_looks(
         },
     );
     assert_eq!(writes.load(Ordering::SeqCst), states.len());
-    assert!(looks >= 25 * states.len());
+    assert!(looks >= LOOKS_BEFORE_THE_WRITE * states.len());
 }

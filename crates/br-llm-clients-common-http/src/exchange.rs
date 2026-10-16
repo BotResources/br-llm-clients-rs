@@ -142,7 +142,7 @@ async fn attempt(
                         None => unsent,
                     };
                     if must_retire(&unsent) {
-                        permit.retire_connection();
+                        permit.end_connection();
                     }
                     Ok(Err(unsent))
                 }

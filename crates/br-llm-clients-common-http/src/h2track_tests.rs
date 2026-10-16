@@ -204,7 +204,7 @@ async fn given_a_connection_that_breaks_a_rule_then_the_violation_is_recorded_be
  {
     let (pool, state) = pooled_state();
     let seen = Arc::new(Mutex::new(Vec::new()));
-    pool.hooks.on_retire_step({
+    pool.hooks.on_end_step({
         let (state, seen) = (Arc::clone(&state), Arc::clone(&seen));
         move || seen.lock().expect("seen").push(state.violation().is_some())
     });

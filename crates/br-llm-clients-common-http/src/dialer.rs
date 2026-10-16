@@ -83,8 +83,8 @@ impl Dialer {
             }
             Opened::H2 { sender, state } => {
                 host.proto = Some(Proto::H2);
-                if !host.has_h2_room() {
-                    state.retire();
+                if !host.reclaim_h2_room() {
+                    state.end();
                     if let Some(landing) = &self.landing {
                         landing.land(&state);
                     }

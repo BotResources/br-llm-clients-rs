@@ -6,7 +6,7 @@ use crate::connect::{Opened, Target, open};
 use crate::dialer::{Dialer, Registered};
 use crate::h2state::H2State;
 use crate::host::Proto;
-use crate::pool::MAX_H2_PER_HOST;
+use crate::limits::MAX_H2_PER_HOST;
 use crate::settled::Settled;
 use crate::transport::Conn;
 
@@ -114,7 +114,7 @@ async fn given_sixteen_pooled_connections_of_which_one_is_retired_when_an_ungate
  {
     let rig = Rig::silent_server().await;
     let kept = pooled_full_connections(&rig, MAX_H2_PER_HOST).await;
-    kept[0].0.retire();
+    kept[0].0.end();
     let dialer = ungated(&rig);
     let opened = opened(&rig, &dialer).await;
     let state = state_of(&opened);
@@ -132,7 +132,7 @@ async fn given_sixteen_pooled_connections_of_which_one_is_retired_when_a_gated_d
     let opened = opened(&rig, &dialer).await;
     let (filler, _filler_conn) = rig.land(ungated(&rig)).await;
     filler.apply_settings(Some(1));
-    kept[0].0.retire();
+    kept[0].0.end();
     assert!(matches!(dialer.register(opened), Registered::Connected(_)));
     assert!(waiter.settled().is_none());
     assert!(!rig.dialing());

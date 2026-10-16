@@ -75,7 +75,8 @@ form to decide whether a version ships.
   connection while every stream is in use) and then cannot use costs that send
   exactly one of its three attempts, whatever the reason: the connection never
   sent SETTINGS, ended before or after them (EOF, reset, GOAWAY), was retired,
-  or kept a limit of zero since its first SETTINGS. This holds however late the
+  or kept a limit of zero since its first SETTINGS; the one exception is a
+  connection that the idle trimming retired (see Idle trimming). This holds however late the
   send wakes: the task that follows a connection retires it, and tells the
   host, before the connection is dropped, so the sender of a connection closes
   only after it was retired (the pool also retires a closed connection it meets,
@@ -122,13 +123,19 @@ form to decide whether a version ships.
   the plan of a send and for the registration of an arrival alike: a retired
   connection that was not swept yet does not count toward the 16, so a live
   arrival is not closed because of it.
-- Idle trimming. When more than 8 connections of a host are idle, the oldest
-  idle ones that have announced a limit are retired, and this is done when a
-  stream is freed and also when SETTINGS that make an idle connection count as
-  idle are read. A send that waited for a connection that the trimming retired
-  does not lose an attempt: it plans again (the other idle connections are
-  there to be used). A connection that ended, or that was retired for any other
-  reason, still costs the send that waited for it one attempt.
+- Idle trimming. One rule decides what counts toward the 8 idle connections of
+  a host: an open connection with no stream in use that has announced a limit
+  above zero, of either protocol. A connection that ended or was retired, even
+  if the pool has not swept it yet, and an HTTP/1 connection that closed, never
+  count, so they never cause a live connection to be closed. When more than 8
+  count, the oldest idle ones are closed (retired, for HTTP/2), whatever their
+  protocol, until 8 remain; this is done when a stream is freed, when an
+  HTTP/1 connection is put back in the pool, and when SETTINGS that make an
+  idle connection count as idle are read. A send that waited for a connection
+  that the trimming retired does not lose an attempt: it plans again (the other
+  idle connections are there to be used). A connection that ended, or that was
+  retired for any other reason, still costs the send that waited for it one
+  attempt.
 - Settings and limits. A server limit of zero makes the connection full, not
   unknown. The stream limit is read from the SETTINGS frames as they arrive on
   the wire, entry by

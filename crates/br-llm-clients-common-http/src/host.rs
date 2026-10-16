@@ -6,7 +6,7 @@ use tokio::time::Instant;
 
 use crate::claim::Landing;
 use crate::h2state::H2State;
-use crate::pool::MAX_H2_PER_HOST;
+use crate::limits::{MAX_H2_PER_HOST, MAX_IDLE_PER_HOST};
 use crate::transport::{H1Conn, H2Sender, LiveGuard, Signal};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -53,8 +53,7 @@ impl Host {
     }
 
     pub(crate) fn in_use(&self) -> bool {
-        self.dialing
-            || self.waiting.load(Ordering::SeqCst) > 0
+        self.waiting.load(Ordering::SeqCst) > 0
             || self.dials.load(Ordering::SeqCst) > 0
             || !self.h2.is_empty()
             || !self.h1.is_empty()
@@ -64,13 +63,13 @@ impl Host {
     pub(crate) fn drop_ended_h2(&mut self) {
         self.h2.retain(|entry| {
             if entry.sender.is_closed() {
-                entry.state.retire();
+                entry.state.end();
             }
             !entry.state.is_retired()
         });
     }
 
-    pub(crate) fn has_h2_room(&mut self) -> bool {
+    pub(crate) fn reclaim_h2_room(&mut self) -> bool {
         self.drop_ended_h2();
         self.h2.len() < MAX_H2_PER_HOST
     }
@@ -92,8 +91,85 @@ impl Host {
         self.landing = Landing::new();
     }
 
+    #[cfg(test)]
     pub(crate) fn idle_total(&self) -> usize {
-        let idle_h2 = self.h2.iter().filter(|e| e.state.is_trimmable()).count();
-        self.h1.len().saturating_add(idle_h2)
+        self.idle_view().total()
+    }
+
+    fn idle_view(&self) -> IdleView {
+        IdleView {
+            h1: self
+                .h1
+                .iter()
+                .enumerate()
+                .filter(|(_, idle)| !idle.conn.sender.is_closed())
+                .map(|(index, _)| index)
+                .collect(),
+            h2: self
+                .h2
+                .iter()
+                .enumerate()
+                .filter(|(_, entry)| entry.state.is_trimmable())
+                .map(|(index, _)| index)
+                .collect(),
+        }
+    }
+
+    pub(crate) fn trim_to_cap(&mut self) -> bool {
+        let mut trimmed_h2 = false;
+        while let Some(victim) = self.oldest_surplus() {
+            match victim {
+                Oldest::H1(index) => {
+                    self.h1.remove(index);
+                }
+                Oldest::H2(index) => {
+                    self.trim_h2(index);
+                    trimmed_h2 = true;
+                }
+            }
+        }
+        trimmed_h2
+    }
+
+    fn oldest_surplus(&self) -> Option<Oldest> {
+        let view = self.idle_view();
+        if view.total() <= MAX_IDLE_PER_HOST {
+            return None;
+        }
+        let h1 = view.h1.first().copied();
+        let h2 = view.h2.first().copied();
+        match (h1, h2) {
+            (Some(h1), Some(h2)) => {
+                let since_h1 = self
+                    .h1
+                    .get(h1)
+                    .and_then(|idle| idle.conn.idle.armed_until());
+                let since_h2 = self.h2.get(h2).and_then(|entry| entry.state.idle_since());
+                Some(if since_h1 <= since_h2 {
+                    Oldest::H1(h1)
+                } else {
+                    Oldest::H2(h2)
+                })
+            }
+            (Some(h1), None) => Some(Oldest::H1(h1)),
+            (None, Some(h2)) => Some(Oldest::H2(h2)),
+            (None, None) => None,
+        }
+    }
+}
+
+enum Oldest {
+    H1(usize),
+    H2(usize),
+}
+
+struct IdleView {
+    h1: Vec<usize>,
+    h2: Vec<usize>,
+}
+
+impl IdleView {
+    fn total(&self) -> usize {
+        self.h1.len().saturating_add(self.h2.len())
     }
 }

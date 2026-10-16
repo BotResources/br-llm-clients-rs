@@ -95,6 +95,12 @@ mod announce_steps_tests;
 #[cfg(test)]
 mod authorize_tests;
 #[cfg(test)]
+mod bump_storm_tests;
+#[cfg(test)]
+mod cap_tests;
+#[cfg(test)]
+mod classify_tests;
+#[cfg(test)]
 mod config_tests;
 #[cfg(test)]
 mod debug_tests;
@@ -102,6 +108,10 @@ mod debug_tests;
 mod dial_panic_tests;
 #[cfg(test)]
 mod dial_tests;
+#[cfg(test)]
+mod dialer_rig_tests;
+#[cfg(test)]
+mod driver_tests;
 #[cfg(test)]
 mod encoding_tests;
 #[cfg(test)]
@@ -111,13 +121,35 @@ mod endpoint_host_tests;
 #[cfg(test)]
 mod endpoint_tests;
 #[cfg(test)]
+mod exchange_tests;
+#[cfg(test)]
+mod fixed_values_tests;
+#[cfg(test)]
+mod h2cap_tests;
+#[cfg(test)]
+mod h2state_tests;
+#[cfg(test)]
 mod headers_tests;
+#[cfg(test)]
+mod host_tests;
+#[cfg(test)]
+mod hot_readers;
+#[cfg(test)]
+mod hot_readers_tests;
+#[cfg(test)]
+mod idle_cap_tests;
+#[cfg(test)]
+mod idle_rule_tests;
+#[cfg(test)]
+mod lifetime_tests;
 #[cfg(test)]
 mod payload_tests;
 #[cfg(test)]
 mod plan_settle_tests;
 #[cfg(test)]
 mod pool_tests;
+#[cfg(test)]
+mod ready_tests;
 #[cfg(test)]
 mod recreated_host_tests;
 #[cfg(test)]
@@ -144,39 +176,8 @@ mod trim_tests;
 mod turns;
 #[cfg(test)]
 mod turns_tests;
-
 #[cfg(test)]
 extern crate self as br_llm_clients_common_http;
-#[cfg(test)]
-mod bump_storm_tests;
-#[cfg(test)]
-mod cap_tests;
-#[cfg(test)]
-mod classify_tests;
-#[cfg(test)]
-mod dialer_rig_tests;
-#[cfg(test)]
-mod driver_tests;
-#[cfg(test)]
-mod exchange_tests;
-#[cfg(test)]
-mod fixed_values_tests;
-#[cfg(test)]
-mod h2cap_tests;
-#[cfg(test)]
-mod h2state_tests;
-#[cfg(test)]
-mod host_tests;
-#[cfg(test)]
-mod hot_readers;
-#[cfg(test)]
-mod hot_readers_tests;
-#[cfg(test)]
-mod idle_cap_tests;
-#[cfg(test)]
-mod lifetime_tests;
-#[cfg(test)]
-mod ready_tests;
 #[cfg(test)]
 #[allow(dead_code)] // the end-to-end helpers are shared with this build, which uses a subset
 #[path = "../tests/e2e/support/mod.rs"]
