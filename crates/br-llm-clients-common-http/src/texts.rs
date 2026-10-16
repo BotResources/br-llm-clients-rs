@@ -143,4 +143,61 @@ mod tests {
         let other = io::Error::other(TlsError::General("SECRET-DETAIL".to_owned()));
         assert_eq!(tls_failure(&other), "the TLS handshake failed");
     }
+
+    #[test]
+    fn given_an_io_error_when_describing_a_dial_then_the_text_is_the_reason_a_colon_and_the_kind() {
+        let error = io::Error::from(io::ErrorKind::ConnectionRefused);
+        assert_eq!(
+            dns_failure(&error),
+            "name resolution failed: connection refused"
+        );
+        assert_eq!(tcp_failure(&error), "could not connect: connection refused");
+        assert_eq!(
+            tls_failure(&io::Error::from(io::ErrorKind::UnexpectedEof)),
+            "the TLS handshake failed: unexpected end of file"
+        );
+    }
+
+    #[test]
+    fn given_each_certificate_fault_when_describing_then_the_text_has_the_fixed_wording_and_no_kind()
+     {
+        let cases = [
+            (CertificateError::Expired, "has expired"),
+            (CertificateError::NotValidYet, "is not valid yet"),
+            (CertificateError::UnknownIssuer, "has an unknown issuer"),
+            (
+                CertificateError::NotValidForName,
+                "is not valid for this host",
+            ),
+            (CertificateError::BadSignature, "has a bad signature"),
+            (CertificateError::Revoked, "is revoked"),
+            (CertificateError::BadEncoding, "was refused"),
+        ];
+        for (fault, what) in cases {
+            let error = io::Error::other(TlsError::InvalidCertificate(fault));
+            assert_eq!(
+                tls_failure(&error),
+                format!("the server certificate {what}")
+            );
+        }
+    }
+
+    #[test]
+    fn given_a_tls_alert_when_describing_then_the_text_names_no_alert() {
+        let alert = TlsError::AlertReceived(rustls::AlertDescription::HandshakeFailure);
+        assert_eq!(
+            tls_failure(&io::Error::other(alert)),
+            "the server ended the handshake with a TLS alert"
+        );
+    }
+
+    #[test]
+    fn given_an_http2_error_when_describing_then_the_text_is_the_fixed_wording_a_comma_and_the_reason()
+     {
+        let failed = h2::Error::from(h2::Reason::CANCEL);
+        assert_eq!(
+            h2_text(&failed),
+            "the HTTP/2 exchange failed, HTTP/2 reason: stream no longer needed"
+        );
+    }
 }
