@@ -58,19 +58,36 @@ form to decide whether a version ships.
   has been read, and no request is handed to it before: the sends that arrive
   meanwhile wait for it, including the send that dialed it. A connection whose
   first SETTINGS frame has not been read within `connect_timeout` after the
-  connection is ready is closed.
+  connection is ready is closed. The cap of 16 holds also when the protocol of
+  the host is known as HTTP/1.1 and a connection then negotiates HTTP/2: the
+  dials planned while the protocol is HTTP/1.1 are not gated, so a burst can
+  have dialed more than 16 connections before the first one arrives, and a
+  connection that arrives as HTTP/2 when 16 are pooled is closed and not
+  pooled; the send that dialed it spends one attempt with no byte written, and
+  so does every send that waited for that dial. The dials already made are not
+  undone (the server still accepts them), and the pool never holds more than 16
+  HTTP/2 connections for a host. The dials and the connections of a client are
+  driven on the tokio runtime of the send that opened them, so that runtime must
+  keep running while the client is used: a runtime that stays alive but is no
+  longer driven stalls the connections it holds and the host with them.
 - Attempts of the sends that wait. Every connection that a send waited for
   (the dial in flight, the first SETTINGS of a connection, or the dial of a new
   connection while every stream is in use) and then cannot use costs that send
   exactly one of its three attempts, whatever the reason: the connection never
   sent SETTINGS, ended before or after them (EOF, reset, GOAWAY), was retired,
   or kept a limit of zero since its first SETTINGS. This holds however late the
-  send wakes: a connection is retired before the pool lets it go, whichever of
-  the pool and the task that follows the connection sees its end first, and a
-  send reads the state of the connection it waited for after it has read the
-  rest of the pool, so a wake that comes while the connection ends, or while its
-  first SETTINGS are read, never costs the send one more connection or one more
-  wait. The send does not dial its
+  send wakes: the task that follows a connection retires it, and tells the
+  host, before the connection is dropped, so the sender of a connection closes
+  only after it was retired (the pool also retires a closed connection it meets,
+  as a second barrier); what the server announced (nothing yet, a limit, or a
+  zero since the first SETTINGS) is one value that is replaced in one step, with
+  the limit that goes with it; and a send reads the state of the connection it
+  waited for after it has read the rest of the pool, first whether the
+  connection ended or announced a zero and then whether it broke a rule (the
+  order opposite to the one the task writes them in), so a wake that comes while
+  the connection ends, or while its SETTINGS are read, costs the send neither
+  one more connection nor one more wait, and a connection that broke a rule is
+  never a spent attempt. The send does not dial its
   own connection for it, neither when the connection opened and could not be
   used, nor when the dial failed (then the send fails with the failure of that
   dial, see Connections). So connections stay in the order of the attempts, not
@@ -87,8 +104,9 @@ form to decide whether a version ships.
   sends that waited lose nothing. A send that waited and had already looked at
   the connection while its limit was zero keeps the attempt it spent. A
   connection that announced zero stays pooled until it is idle for 30 s and is
-  never trimmed to keep 8 idle ones, so the 16 connections of a host cap also
-  holds for them; sends beyond it wait within `headers_timeout` and end with
+  never trimmed to keep 8 idle ones, and neither is a connection whose first
+  SETTINGS are not read yet, which counts as full, so the 16 connections of a
+  host cap also holds for them; sends beyond it wait within `headers_timeout` and end with
   `HeadersTimeout`. The connect deadline starts with each dial the send itself
   makes and never counts the time spent behind the dial of another send, which
   has no deadline of its own. A host leaves the pool when its last connection
@@ -240,7 +258,9 @@ form to decide whether a version ships.
 - `HttpConfig`: `new`, `with_total_timeout`, `with_user_agent`,
   `with_extra_root_certificates`; `Clone`, `Eq`, `Debug`.
 - `HttpClient`: `new`, `send`; `Clone`, `Debug`. `send` is async and must run
-  inside a tokio runtime: called outside one it panics.
+  inside a tokio runtime, which must keep running while the client is used: the
+  dials and the connections are driven on the runtime of the send that opened
+  them. Called outside a runtime it panics.
 - `Response`: `status`, `headers`, `retry_after`, `body_mut`, `into_parts`;
   `Debug`. `Headers`: `get`, `get_all`, `get_text`, `iter`; `Clone`, `Debug`.
   `BodyStream`: `next_chunk`, `poll_next_chunk`, `collect`; `Debug`.
