@@ -83,7 +83,10 @@ async fn given_a_send_that_started_a_dial_when_it_is_dropped_then_the_dial_stops
         );
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    assert!(matches!(rig.shared.pool.plan(&rig.key), Plan::Dial(_)));
+    assert!(matches!(
+        rig.shared.pool.plan(&rig.key, None),
+        Plan::Dial(_)
+    ));
 }
 
 #[tokio::test]
@@ -113,7 +116,10 @@ async fn given_a_dial_for_one_more_connection_that_failed_when_another_send_arri
     full.apply_settings(Some(1));
     rig.dialer()
         .fail(DialFailure::Connect("refused".to_owned()));
-    assert!(matches!(rig.shared.pool.plan(&rig.key), Plan::Dial(_)));
+    assert!(matches!(
+        rig.shared.pool.plan(&rig.key, None),
+        Plan::Dial(_)
+    ));
 }
 
 #[tokio::test]

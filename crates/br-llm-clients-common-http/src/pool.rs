@@ -6,7 +6,7 @@ use std::time::Duration;
 use tokio::sync::watch;
 use tokio::time::Instant;
 
-use crate::claim::{Claim, Landing};
+use crate::claim::{Claim, Standing};
 use crate::dialer::Dialer;
 use crate::endpoint::Endpoint;
 use crate::host::{Host, Idle, Proto};
@@ -48,7 +48,7 @@ impl HostHandle {
 }
 
 pub(crate) enum WaitKind {
-    Dial(Arc<Landing>),
+    Dial,
     Stream,
 }
 
@@ -64,6 +64,7 @@ pub(crate) enum Plan {
     TryIdle(H1Conn),
     Dial(Dialer),
     Wait(Wait),
+    Settled(Standing),
 }
 
 pub(crate) struct Pool {
@@ -71,6 +72,8 @@ pub(crate) struct Pool {
     idle_limit: Duration,
     #[cfg(test)]
     after_scan: Mutex<Option<Box<dyn Fn() + Send>>>,
+    #[cfg(test)]
+    before_register: Mutex<Option<std::sync::Arc<dyn Fn() + Send + Sync>>>,
 }
 
 impl Pool {
@@ -80,7 +83,29 @@ impl Pool {
             idle_limit,
             #[cfg(test)]
             after_scan: Mutex::new(None),
+            #[cfg(test)]
+            before_register: Mutex::new(None),
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn run_before_register(&self) {
+        let hook = self
+            .before_register
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+        if let Some(hook) = hook {
+            hook();
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn on_register(&self, hook: impl Fn() + Send + Sync + 'static) {
+        *self
+            .before_register
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(std::sync::Arc::new(hook));
     }
 
     #[cfg(test)]
@@ -120,8 +145,14 @@ impl Pool {
         self.hosts.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    pub(crate) fn plan(self: &Arc<Self>, key: &PoolKey) -> Plan {
+    pub(crate) fn plan(self: &Arc<Self>, key: &PoolKey, held: Option<&Claim>) -> Plan {
         let mut hosts = self.lock();
+        if let Some(settled) = held
+            .map(Claim::standing)
+            .filter(|standing| !matches!(standing, Standing::Open))
+        {
+            return Plan::Settled(settled);
+        }
         hosts.retain(|other, host| other == key || host.in_use());
         let host = hosts.entry(key.clone()).or_insert_with(Host::new);
         let changes = host.signal.subscribe();
@@ -165,10 +196,7 @@ impl Pool {
                 Plan::Dial(self.dialer(key, host, true))
             }
             Some(Proto::H2) => wait(WaitKind::Stream, host.dialing.then(landing_claim)),
-            None if host.dialing => wait(
-                WaitKind::Dial(Arc::clone(&host.landing)),
-                Some(landing_claim()),
-            ),
+            None if host.dialing => wait(WaitKind::Dial, Some(landing_claim())),
             None => {
                 host.begin_gated_dial();
                 Plan::Dial(self.dialer(key, host, true))

@@ -59,11 +59,19 @@ async fn given_an_idle_connection_trimmed_to_keep_eight_then_the_sends_waiting_o
     drop(conns);
     assert!(states.iter().all(|state| !state.is_retired()));
     let before = *changes.borrow();
-    drop(last);
+    let held_pool = rig.shared.pool.lock();
+    let dropping = std::thread::spawn(move || drop(last));
+    while *changes.borrow() == before {
+        std::thread::yield_now();
+    }
+    let after_the_freed_stream = *changes.borrow();
+    assert!(!states.first().expect("oldest").is_retired());
+    drop(held_pool);
+    dropping.join().expect("the drop ends");
     assert!(states.first().expect("oldest").is_retired());
-    let woken = (*changes.borrow()).wrapping_sub(before);
-    assert_eq!(
-        woken, 2,
-        "one wake for the freed stream, one for the retirement"
+    assert_ne!(
+        *changes.borrow(),
+        after_the_freed_stream,
+        "no wake follows the retirement"
     );
 }

@@ -2,32 +2,65 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::task::JoinHandle;
-use tokio::time::Instant;
 
 use crate::acquire::{Acquired, Acquisition, acquire};
 use crate::acquire_tests::{CONNECT_TIMEOUT, Outcome, Rig, outcome};
+use crate::dialer::DialFailure;
 use crate::endpoint::Endpoint;
 use crate::pool::{Plan, PoolKey};
 use crate::redact::Redactor;
 use crate::send_error::SendError;
 use crate::support::raw_h2::{Announce, Answer, Policy, RawH2};
 
-async fn failed_after(waiter: JoinHandle<Outcome>, elapsed: Duration) -> SendError {
-    let started = Instant::now();
+async fn still_waiting_after(waiter: &mut JoinHandle<Outcome>, span: Duration) {
+    assert!(
+        tokio::time::timeout(span, &mut *waiter).await.is_err(),
+        "the waiter ended while the dial it waits for was still open"
+    );
+}
+
+async fn failure_of(waiter: JoinHandle<Outcome>) -> SendError {
     let Outcome::Failed(error) = outcome(waiter).await else {
         panic!("the waiter fails");
     };
-    assert_eq!(started.elapsed(), elapsed);
     error
 }
 
+fn bump_host(rig: &Rig) {
+    let signal = rig
+        .shared
+        .pool
+        .lock()
+        .get(&rig.key)
+        .map(|host| Arc::clone(&host.signal));
+    if let Some(signal) = signal {
+        crate::transport::bump(&signal);
+    }
+}
+
 #[tokio::test(start_paused = true)]
-async fn given_a_send_waiting_behind_a_dial_that_never_ends_then_it_fails_with_connect_timeout_after_one_connect_timeout()
+async fn given_a_send_waiting_behind_a_dial_that_is_still_open_then_it_keeps_no_timer_of_its_own_and_gets_the_failure_of_that_dial()
  {
     let rig = Rig::offline();
-    let _dialer = rig.dialer();
-    let waiter = rig.waiter();
-    let error = failed_after(waiter, CONNECT_TIMEOUT).await;
+    let dialer = rig.dialer();
+    let mut waiter = rig.waiter();
+    rig.waiting(1).await;
+    still_waiting_after(&mut waiter, CONNECT_TIMEOUT * 10).await;
+    dialer.fail(DialFailure::Connect("refused".to_owned()));
+    let error = failure_of(waiter).await;
+    assert!(matches!(error, SendError::Connect { .. }), "{error:?}");
+}
+
+#[tokio::test(start_paused = true)]
+async fn given_a_send_waiting_behind_a_dial_that_then_times_out_then_it_gets_that_connect_timeout()
+{
+    let rig = Rig::offline();
+    let dialer = rig.dialer();
+    let mut waiter = rig.waiter();
+    rig.waiting(1).await;
+    still_waiting_after(&mut waiter, CONNECT_TIMEOUT * 3).await;
+    dialer.fail(DialFailure::Timeout);
+    let error = failure_of(waiter).await;
     assert!(
         matches!(error, SendError::ConnectTimeout { .. }),
         "{error:?}"
@@ -35,20 +68,19 @@ async fn given_a_send_waiting_behind_a_dial_that_never_ends_then_it_fails_with_c
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_send_waiting_behind_one_dial_and_then_behind_another_then_the_connect_timeout_restarts_for_the_second()
+async fn given_a_send_waiting_behind_one_dial_and_then_behind_another_then_it_keeps_no_timer_and_gets_the_failure_of_the_second()
  {
     let rig = Rig::offline();
     let first = rig.dialer();
-    let waiter = rig.waiter();
+    let mut waiter = rig.waiter();
     rig.waiting(1).await;
-    tokio::time::sleep(CONNECT_TIMEOUT / 2).await;
+    still_waiting_after(&mut waiter, CONNECT_TIMEOUT * 4).await;
     drop(first);
-    let _second = rig.dialer();
-    let error = failed_after(waiter, CONNECT_TIMEOUT).await;
-    assert!(
-        matches!(error, SendError::ConnectTimeout { .. }),
-        "{error:?}"
-    );
+    let second = rig.dialer();
+    still_waiting_after(&mut waiter, CONNECT_TIMEOUT * 4).await;
+    second.fail(DialFailure::Tls("refused".to_owned()));
+    let error = failure_of(waiter).await;
+    assert!(matches!(error, SendError::Tls { .. }), "{error:?}");
 }
 
 #[tokio::test]
@@ -65,43 +97,31 @@ async fn given_a_send_that_waited_behind_a_dial_and_then_dials_itself_then_its_o
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_wakes_that_change_nothing_while_a_send_waits_behind_a_dial_then_its_connect_timeout_does_not_restart()
- {
+async fn given_wakes_that_change_nothing_while_a_send_waits_behind_a_dial_then_it_keeps_waiting() {
     let rig = Rig::offline();
-    let _dialer = rig.dialer();
-    let waiter = rig.waiter();
+    let dialer = rig.dialer();
+    let mut waiter = rig.waiter();
     rig.waiting(1).await;
-    for _ in 0..4 {
-        tokio::time::sleep(CONNECT_TIMEOUT / 5).await;
-        let signal = rig
-            .shared
-            .pool
-            .lock()
-            .get(&rig.key)
-            .map(|host| Arc::clone(&host.signal));
-        if let Some(signal) = signal {
-            crate::transport::bump(&signal);
-        }
+    for _ in 0..8 {
+        still_waiting_after(&mut waiter, CONNECT_TIMEOUT).await;
+        bump_host(&rig);
     }
-    let error = failed_after(waiter, CONNECT_TIMEOUT / 5).await;
-    assert!(
-        matches!(error, SendError::ConnectTimeout { .. }),
-        "{error:?}"
-    );
+    dialer.fail(DialFailure::Connect("refused".to_owned()));
+    let error = failure_of(waiter).await;
+    assert!(matches!(error, SendError::Connect { .. }), "{error:?}");
 }
 
 #[tokio::test(start_paused = true)]
 async fn given_a_connect_timeout_text_when_the_path_holds_a_secret_then_the_secret_is_removed() {
     let endpoint = Endpoint::https("https://h.example/s3cr3t").expect("endpoint");
     let rig = Rig::timed(endpoint.clone(), None, CONNECT_TIMEOUT, CONNECT_TIMEOUT);
-    let _dialer = rig.dialer();
-    let outcome = acquire(
-        &rig.shared,
-        &endpoint,
-        &PoolKey::of(&endpoint),
-        &Redactor::new(["s3cr3t"]),
-    )
-    .await;
+    let dialer = rig.dialer();
+    let redactor = Redactor::new(["s3cr3t"]);
+    let key = PoolKey::of(&endpoint);
+    let (outcome, ()) = tokio::join!(acquire(&rig.shared, &endpoint, &key, &redactor), async {
+        rig.waiting(1).await;
+        dialer.fail(DialFailure::Timeout);
+    });
     let text = match outcome {
         Err(SendError::ConnectTimeout { text }) => text,
         Err(other) => panic!("{other:?}"),
@@ -139,7 +159,7 @@ async fn given_a_send_that_waited_for_a_stream_and_then_waits_behind_another_dia
         state.retire();
         state.mark_gone();
     }
-    let Plan::Dial(dialer) = rig.shared.pool.plan(&rig.key) else {
+    let Plan::Dial(dialer) = rig.shared.pool.plan(&rig.key, None) else {
         panic!("the test takes the dial gate");
     };
     kept.first().expect("kept").0.wake_host();

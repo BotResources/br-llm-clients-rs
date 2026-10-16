@@ -78,13 +78,19 @@ pub use send_error::SendError;
 #[cfg(test)]
 mod acquire_deadline_tests;
 #[cfg(test)]
+mod acquire_race_tests;
+#[cfg(test)]
 mod acquire_tests;
+#[cfg(test)]
+mod acquire_zero_tests;
 #[cfg(test)]
 mod authorize_tests;
 #[cfg(test)]
 mod config_tests;
 #[cfg(test)]
 mod debug_tests;
+#[cfg(test)]
+mod dial_panic_tests;
 #[cfg(test)]
 mod dial_tests;
 #[cfg(test)]

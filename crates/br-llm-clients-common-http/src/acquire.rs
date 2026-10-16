@@ -1,16 +1,15 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::task::JoinHandle;
+use tokio::task::{JoinError, JoinHandle};
 use tokio::time::{Instant, timeout, timeout_at};
 
-use crate::claim::{Claim, Landing};
+use crate::claim::{Claim, Standing};
 use crate::client::Shared;
-use crate::connect::{ConnectFailure, open};
+use crate::connect::{ConnectFailure, Target, open};
 use crate::deadline;
 use crate::dialer::{DialFailure, Dialer};
 use crate::endpoint::Endpoint;
-use crate::h2state::Standing;
 use crate::pool::{Plan, PoolKey, Wait, WaitKind};
 use crate::redact::Redactor;
 use crate::send_error::SendError;
@@ -33,22 +32,10 @@ struct Waiting<'a> {
     shared: &'a Arc<Shared>,
     endpoint: &'a Endpoint,
     redactor: &'a Redactor,
-    dial_wait: Option<(Arc<Landing>, Instant)>,
     headers_deadline: Option<Instant>,
 }
 
 impl Waiting<'_> {
-    fn dial_wait_deadline(&mut self, landing: &Arc<Landing>) -> Instant {
-        if let Some((seen, at)) = &self.dial_wait
-            && Arc::ptr_eq(seen, landing)
-        {
-            return *at;
-        }
-        let at = deadline::after(Instant::now(), self.shared.config.connect_timeout);
-        self.dial_wait = Some((Arc::clone(landing), at));
-        at
-    }
-
     fn ready(&mut self, conn: Conn) -> Acquired {
         let limit = self.shared.config.headers_timeout;
         let deadline = *self
@@ -98,33 +85,31 @@ pub(crate) async fn acquire(
         shared,
         endpoint,
         redactor,
-        dial_wait: None,
         headers_deadline: None,
     };
     let mut _waiting: Option<LiveGuard> = None;
     let mut claim: Option<Claim> = None;
     loop {
-        if let Some(held) = claim.take() {
-            match held.standing() {
-                Standing::Spent => return Ok(Acquisition::Spent),
-                Standing::Broken(text) => return Err(protocol_failure(redactor, endpoint, &text)),
-                Standing::Failed(failure) => return Err(state.failure(failure)),
-                Standing::Open => {}
-            }
-        }
-        let plan = shared.pool.plan(key);
+        let held = claim.take();
+        let plan = shared.pool.plan(key, held.as_ref());
         _waiting = None;
         if matches!(
             plan,
             Plan::Dial(_)
                 | Plan::Wait(Wait {
-                    kind: WaitKind::Dial(_),
+                    kind: WaitKind::Dial,
                     ..
                 })
         ) {
             state.headers_deadline = None;
         }
         match plan {
+            Plan::Settled(Standing::Spent) => return Ok(Acquisition::Spent),
+            Plan::Settled(Standing::Broken(text)) => {
+                return Err(protocol_failure(redactor, endpoint, &text));
+            }
+            Plan::Settled(Standing::Failed(failure)) => return Err(state.failure(failure)),
+            Plan::Settled(Standing::Open) => {}
             Plan::Reuse(conn) => return Ok(Acquisition::Ready(state.ready(conn))),
             Plan::TryIdle(mut idle) => {
                 let ready = matches!(timeout(READY_GRACE, idle.sender.ready()).await, Ok(Ok(())));
@@ -141,25 +126,23 @@ pub(crate) async fn acquire(
                 mut changed,
                 kind,
                 guard,
-                claim: held,
+                claim: next,
             }) => {
                 _waiting = Some(guard);
-                claim = held;
-                let (at, timed_out) = match kind {
-                    WaitKind::Dial(landing) => (
-                        state.dial_wait_deadline(&landing),
-                        state.failure(DialFailure::Timeout),
-                    ),
+                claim = next;
+                match kind {
+                    WaitKind::Dial => {
+                        let _ = changed.changed().await;
+                    }
                     WaitKind::Stream => {
                         let limit = shared.config.headers_timeout;
                         let at = *state
                             .headers_deadline
                             .get_or_insert_with(|| deadline::after(Instant::now(), limit));
-                        (at, state.stream_timeout())
+                        if timeout_at(at, changed.changed()).await.is_err() {
+                            return Err(state.stream_timeout());
+                        }
                     }
-                };
-                if timeout_at(at, changed.changed()).await.is_err() {
-                    return Err(timed_out);
                 }
             }
         }
@@ -174,29 +157,26 @@ impl<T> Drop for AbortOnDrop<T> {
     }
 }
 
+pub(crate) type DialOutcome = Result<Option<Conn>, DialFailure>;
+
+pub(crate) fn joined(result: Result<DialOutcome, JoinError>) -> DialOutcome {
+    result.unwrap_or_else(|_| Err(DialFailure::lost()))
+}
+
 async fn dial(state: &mut Waiting<'_>, dialer: Dialer) -> Result<Option<Conn>, SendError> {
     let mut task = AbortOnDrop(tokio::spawn(run_dial(
         Arc::clone(state.shared),
-        state.endpoint.clone(),
+        Target::of(state.endpoint),
         dialer,
     )));
-    let outcome = (&mut task.0).await.unwrap_or_else(|_| {
-        Err(DialFailure::Connect(
-            "the connection attempt ended without a result".to_owned(),
-        ))
-    });
-    outcome.map_err(|failure| state.failure(failure))
+    joined((&mut task.0).await).map_err(|failure| state.failure(failure))
 }
 
-async fn run_dial(
-    shared: Arc<Shared>,
-    endpoint: Endpoint,
-    dialer: Dialer,
-) -> Result<Option<Conn>, DialFailure> {
+async fn run_dial(shared: Arc<Shared>, target: Target, dialer: Dialer) -> DialOutcome {
     let limit = shared.config.connect_timeout;
     let opened = timeout_at(
         deadline::after(Instant::now(), limit),
-        open(&shared.tls, &endpoint, &dialer.host, shared.tuning, limit),
+        open(&shared.tls, &target, &dialer.host, shared.tuning, limit),
     )
     .await;
     let failure = match opened {

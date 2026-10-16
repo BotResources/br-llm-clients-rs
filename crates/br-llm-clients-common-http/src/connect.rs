@@ -35,18 +35,34 @@ pub(crate) enum Opened {
     },
 }
 
+pub(crate) struct Target {
+    https: bool,
+    name: String,
+    port: u16,
+}
+
+impl Target {
+    pub(crate) fn of(endpoint: &Endpoint) -> Self {
+        Self {
+            https: endpoint.is_https(),
+            name: endpoint.dns_name().to_owned(),
+            port: endpoint.effective_port(),
+        }
+    }
+}
+
 pub(crate) async fn open(
     tls: &TlsConnector,
-    endpoint: &Endpoint,
+    target: &Target,
     host: &HostHandle,
     tuning: Tuning,
     settings_wait: Duration,
 ) -> Result<Opened, ConnectFailure> {
-    let tcp = connect_tcp(endpoint, tuning.dial_stagger).await?;
-    if !endpoint.is_https() {
+    let tcp = connect_tcp(target, tuning.dial_stagger).await?;
+    if !target.https {
         return start(tcp, false, host, tuning, settings_wait).await;
     }
-    let name = ServerName::try_from(endpoint.dns_name().to_owned())
+    let name = ServerName::try_from(target.name.clone())
         .map_err(|_| ConnectFailure::Tls("the host is not a valid server name".to_owned()))?;
     let stream = tls
         .connect(name, tcp)
@@ -56,8 +72,8 @@ pub(crate) async fn open(
     start(stream, h2, host, tuning, settings_wait).await
 }
 
-async fn connect_tcp(endpoint: &Endpoint, stagger: Duration) -> Result<TcpStream, ConnectFailure> {
-    let addresses: Vec<_> = lookup_host((endpoint.dns_name(), endpoint.effective_port()))
+async fn connect_tcp(target: &Target, stagger: Duration) -> Result<TcpStream, ConnectFailure> {
+    let addresses: Vec<_> = lookup_host((target.name.as_str(), target.port))
         .await
         .map_err(|error| ConnectFailure::Connect(texts::dns_failure(&error)))?
         .collect();

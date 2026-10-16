@@ -3,17 +3,10 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use tokio::sync::watch;
 
-use crate::dialer::DialFailure;
+use crate::claim::Standing;
 use crate::idle::IdleClock;
 use crate::pool::HostHandle;
 use crate::transport::bump;
-
-pub(crate) enum Standing {
-    Open,
-    Spent,
-    Broken(String),
-    Failed(DialFailure),
-}
 
 pub(crate) struct H2State {
     inflight: Mutex<usize>,
@@ -53,7 +46,8 @@ impl H2State {
 
     pub(crate) fn apply_settings_run(&self, run: &[Option<u32>]) {
         let mut first = self.awaiting_settings();
-        let mut applied = false;
+        let mut zero_since_first = None;
+        let mut last_limit = None;
         for max_concurrent_streams in run {
             let limit = match max_concurrent_streams {
                 Some(value) => usize::try_from(*value).unwrap_or(usize::MAX),
@@ -61,18 +55,22 @@ impl H2State {
                 None => continue,
             };
             if first {
-                self.zero_since_first.store(limit == 0, Ordering::SeqCst);
+                zero_since_first = Some(limit == 0);
                 first = false;
             } else if limit > 0 {
-                self.zero_since_first.store(false, Ordering::SeqCst);
+                zero_since_first = Some(false);
             }
-            self.peer_max.store(limit, Ordering::SeqCst);
-            applied = true;
+            last_limit = Some(limit);
         }
-        if applied {
-            self.known.send_replace(true);
-            self.wake_host();
+        let Some(limit) = last_limit else {
+            return;
+        };
+        if let Some(zero) = zero_since_first {
+            self.zero_since_first.store(zero, Ordering::SeqCst);
         }
+        self.peer_max.store(limit, Ordering::SeqCst);
+        self.known.send_replace(true);
+        self.wake_host();
     }
 
     pub(crate) fn awaiting_settings(&self) -> bool {

@@ -8,7 +8,7 @@ use tokio::task::JoinHandle;
 
 use crate::acquire::{Acquisition, acquire};
 use crate::client::{HttpClient, Shared};
-use crate::connect::{Opened, open};
+use crate::connect::{Opened, Target, open};
 use crate::dialer::Dialer;
 use crate::endpoint::Endpoint;
 use crate::h2state::H2State;
@@ -117,7 +117,7 @@ impl Rig {
     }
 
     pub(crate) fn dialer(&self) -> Dialer {
-        match self.shared.pool.plan(&self.key) {
+        match self.shared.pool.plan(&self.key, None) {
             Plan::Dial(dialer) => dialer,
             _ => panic!("the send dials"),
         }
@@ -156,7 +156,7 @@ impl Rig {
     pub(crate) async fn land(&self, dialer: Dialer) -> (Arc<H2State>, Conn) {
         let Ok(opened) = open(
             &self.shared.tls,
-            &self.endpoint,
+            &Target::of(&self.endpoint),
             &dialer.host,
             self.shared.tuning,
             SETTINGS_WAIT,

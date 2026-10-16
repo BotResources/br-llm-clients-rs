@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
 use super::{Gone, track_streams};
-use crate::h2state::Standing;
+use crate::claim::Standing;
 use crate::h2state_tests::{bare_state, state_with_limit};
 
 #[test]

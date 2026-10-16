@@ -9,6 +9,7 @@ mod cold_bursts;
 mod collect;
 mod dial_failure;
 mod dial_stall;
+mod dial_wait;
 mod drop;
 mod dup_stress;
 mod encoding;

@@ -15,7 +15,7 @@ fn key(host: &str) -> PoolKey {
 fn given_a_host_with_a_dial_in_flight_then_the_sweep_does_not_forget_it() {
     let pool = Arc::new(Pool::new(Duration::from_secs(30)));
     let host = key("h.example");
-    let plan = pool.plan(&host);
+    let plan = pool.plan(&host, None);
     assert!(matches!(plan, Plan::Dial(_)));
     pool.forget_if_unused(&host);
     assert_eq!(pool.lock().len(), 1);
@@ -25,9 +25,9 @@ fn given_a_host_with_a_dial_in_flight_then_the_sweep_does_not_forget_it() {
 #[test]
 fn given_a_host_with_a_dial_in_flight_then_planning_another_host_does_not_forget_it() {
     let pool = Arc::new(Pool::new(Duration::from_secs(30)));
-    let first = pool.plan(&key("a.example"));
+    let first = pool.plan(&key("a.example"), None);
     assert!(matches!(first, Plan::Dial(_)));
-    let second = pool.plan(&key("b.example"));
+    let second = pool.plan(&key("b.example"), None);
     assert!(matches!(second, Plan::Dial(_)));
     assert_eq!(pool.lock().len(), 2);
     drop((first, second));
@@ -50,7 +50,7 @@ async fn given_sixteen_full_connections_and_no_dial_in_flight_then_a_send_waits_
         state.apply_settings(Some(1));
         kept.push((state, conn));
     }
-    match rig.shared.pool.plan(&rig.key) {
+    match rig.shared.pool.plan(&rig.key, None) {
         Plan::Wait(wait) => {
             assert!(matches!(wait.kind, WaitKind::Stream));
             assert!(wait.claim.is_none());

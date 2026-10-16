@@ -13,6 +13,12 @@ pub(crate) enum DialFailure {
     Timeout,
 }
 
+impl DialFailure {
+    pub(crate) fn lost() -> Self {
+        Self::Connect("the connection attempt ended without a result".to_owned())
+    }
+}
+
 pub(crate) struct Dialer {
     pub(crate) host: HostHandle,
     landing: Option<Arc<Landing>>,
@@ -34,6 +40,8 @@ impl Dialer {
 
     pub(crate) fn register(mut self, opened: Opened) -> Option<Conn> {
         let pool = self.host.pool.upgrade()?;
+        #[cfg(test)]
+        pool.run_before_register();
         let mut hosts = pool.lock();
         let host = hosts.entry(self.host.key.clone()).or_insert_with(Host::new);
         self.done = true;
@@ -83,6 +91,11 @@ impl Drop for Dialer {
     fn drop(&mut self) {
         if !self.gated() || self.done {
             return;
+        }
+        if std::thread::panicking()
+            && let Some(landing) = &self.landing
+        {
+            landing.fail(DialFailure::lost());
         }
         if let Some(pool) = self.host.pool.upgrade() {
             let mut hosts = pool.lock();
