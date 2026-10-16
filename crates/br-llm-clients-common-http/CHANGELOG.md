@@ -70,34 +70,34 @@ form to decide whether a version ships.
   driven on the tokio runtime of the send that opened them, so that runtime must
   keep running while the client is used: a runtime that stays alive but is no
   longer driven stalls the connections it holds and the host with them.
-- Attempts of the sends that wait. Every connection that a send waited for
-  (the dial in flight, the first SETTINGS of a connection, or the dial of a new
+- Attempts of the sends that wait. Every connection that a send waited for (the
+  dial in flight, the first SETTINGS of a connection, or the dial of a new
   connection while every stream is in use) and then cannot use costs that send
   exactly one of its three attempts, whatever the reason: the connection never
   sent SETTINGS, ended before or after them (EOF, reset, GOAWAY), was retired,
   or kept a limit of zero since its first SETTINGS; the one exception is a
-  connection that the idle trimming retired (see Idle trimming). This holds however late the
-  send wakes: the task that follows a connection retires it, and tells the
-  host, before the connection is dropped, so the sender of a connection closes
-  only after it was retired (the pool also retires a closed connection it meets,
-  as a second barrier); what the server announced (nothing yet, a limit, or a
-  zero since the first SETTINGS) is one value that is replaced in one step, with
-  the limit that goes with it; and a send reads the state of the connection it
-  waited for after it has read the rest of the pool, first whether the
-  connection ended or announced a zero and then whether it broke a rule (the
-  order opposite to the one the task writes them in), so a wake that comes while
-  the connection ends, or while its SETTINGS are read, costs the send neither
-  one more connection nor one more wait, and a connection that broke a rule is
-  never a spent attempt. The send does not dial its
-  own connection for it, neither when the connection opened and could not be
-  used, nor when the dial failed (then the send fails with the failure of that
-  dial, see Connections). So connections stay in the order of the attempts, not
-  of the sends: a server that never sends SETTINGS, that announces a limit of
-  zero, or that closes or resets right after its SETTINGS ends every send with
-  `Connect` after three attempts on a handful of connections. A connection that
-  breaks an HTTP/2 rule is `Protocol` for every send that waited for it. A limit
-  that a server lowers to zero after a usable first SETTINGS costs no attempt,
-  also when the two frames come in the same read: the request is handed to the
+  connection that the idle trimming retired (see Idle trimming). This holds
+  however late the send wakes: the task that follows a connection retires it,
+  and tells the host, before the connection is dropped, so the sender of a
+  connection closes only after it was retired (the pool also retires a closed
+  connection it meets, as a second barrier); what the server announced (nothing
+  yet, a limit, or a zero since the first SETTINGS) is one value that is
+  replaced in one step, with the limit that goes with it; and a send reads the
+  state of the connection it waited for after it has read the rest of the pool,
+  first whether the connection ended or announced a zero and then whether it
+  broke a rule (the order opposite to the one the task writes them in), so a
+  wake that comes while the connection ends, or while its SETTINGS are read,
+  costs the send neither one more connection nor one more wait, and a connection
+  that broke a rule is never a spent attempt. The send does not dial its own
+  connection for it, neither when the connection opened and could not be used,
+  nor when the dial failed (then the send fails with the failure of that dial,
+  see Connections). So connections stay in the order of the attempts, not of the
+  sends: a server that never sends SETTINGS, that announces a limit of zero, or
+  that closes or resets right after its SETTINGS ends every send with `Connect`
+  after three attempts on a handful of connections. A connection that breaks an
+  HTTP/2 rule is `Protocol` for every send that waited for it. A limit that a
+  server lowers to zero after a usable first SETTINGS costs no attempt, also
+  when the two frames come in the same read: the request is handed to the
   connection and waits behind the limit, bounded by `headers_timeout`. A first
   SETTINGS of zero that a later SETTINGS raises makes the connection usable for
   every send that starts after the raise. A first zero that a SETTINGS frame
@@ -108,32 +108,39 @@ form to decide whether a version ships.
   never trimmed to keep 8 idle ones, and neither is a connection whose first
   SETTINGS are not read yet, which counts as full, so the 16 connections of a
   host cap also holds for them; sends beyond it wait within `headers_timeout`
-  and end with `HeadersTimeout`. The connect deadline starts with each dial the send itself
-  makes and never counts the time spent behind the dial of another send, which
-  has no deadline of its own. A host leaves the pool when its last connection
-  has ended and nothing uses it; the host of an HTTP/1 connection that ended
-  while a response was still being read stays until the next send to any host
-  looks at the pool. A host also stays in the pool while any dial of it is in
-  flight, gated or not, so a connection that arrives from a dial is registered
-  in the host whose wake-up signal it captured, and every wake that connection
-  makes (its SETTINGS, a stream freed, its end) reaches the sends that wait on
-  that host, also when the last HTTP/1 connection of the host closed during the
-  dial and the dial then comes back as HTTP/2. The room for one more HTTP/2
-  connection is one decision, taken after the ended connections are dropped, for
-  the plan of a send and for the registration of an arrival alike: a retired
-  connection that was not swept yet does not count toward the 16, so a live
-  arrival is not closed because of it.
+  and end with `HeadersTimeout`. The connect deadline starts with each dial the
+  send itself makes and never counts the time spent behind the dial of another
+  send, which has no deadline of its own. A host leaves the pool when its last
+  connection has ended and nothing uses it; the host of an HTTP/1 connection
+  that ended while a response was still being read stays until the next send to
+  any host looks at the pool. A host also stays in the pool while any dial of it
+  is in flight, gated or not, so a connection that arrives from a dial is
+  registered in the host whose wake-up signal it captured, and every wake that
+  connection makes (its SETTINGS, a stream freed, its end) reaches the sends
+  that wait on that host, also when the last HTTP/1 connection of the host
+  closed during the dial and the dial then comes back as HTTP/2. The room for
+  one more HTTP/2 connection is one decision, taken after the ended connections
+  are dropped, for the plan of a send and for the registration of an arrival
+  alike: a retired connection that was not swept yet does not count toward the
+  16, so a live arrival is not closed because of it.
 - Idle trimming. One rule decides what counts toward the 8 idle connections of
   a host: an open connection with no stream in use that has announced a limit
   above zero, of either protocol. A connection that ended or was retired, even
   if the pool has not swept it yet, and an HTTP/1 connection that closed, never
   count, so they never cause a live connection to be closed. When more than 8
-  count, the oldest idle ones are closed (retired, for HTTP/2), whatever their
-  protocol, until 8 remain; this is done when a stream is freed, when an
-  HTTP/1 connection is put back in the pool, and when SETTINGS that make an
-  idle connection count as idle are read. A send that waited for a connection
-  that the trimming retired does not lose an attempt: it plans again (the other
-  idle connections are there to be used). A connection that ended, or that was
+  count, the connection that has been idle the longest is closed (retired, for
+  HTTP/2), whatever its protocol and whatever the order in which the connections
+  were dialed or put back, and so on until 8 remain; a connection whose idle
+  time already ran out counts as the longest idle, and when several have the
+  same idle deadline an HTTP/1 connection goes before an HTTP/2 one, then the
+  one that was dialed or put back first. This is done when a stream is freed,
+  when an HTTP/1 connection is put back in the pool, and when SETTINGS that make
+  an idle connection count as idle are read. Every HTTP/1 connection put back in
+  the pool wakes the sends that wait on the host, whether or not it caused a
+  trimming, so a send that waits for a stream takes the connection at once
+  instead of at `headers_timeout`. A send that waited for a connection that the
+  trimming retired does not lose an attempt: it plans again (the other idle
+  connections are there to be used). A connection that ended, or that was
   retired for any other reason, still costs the send that waited for it one
   attempt.
 - Settings and limits. A server limit of zero makes the connection full, not
@@ -216,9 +223,9 @@ form to decide whether a version ships.
   text of a dial names the endpoint (`no connection to endpoint within 200ms`);
   the other texts (`HeadersTimeout`, `TotalTimeout`, `Interrupted`, the
   `Connect` of three used attempts and every `BodyError`) do not name it. Texts
-  keep ASCII only. An idle connection is closed under a claim: a connection that
-  is being taken is never closed by its idle timer, and an expired one is never
-  taken.
+  keep printable ASCII only. An idle connection is closed under a claim: a
+  connection that is being taken is never closed by its idle timer, and an
+  expired one is never taken.
 - Limits. A response head larger than 64 KiB, or with more than 1024 header
   lines, is refused with `SendError::Protocol`; on HTTP/2 the size is counted as
   RFC 9113 counts a header list, and exactly 64 KiB is accepted.

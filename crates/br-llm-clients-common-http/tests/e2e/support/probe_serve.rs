@@ -2,7 +2,7 @@ use bytes::Bytes;
 use h2::Reason;
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use super::probe::{Arrived, Queued, Records, Script};
+use super::probe_types::{Arrived, Queued, Records, Script};
 use super::probe_wire::{gather_more, go_away_with, read_body_driving};
 
 fn refuses(script: Script, id: &str, records: &Records) -> bool {

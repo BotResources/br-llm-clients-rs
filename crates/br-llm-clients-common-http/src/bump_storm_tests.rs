@@ -12,7 +12,7 @@ use crate::support::pki::Pki;
 use crate::support::raw_h2::{Announce, Answer, Ending, Policy, RawH2};
 use crate::support::{client_with, post};
 use crate::transport::bump;
-use crate::turns::within_turns;
+use crate::turns::within_time;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(1);
 const SLOW_DIAL: Duration = Duration::from_millis(800);
@@ -115,7 +115,8 @@ async fn round(policy: fn() -> Policy, connect_timeout: Duration) -> Round {
         let (client, endpoint) = (client.clone(), endpoint.clone());
         sends.spawn(async move { client.send(post(&endpoint, "x"), &NoAuthorizer).await });
     }
-    within_turns(
+    within_time(
+        ROUND_LIMIT,
         || waiting_behind_one_dial(&client, &key) == SENDS - 1,
         || "the sends never all parked behind the first dial".to_owned(),
     )

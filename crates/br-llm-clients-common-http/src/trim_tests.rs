@@ -1,49 +1,45 @@
-use std::sync::Arc;
+use tokio::time::{advance, pause};
 
 use crate::acquire_tests::{Outcome, Rig, outcome};
-use crate::h2state::H2State;
 use crate::h2state_tests::state_with_limit;
+use crate::idle_cap_tests::{STEP, busy_connections};
 use crate::limits::MAX_IDLE_PER_HOST;
 use crate::settled::Settled;
-use crate::transport::Conn;
-
-async fn busy_connections(rig: &Rig, count: usize) -> Vec<(Arc<H2State>, Conn)> {
-    let mut busy = Vec::new();
-    for _ in 0..count {
-        let (state, conn) = rig.land(rig.ungated_dialer()).await;
-        state.apply_settings(Some(1));
-        busy.push((state, conn));
-    }
-    busy
-}
 
 #[tokio::test]
-async fn given_a_send_waiting_for_the_first_settings_of_the_oldest_connection_when_the_idle_cap_trims_it_then_the_send_loses_no_attempt()
+async fn given_a_send_waiting_for_the_first_settings_of_the_connection_idle_the_longest_when_the_idle_cap_trims_it_then_the_send_loses_no_attempt()
  {
     let rig = Rig::silent_server().await;
     let (oldest, oldest_conn) = rig.land(rig.dialer()).await;
-    let busy = busy_connections(&rig, MAX_IDLE_PER_HOST).await;
+    let (_busy_states, busy) = busy_connections(&rig, MAX_IDLE_PER_HOST).await;
     let waiter = rig.waiter();
     rig.waiting(1).await;
-    oldest.apply_settings(Some(1));
-    drop(busy);
+    pause();
     drop(oldest_conn);
+    advance(STEP).await;
+    rig.waiting(1).await;
+    drop(busy);
+    oldest.announce_run(&[Some(1)]);
     assert!(oldest.is_retired(), "the idle cap must have trimmed it");
     assert!(matches!(outcome(waiter).await, Outcome::Ready));
 }
 
 #[tokio::test]
-async fn given_a_send_waiting_for_a_dial_when_the_idle_cap_trims_the_connection_that_landed_then_the_send_loses_no_attempt()
+async fn given_a_send_waiting_for_a_dial_when_the_idle_cap_trims_the_connection_that_landed_and_was_idle_the_longest_then_the_send_loses_no_attempt()
  {
     let rig = Rig::silent_server().await;
     let dialer = rig.dialer();
     let waiter = rig.waiter();
     rig.waiting(1).await;
     let (oldest, oldest_conn) = rig.land(dialer).await;
-    let busy = busy_connections(&rig, MAX_IDLE_PER_HOST).await;
-    oldest.apply_settings(Some(1));
-    drop(busy);
+    let (_busy_states, busy) = busy_connections(&rig, MAX_IDLE_PER_HOST).await;
+    rig.waiting(1).await;
+    pause();
     drop(oldest_conn);
+    advance(STEP).await;
+    rig.waiting(1).await;
+    drop(busy);
+    oldest.announce_run(&[Some(1)]);
     assert!(oldest.is_retired(), "the idle cap must have trimmed it");
     assert!(matches!(outcome(waiter).await, Outcome::Ready));
 }
@@ -63,11 +59,8 @@ async fn given_a_connection_that_ended_and_a_send_waiting_for_it_then_the_send_l
 async fn given_eight_idle_connections_and_one_idle_connection_whose_settings_are_unread_when_they_are_read_then_the_oldest_idle_connection_is_trimmed()
  {
     let rig = Rig::silent_server().await;
-    let mut idle = Vec::new();
-    for (state, conn) in busy_connections(&rig, MAX_IDLE_PER_HOST).await {
-        drop(conn);
-        idle.push(state);
-    }
+    let (idle, idle_conns) = busy_connections(&rig, MAX_IDLE_PER_HOST).await;
+    drop(idle_conns);
     let (late, late_conn) = rig.land(rig.ungated_dialer()).await;
     drop(late_conn);
     assert_eq!(rig.shared.pool.h2_connections(), MAX_IDLE_PER_HOST + 1);

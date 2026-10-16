@@ -1,15 +1,60 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use tokio::time::advance;
+
 use crate::acquire_tests::Rig;
 use crate::h2state::H2State;
 use crate::limits::MAX_IDLE_PER_HOST;
-use crate::transport::Conn;
+use crate::transport::{Conn, Signal};
+
+pub(crate) const STEP: Duration = Duration::from_millis(1);
 
 pub(crate) async fn land_with_limit(rig: &Rig, limit: u32) -> (Arc<H2State>, Conn) {
     let (state, conn) = rig.land(rig.dialer()).await;
     state.apply_settings(Some(limit));
     (state, conn)
+}
+
+pub(crate) async fn busy_connections(rig: &Rig, count: usize) -> (Vec<Arc<H2State>>, Vec<Conn>) {
+    let mut states = Vec::new();
+    let mut conns = Vec::new();
+    for _ in 0..count {
+        let (state, conn) = rig.land(rig.ungated_dialer()).await;
+        state.apply_settings(Some(1));
+        states.push(state);
+        conns.push(conn);
+    }
+    (states, conns)
+}
+
+pub(crate) fn idle_total(rig: &Rig) -> usize {
+    rig.shared
+        .pool
+        .lock()
+        .get(&rig.key)
+        .map(|host| host.idle_total())
+        .expect("host")
+}
+
+pub(crate) fn host_signal(rig: &Rig) -> Signal {
+    rig.shared
+        .pool
+        .lock()
+        .get(&rig.key)
+        .map(|host| Arc::clone(&host.signal))
+        .expect("host")
+}
+
+pub(crate) fn live(states: &[Arc<H2State>]) -> usize {
+    states.iter().filter(|state| !state.is_retired()).count()
+}
+
+pub(crate) async fn go_idle_one_step_apart(conns: Vec<Conn>) {
+    for conn in conns {
+        drop(conn);
+        advance(STEP).await;
+    }
 }
 
 #[tokio::test]

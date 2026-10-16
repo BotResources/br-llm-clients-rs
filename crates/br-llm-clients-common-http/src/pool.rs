@@ -182,9 +182,8 @@ impl Pool {
             conn,
             since: Instant::now(),
         });
-        if host.trim_to_cap() {
-            bump(&host.signal);
-        }
+        host.trim_to_cap();
+        bump(&host.signal);
     }
 
     pub(crate) fn forget_if_unused(&self, key: &PoolKey) {

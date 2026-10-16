@@ -6,6 +6,7 @@ use tokio::sync::Notify;
 use crate::authorizers::NoAuthorizer;
 use crate::client::HttpClient;
 use crate::endpoint::Endpoint;
+use crate::response::Response;
 use crate::send_error::SendError;
 use crate::support::frames::response_head;
 use crate::support::pki::Pki;
@@ -41,11 +42,14 @@ impl Sweeps {
     }
 
     async fn until(&self, what: &str, done: impl Fn() -> bool) {
-        while !done() {
-            tokio::time::timeout(PATIENCE, self.0.notified())
-                .await
-                .unwrap_or_else(|_| panic!("no sweep brought about: {what}"));
-        }
+        let waiting = async {
+            while !done() {
+                self.0.notified().await;
+            }
+        };
+        tokio::time::timeout(PATIENCE, waiting)
+            .await
+            .unwrap_or_else(|_| panic!("no sweep brought about: {what}"));
     }
 
     async fn hosts_forgotten(&self, client: &HttpClient) {
@@ -56,10 +60,13 @@ impl Sweeps {
     }
 }
 
-async fn one_send(client: &HttpClient, endpoint: &Endpoint) {
-    let mut response = guarded(client.send(post(endpoint, "x"), &NoAuthorizer))
+async fn held_send(client: &HttpClient, endpoint: &Endpoint) -> Response {
+    guarded(client.send(post(endpoint, "x"), &NoAuthorizer))
         .await
-        .expect("response");
+        .expect("response")
+}
+
+async fn finish(mut response: Response) {
     response.body_mut().collect(10).await.expect("body");
 }
 
@@ -80,8 +87,9 @@ async fn given_an_idle_http1_connection_that_expires_then_its_host_leaves_the_po
     .await;
     let client = client();
     let sweeps = Sweeps::watching(&client);
-    one_send(&client, &server.endpoint("/")).await;
+    let response = held_send(&client, &server.endpoint("/")).await;
     assert_eq!(client.pool().lock().len(), 1);
+    finish(response).await;
     sweeps.hosts_forgotten(&client).await;
 }
 
@@ -91,8 +99,9 @@ async fn given_an_idle_http2_connection_that_expires_then_its_host_leaves_the_po
     let server = RawH2::start(|_| Policy::healthy()).await;
     let client = client();
     let sweeps = Sweeps::watching(&client);
-    one_send(&client, &server.endpoint()).await;
+    let response = held_send(&client, &server.endpoint()).await;
     assert_eq!(client.pool().lock().len(), 1);
+    finish(response).await;
     sweeps.hosts_forgotten(&client).await;
 }
 
@@ -115,15 +124,15 @@ async fn given_two_connections_to_a_host_when_the_idle_one_expires_then_the_host
     let held = guarded(client.send(post(&endpoint, "held"), &NoAuthorizer))
         .await
         .expect("response");
-    one_send(&client, &endpoint).await;
+    let second = held_send(&client, &endpoint).await;
     assert_eq!(server.accepted(), 2);
     assert_eq!(client.pool().h2_connections(), 2);
+    finish(second).await;
     sweeps
         .until("the idle connection expires", || {
             client.pool().h2_connections() <= 1
         })
         .await;
-    tokio::time::sleep(IDLE * 2).await;
     assert_eq!(client.pool().lock().len(), 1);
     assert_eq!(client.pool().h2_connections(), 1);
     drop(held);

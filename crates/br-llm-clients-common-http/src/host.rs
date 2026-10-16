@@ -78,7 +78,7 @@ impl Host {
         LiveGuard::new(&self.dials)
     }
 
-    pub(crate) fn trim_h2(&mut self, index: usize) {
+    fn trim_h2(&mut self, index: usize) {
         let Some(entry) = self.h2.get(index) else {
             return;
         };
@@ -93,26 +93,23 @@ impl Host {
 
     #[cfg(test)]
     pub(crate) fn idle_total(&self) -> usize {
-        self.idle_view().total()
+        self.counted().count()
     }
 
-    fn idle_view(&self) -> IdleView {
-        IdleView {
-            h1: self
-                .h1
-                .iter()
-                .enumerate()
-                .filter(|(_, idle)| !idle.conn.sender.is_closed())
-                .map(|(index, _)| index)
-                .collect(),
-            h2: self
-                .h2
-                .iter()
-                .enumerate()
-                .filter(|(_, entry)| entry.state.is_trimmable())
-                .map(|(index, _)| index)
-                .collect(),
-        }
+    fn counted(&self) -> impl Iterator<Item = (Option<Instant>, Oldest)> + '_ {
+        let h1 = self
+            .h1
+            .iter()
+            .enumerate()
+            .filter(|(_, idle)| !idle.conn.sender.is_closed())
+            .map(|(index, idle)| (idle.conn.idle.armed_until(), Oldest::H1(index)));
+        let h2 = self
+            .h2
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| entry.counts())
+            .map(|(index, entry)| (entry.state.idle_since(), Oldest::H2(index)));
+        h1.chain(h2)
     }
 
     pub(crate) fn trim_to_cap(&mut self) -> bool {
@@ -132,44 +129,25 @@ impl Host {
     }
 
     fn oldest_surplus(&self) -> Option<Oldest> {
-        let view = self.idle_view();
-        if view.total() <= MAX_IDLE_PER_HOST {
+        let mut counted = 0usize;
+        let oldest = self
+            .counted()
+            .inspect(|_| counted = counted.saturating_add(1))
+            .min_by_key(|(idle_until, _)| *idle_until);
+        if counted <= MAX_IDLE_PER_HOST {
             return None;
         }
-        let h1 = view.h1.first().copied();
-        let h2 = view.h2.first().copied();
-        match (h1, h2) {
-            (Some(h1), Some(h2)) => {
-                let since_h1 = self
-                    .h1
-                    .get(h1)
-                    .and_then(|idle| idle.conn.idle.armed_until());
-                let since_h2 = self.h2.get(h2).and_then(|entry| entry.state.idle_since());
-                Some(if since_h1 <= since_h2 {
-                    Oldest::H1(h1)
-                } else {
-                    Oldest::H2(h2)
-                })
-            }
-            (Some(h1), None) => Some(Oldest::H1(h1)),
-            (None, Some(h2)) => Some(Oldest::H2(h2)),
-            (None, None) => None,
-        }
+        oldest.map(|(_, which)| which)
+    }
+}
+
+impl H2Entry {
+    fn counts(&self) -> bool {
+        !self.sender.is_closed() && self.state.is_trimmable()
     }
 }
 
 enum Oldest {
     H1(usize),
     H2(usize),
-}
-
-struct IdleView {
-    h1: Vec<usize>,
-    h2: Vec<usize>,
-}
-
-impl IdleView {
-    fn total(&self) -> usize {
-        self.h1.len().saturating_add(self.h2.len())
-    }
 }

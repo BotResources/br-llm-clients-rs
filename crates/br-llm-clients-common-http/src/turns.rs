@@ -1,3 +1,5 @@
+use std::time::{Duration, Instant};
+
 pub(crate) const TURNS: usize = 1_000_000;
 
 pub(crate) async fn within_turns(ready: impl Fn() -> bool, missing: impl Fn() -> String) {
@@ -16,4 +18,16 @@ pub(crate) async fn within_turns_of(
         tokio::task::yield_now().await;
     }
     panic!("after {bound} turns of the runtime: {}", missing());
+}
+
+pub(crate) async fn within_time(
+    limit: Duration,
+    ready: impl Fn() -> bool,
+    missing: impl Fn() -> String,
+) {
+    let started = Instant::now();
+    while !ready() {
+        assert!(started.elapsed() < limit, "after {limit:?}: {}", missing());
+        tokio::task::yield_now().await;
+    }
 }

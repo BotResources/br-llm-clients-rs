@@ -143,6 +143,8 @@ mod idle_rule_tests;
 #[cfg(test)]
 mod lifetime_tests;
 #[cfg(test)]
+mod oldest_idle_tests;
+#[cfg(test)]
 mod payload_tests;
 #[cfg(test)]
 mod plan_settle_tests;
@@ -152,6 +154,8 @@ mod pool_tests;
 mod ready_tests;
 #[cfg(test)]
 mod recreated_host_tests;
+#[cfg(test)]
+mod release_wake_tests;
 #[cfg(test)]
 mod request_tests;
 #[cfg(test)]
@@ -170,6 +174,8 @@ mod spy_io_model_tests;
 mod spy_io_tests;
 #[cfg(test)]
 mod sweep_tests;
+#[cfg(test)]
+mod synthetic_idle_tests;
 #[cfg(test)]
 mod trim_tests;
 #[cfg(test)]

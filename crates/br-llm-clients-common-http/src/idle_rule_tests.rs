@@ -1,58 +1,14 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::io::AsyncReadExt;
 use tokio::time::{advance, pause, timeout};
 
 use crate::acquire_tests::Rig;
-use crate::h2state::H2State;
 use crate::host::Idle;
-use crate::idle_cap_tests::land_with_limit;
+use crate::idle_cap_tests::{
+    STEP, busy_connections, go_idle_one_step_apart, host_signal, idle_total, live,
+};
 use crate::limits::MAX_IDLE_PER_HOST;
-use crate::transport::{Conn, Signal};
-use crate::turns::within_turns;
-
-const STEP: Duration = Duration::from_millis(1);
-
-async fn busy_connections(rig: &Rig, count: usize) -> (Vec<Arc<H2State>>, Vec<Conn>) {
-    let mut states = Vec::new();
-    let mut conns = Vec::new();
-    for _ in 0..count {
-        let (state, conn) = land_with_limit(rig, 1).await;
-        states.push(state);
-        conns.push(conn);
-    }
-    (states, conns)
-}
-
-fn idle_total(rig: &Rig) -> usize {
-    rig.shared
-        .pool
-        .lock()
-        .get(&rig.key)
-        .map(|host| host.idle_total())
-        .expect("host")
-}
-
-fn host_signal(rig: &Rig) -> Signal {
-    rig.shared
-        .pool
-        .lock()
-        .get(&rig.key)
-        .map(|host| Arc::clone(&host.signal))
-        .expect("host")
-}
-
-fn live(states: &[Arc<H2State>]) -> usize {
-    states.iter().filter(|state| !state.is_retired()).count()
-}
-
-async fn go_idle_one_step_apart(conns: Vec<Conn>) {
-    for conn in conns {
-        drop(conn);
-        advance(STEP).await;
-    }
-}
 
 #[tokio::test]
 async fn given_eight_idle_http2_connections_when_an_http1_connection_is_released_then_the_oldest_idle_connection_is_closed_and_eight_stay()
@@ -67,7 +23,7 @@ async fn given_eight_idle_http2_connections_when_an_http1_connection_is_released
     let before = *changes.borrow();
     rig.shared.pool.release_h1(&rig.key, h1);
     assert_eq!(idle_total(&rig), MAX_IDLE_PER_HOST);
-    assert_ne!(*changes.borrow(), before, "no wake follows the trimming");
+    assert_ne!(*changes.borrow(), before, "the release woke no one");
     assert!(states[0].is_retired());
     assert_eq!(live(&states), MAX_IDLE_PER_HOST - 1);
     let hosts = rig.shared.pool.lock();
@@ -142,13 +98,13 @@ async fn given_a_closed_http1_connection_not_yet_swept_and_eight_idle_http2_conn
  {
     let rig = Rig::silent_server().await;
     let (states, mut conns) = busy_connections(&rig, MAX_IDLE_PER_HOST).await;
-    let (h1, server) = rig.h1_connection().await;
+    let (mut h1, server) = rig.h1_connection().await;
     drop(server);
-    within_turns(
-        || h1.sender.is_closed(),
-        || "the closed HTTP/1 connection never showed as closed".to_owned(),
-    )
-    .await;
+    let noticed = timeout(Duration::from_secs(30), h1.sender.ready())
+        .await
+        .expect("the closed connection is noticed");
+    assert!(noticed.is_err());
+    assert!(h1.sender.is_closed());
     pause();
     let last = conns.pop().expect("a connection");
     go_idle_one_step_apart(conns).await;

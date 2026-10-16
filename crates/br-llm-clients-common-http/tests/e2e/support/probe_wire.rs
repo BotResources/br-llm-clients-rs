@@ -4,7 +4,7 @@ use bytes::Bytes;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use super::frames::{ACK, HEADERS, SETTINGS, frame, goaway_frame, read_frame, settings_frame};
-use super::probe::{Queued, Records};
+use super::probe_types::{Queued, Records};
 
 pub(super) async fn read_body_driving<T>(
     conn: &mut h2::server::Connection<T, Bytes>,
@@ -34,24 +34,23 @@ where
     }
 }
 
+const QUIET: Duration = Duration::from_millis(20);
+
 pub(super) async fn gather_more<T>(conn: &mut h2::server::Connection<T, Bytes>, records: &Records)
 where
     T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
     let mut held = Vec::new();
-    let _ = tokio::time::timeout(Duration::from_millis(20), async {
-        while let Some(Ok((request, respond))) = conn.accept().await {
-            let id = request
-                .headers()
-                .get("x-id")
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or_default()
-                .to_owned();
-            records.note_arrival(id);
-            held.push((request, respond));
-        }
-    })
-    .await;
+    while let Ok(Some(Ok((request, respond)))) = tokio::time::timeout(QUIET, conn.accept()).await {
+        let id = request
+            .headers()
+            .get("x-id")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default()
+            .to_owned();
+        records.note_arrival(id);
+        held.push((request, respond));
+    }
 }
 
 pub async fn go_away_with<S: AsyncReadExt + AsyncWriteExt + Unpin>(

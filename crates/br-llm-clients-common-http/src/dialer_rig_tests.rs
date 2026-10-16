@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use hyper::client::conn::http1;
 use hyper_util::rt::TokioIo;
@@ -8,10 +7,28 @@ use crate::acquire_tests::Rig;
 use crate::claim::Claim;
 use crate::dialer::Dialer;
 use crate::host::{Host, Proto};
-use crate::idle::IdleClock;
+use crate::idle::{IdleClock, IdleWatch};
 use crate::payload::Payload;
 use crate::pool::Plan;
 use crate::transport::{H1Conn, LiveGuard};
+use crate::tuning::Tuning;
+
+pub(crate) async fn h1_connection_watched() -> (H1Conn, tokio::io::DuplexStream, IdleWatch) {
+    let (client, server) = tokio::io::duplex(4096);
+    let (sender, connection) = http1::Builder::new()
+        .handshake::<_, Payload>(TokioIo::new(client))
+        .await
+        .expect("handshake");
+    let driver = tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let (idle, watch) = IdleClock::new(Tuning::FIXED.idle_limit);
+    (
+        H1Conn::new(sender, idle, driver.abort_handle()),
+        server,
+        watch,
+    )
+}
 
 impl Rig {
     pub(crate) fn ungated_dialer(&self) -> Dialer {
@@ -40,16 +57,8 @@ impl Rig {
     }
 
     pub(crate) async fn h1_connection(&self) -> (H1Conn, tokio::io::DuplexStream) {
-        let (client, server) = tokio::io::duplex(4096);
-        let (sender, connection) = http1::Builder::new()
-            .handshake::<_, Payload>(TokioIo::new(client))
-            .await
-            .expect("handshake");
-        let driver = tokio::spawn(async move {
-            let _ = connection.await;
-        });
-        let (idle, _watch) = IdleClock::new(Duration::from_secs(30));
-        (H1Conn::new(sender, idle, driver.abort_handle()), server)
+        let (conn, server, _watch) = h1_connection_watched().await;
+        (conn, server)
     }
 
     pub(crate) fn http1_connection_alive(&self) -> LiveGuard {
