@@ -197,6 +197,8 @@ impl Pool {
         if !host.in_use() {
             hosts.remove(key);
         }
+        #[cfg(test)]
+        self.hooks.run_after_sweep();
     }
 
     pub(crate) fn trim_idle(&self, key: &PoolKey) {

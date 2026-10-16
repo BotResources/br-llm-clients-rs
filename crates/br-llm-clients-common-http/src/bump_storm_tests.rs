@@ -12,6 +12,7 @@ use crate::support::pki::Pki;
 use crate::support::raw_h2::{Announce, Answer, Ending, Policy, RawH2};
 use crate::support::{client_with, post};
 use crate::transport::bump;
+use crate::turns::within_turns;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(300);
 const SLOW_DIAL: Duration = Duration::from_millis(250);
@@ -21,6 +22,8 @@ const BUMPERS: usize = 3;
 const REPETITIONS: usize = 16;
 const ROUND_LIMIT: Duration = Duration::from_secs(30);
 const STORM_LIMIT: Duration = Duration::from_secs(240);
+
+static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 struct Round {
     accepted: usize,
@@ -77,15 +80,24 @@ fn bumping(client: &HttpClient, key: &PoolKey) -> Bumpers {
                         .lock()
                         .get(&key)
                         .map(|host| Arc::clone(&host.signal));
-                    match signal {
-                        Some(signal) => bump(&signal),
-                        None => std::thread::yield_now(),
+                    if let Some(signal) = signal {
+                        bump(&signal);
                     }
+                    std::thread::yield_now();
                 }
             })
         })
         .collect();
     Bumpers { stop, threads }
+}
+
+fn waiting_behind_one_dial(client: &HttpClient, key: &PoolKey) -> usize {
+    client
+        .pool()
+        .lock()
+        .get(key)
+        .filter(|host| host.dialing)
+        .map_or(0, |host| host.waiting.load(Ordering::SeqCst))
 }
 
 async fn round(policy: fn() -> Policy, connect_timeout: Duration) -> Round {
@@ -95,13 +107,21 @@ async fn round(policy: fn() -> Policy, connect_timeout: Duration) -> Round {
         knobs.extra_root_certificates = vec![Pki::trusted().ca_pem.clone()];
     });
     let endpoint = server.endpoint();
-    let bumpers = bumping(&client, &PoolKey::of(&endpoint));
+    let key = PoolKey::of(&endpoint);
+    server.hold_accepts();
     let started = Instant::now();
     let mut sends = JoinSet::new();
     for _ in 0..SENDS {
         let (client, endpoint) = (client.clone(), endpoint.clone());
         sends.spawn(async move { client.send(post(&endpoint, "x"), &NoAuthorizer).await });
     }
+    within_turns(
+        || waiting_behind_one_dial(&client, &key) == SENDS - 1,
+        || "the sends never all parked behind the first dial".to_owned(),
+    )
+    .await;
+    let bumpers = bumping(&client, &key);
+    server.release_accepts();
     let mut failures = Vec::new();
     while let Some(sent) = sends.join_next().await {
         match sent.expect("join") {
@@ -124,6 +144,7 @@ async fn storm(
     connect_timeout: Duration,
     check: impl Fn(usize, &Round),
 ) {
+    let _alone = SERIAL.lock().await;
     let rounds = async {
         for index in 0..REPETITIONS {
             let ended = tokio::time::timeout(ROUND_LIMIT, round(policy, connect_timeout)).await;

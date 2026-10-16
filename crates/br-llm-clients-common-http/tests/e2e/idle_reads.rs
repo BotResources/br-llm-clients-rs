@@ -104,30 +104,26 @@ async fn given_a_read_made_with_poll_next_chunk_that_stays_pending_when_it_is_po
 
 #[tokio::test]
 async fn given_a_chunk_that_arrives_between_two_polls_then_the_wait_starts_again_from_that_chunk() {
-    let server = slow_chunks(Duration::from_millis(400), Duration::from_millis(900)).await;
-    let client = client_with(|c| c.idle_timeout = Duration::from_millis(600));
+    let server = slow_chunks(Duration::from_millis(400), Duration::from_millis(2400)).await;
+    let client = client_with(|c| c.idle_timeout = Duration::from_millis(2000));
     let mut response = guarded(client.send(post(&server.endpoint("/"), "a"), &NoAuthorizer))
         .await
         .expect("response");
     assert!(poll_once(response.body_mut()).is_pending());
-    tokio::time::sleep(Duration::from_millis(450)).await;
+    tokio::time::sleep(Duration::from_millis(1300)).await;
     let Poll::Ready(Ok(Some(first))) = poll_once(response.body_mut()) else {
-        panic!("the first chunk arrived");
+        panic!("the first chunk arrived 900 ms ago");
     };
     assert_eq!(first.as_ref(), b"hello");
-    let mut polled = poll_once(response.body_mut());
-    tokio::time::sleep(Duration::from_millis(350)).await;
-    for _ in 0..40 {
-        if !polled.is_pending() {
-            break;
-        }
-        polled = poll_once(response.body_mut());
-        if polled.is_pending() {
-            tokio::time::sleep(Duration::from_millis(25)).await;
-        }
-    }
-    let Poll::Ready(Ok(Some(second))) = polled else {
-        panic!("800 ms passed since the first poll but only 350 ms since the chunk: {polled:?}");
-    };
+    assert!(poll_once(response.body_mut()).is_pending());
+    tokio::time::sleep(Duration::from_millis(900)).await;
+    let second = tokio::time::timeout(
+        Duration::from_secs(30),
+        std::future::poll_fn(|cx| response.body_mut().poll_next_chunk(cx)),
+    )
+    .await
+    .expect("the second chunk arrives")
+    .expect("2200 ms passed since the first poll but only 900 ms since the chunk")
+    .expect("a chunk");
     assert_eq!(second.as_ref(), b"world");
 }

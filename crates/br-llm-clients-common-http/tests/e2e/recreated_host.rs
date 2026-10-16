@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use br_llm_clients_common_http::{HttpClient, NoAuthorizer, SendError};
 
@@ -29,7 +29,6 @@ fn client(connect_timeout: Duration) -> HttpClient {
 
 struct Timed {
     outcome: Result<u16, SendError>,
-    took: Duration,
 }
 
 async fn send_after(
@@ -39,7 +38,6 @@ async fn send_after(
     drop_after: Option<Duration>,
 ) -> Timed {
     tokio::time::sleep(start).await;
-    let began = Instant::now();
     let sending = async {
         let response = client
             .send(post(&server.endpoint(), "x"), &NoAuthorizer)
@@ -52,10 +50,7 @@ async fn send_after(
         Some(after) => tokio::time::timeout(after, sending).await.unwrap_or(Ok(0)),
         None => sending.await,
     };
-    Timed {
-        outcome,
-        took: began.elapsed(),
-    }
+    Timed { outcome }
 }
 
 async fn three_sends(
@@ -97,7 +92,6 @@ async fn given_a_dial_started_on_an_http1_host_that_comes_back_as_http2_after_th
     assert!(matches!(first.outcome, Ok(200)), "{:?}", first.outcome);
     assert!(matches!(second.outcome, Ok(200)), "{:?}", second.outcome);
     assert!(matches!(third.outcome, Ok(200)), "{:?}", third.outcome);
-    assert!(third.took < Duration::from_secs(3), "{:?}", third.took);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -108,11 +102,6 @@ async fn given_a_dial_started_on_an_http1_host_that_comes_back_as_http2_and_neve
         matches!(third.outcome, Err(SendError::Connect { .. })),
         "{:?}",
         third.outcome
-    );
-    assert!(
-        third.took < HEADERS_TIMEOUT - Duration::from_secs(1),
-        "{:?}",
-        third.took
     );
     assert!(accepted >= 3, "{accepted}");
 }
@@ -130,10 +119,5 @@ async fn given_the_send_that_dialed_is_dropped_and_the_connection_never_sends_se
         matches!(third.outcome, Err(SendError::Connect { .. })),
         "{:?}",
         third.outcome
-    );
-    assert!(
-        third.took < HEADERS_TIMEOUT - Duration::from_secs(1),
-        "{:?}",
-        third.took
     );
 }

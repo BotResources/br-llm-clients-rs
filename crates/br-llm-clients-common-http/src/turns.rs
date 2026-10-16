@@ -17,21 +17,3 @@ pub(crate) async fn within_turns_of(
     }
     panic!("after {bound} turns of the runtime: {}", missing());
 }
-
-pub(crate) fn within_spins(ready: impl Fn() -> bool, missing: impl Fn() -> String) {
-    within_spins_of(TURNS, ready, missing);
-}
-
-pub(crate) fn within_spins_of(
-    bound: usize,
-    ready: impl Fn() -> bool,
-    missing: impl Fn() -> String,
-) {
-    for _ in 0..bound {
-        if ready() {
-            return;
-        }
-        std::thread::yield_now();
-    }
-    panic!("after {bound} spins of the thread: {}", missing());
-}

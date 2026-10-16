@@ -14,6 +14,8 @@ use crate::support::script_body::{ScriptBody, Step};
 use crate::support::{config, guarded, post};
 use crate::tuning::Tuning;
 
+const PATIENCE: Duration = Duration::from_secs(30);
+
 struct Flip {
     outcomes: Vec<Result<(), SendError>>,
     peak: usize,
@@ -46,7 +48,7 @@ async fn burst_after_one_http1_connection(sends: usize) -> Flip {
             }),
             Options {
                 max_streams: Some(100),
-                handshake_delay: Duration::from_millis(100),
+                handshake_delay: Duration::ZERO,
                 stall_first: 0,
                 http1_first: 1,
             },
@@ -71,11 +73,16 @@ async fn burst_after_one_http1_connection(sends: usize) -> Flip {
             }
         })
     };
+    server.hold_handshakes();
     let mut tasks = tokio::task::JoinSet::new();
     for _ in 0..sends {
         let (client, server) = (client.clone(), Arc::clone(&server));
         tasks.spawn(async move { send_one(client, &server).await });
     }
+    tokio::time::timeout(PATIENCE, server.wait_accepted(sends))
+        .await
+        .expect("every send dials while no handshake is done");
+    server.release_handshakes();
     let mut outcomes = Vec::new();
     while let Some(outcome) = guarded(tasks.join_next()).await {
         outcomes.push(outcome.expect("join"));
@@ -83,14 +90,14 @@ async fn burst_after_one_http1_connection(sends: usize) -> Flip {
     running.store(false, Ordering::SeqCst);
     sampler.await.expect("sampler");
     let accepted = server.accepted();
-    let mut closed = server.closed();
-    for _ in 0..200 {
-        if accepted.saturating_sub(closed) <= MAX_H2_PER_HOST.saturating_add(1) {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(25)).await;
-        closed = server.closed();
-    }
+    let open_at_most = MAX_H2_PER_HOST.saturating_add(1);
+    tokio::time::timeout(
+        PATIENCE,
+        server.wait_closed(accepted.saturating_sub(open_at_most)),
+    )
+    .await
+    .expect("the connections beyond the cap are closed");
+    let closed = server.closed();
     Flip {
         outcomes,
         peak: peak.load(Ordering::SeqCst),

@@ -1,4 +1,7 @@
+use std::sync::Arc;
 use std::time::Duration;
+
+use tokio::sync::Notify;
 
 use crate::authorizers::NoAuthorizer;
 use crate::client::HttpClient;
@@ -12,6 +15,7 @@ use crate::support::{config, guarded, post};
 use crate::tuning::Tuning;
 
 const IDLE: Duration = Duration::from_millis(300);
+const PATIENCE: Duration = Duration::from_secs(10);
 
 fn client() -> HttpClient {
     let mut knobs = config();
@@ -23,15 +27,32 @@ fn client() -> HttpClient {
     HttpClient::with_tuning(knobs.build(), tuning).expect("client")
 }
 
-async fn hosts_forgotten(client: &HttpClient) {
-    let started = tokio::time::Instant::now();
-    while !client.pool().lock().is_empty() {
-        assert!(
-            started.elapsed() < Duration::from_secs(10),
-            "{} hosts are still in the pool",
-            client.pool().lock().len()
-        );
-        tokio::time::sleep(Duration::from_millis(20)).await;
+struct Sweeps(Arc<Notify>);
+
+impl Sweeps {
+    fn watching(client: &HttpClient) -> Self {
+        let notify = Arc::new(Notify::new());
+        let swept = Arc::clone(&notify);
+        client
+            .pool()
+            .hooks
+            .on_after_sweep(move || swept.notify_one());
+        Self(notify)
+    }
+
+    async fn until(&self, what: &str, done: impl Fn() -> bool) {
+        while !done() {
+            tokio::time::timeout(PATIENCE, self.0.notified())
+                .await
+                .unwrap_or_else(|_| panic!("no sweep brought about: {what}"));
+        }
+    }
+
+    async fn hosts_forgotten(&self, client: &HttpClient) {
+        self.until("every host leaves the pool", || {
+            client.pool().lock().is_empty()
+        })
+        .await;
     }
 }
 
@@ -58,9 +79,10 @@ async fn given_an_idle_http1_connection_that_expires_then_its_host_leaves_the_po
     })
     .await;
     let client = client();
+    let sweeps = Sweeps::watching(&client);
     one_send(&client, &server.endpoint("/")).await;
     assert_eq!(client.pool().lock().len(), 1);
-    hosts_forgotten(&client).await;
+    sweeps.hosts_forgotten(&client).await;
 }
 
 #[tokio::test]
@@ -68,9 +90,10 @@ async fn given_an_idle_http2_connection_that_expires_then_its_host_leaves_the_po
  {
     let server = RawH2::start(|_| Policy::healthy()).await;
     let client = client();
+    let sweeps = Sweeps::watching(&client);
     one_send(&client, &server.endpoint()).await;
     assert_eq!(client.pool().lock().len(), 1);
-    hosts_forgotten(&client).await;
+    sweeps.hosts_forgotten(&client).await;
 }
 
 #[tokio::test]
@@ -87,6 +110,7 @@ async fn given_two_connections_to_a_host_when_the_idle_one_expires_then_the_host
     })
     .await;
     let client = client();
+    let sweeps = Sweeps::watching(&client);
     let endpoint = server.endpoint();
     let held = guarded(client.send(post(&endpoint, "held"), &NoAuthorizer))
         .await
@@ -94,19 +118,16 @@ async fn given_two_connections_to_a_host_when_the_idle_one_expires_then_the_host
     one_send(&client, &endpoint).await;
     assert_eq!(server.accepted(), 2);
     assert_eq!(client.pool().h2_connections(), 2);
-    let started = tokio::time::Instant::now();
-    while client.pool().h2_connections() > 1 {
-        assert!(
-            started.elapsed() < Duration::from_secs(10),
-            "the idle connection never expired"
-        );
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
+    sweeps
+        .until("the idle connection expires", || {
+            client.pool().h2_connections() <= 1
+        })
+        .await;
     tokio::time::sleep(IDLE * 2).await;
     assert_eq!(client.pool().lock().len(), 1);
     assert_eq!(client.pool().h2_connections(), 1);
     drop(held);
-    hosts_forgotten(&client).await;
+    sweeps.hosts_forgotten(&client).await;
 }
 
 #[tokio::test]
@@ -114,20 +135,19 @@ async fn given_connections_that_announced_a_limit_of_zero_then_each_is_closed_af
  {
     let server = RawH2::start(|_| Policy::announcing(Announce::Limit(0))).await;
     let client = client();
+    let sweeps = Sweeps::watching(&client);
     let error = guarded(client.send(post(&server.endpoint(), "x"), &NoAuthorizer))
         .await
         .unwrap_err();
     assert!(matches!(error, SendError::Connect { .. }), "{error:?}");
     assert_eq!(server.accepted(), 3);
-    let started = tokio::time::Instant::now();
-    while client.pool().h2_connections() > 0 || server.closed() < 3 {
-        assert!(
-            started.elapsed() < Duration::from_secs(10),
-            "{} connections are pooled and {} are closed after the idle limit",
-            client.pool().h2_connections(),
-            server.closed()
-        );
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
-    hosts_forgotten(&client).await;
+    sweeps
+        .until("no connection stays pooled", || {
+            client.pool().h2_connections() == 0
+        })
+        .await;
+    tokio::time::timeout(PATIENCE, server.wait_closed(3))
+        .await
+        .expect("the server saw the three connections close");
+    sweeps.hosts_forgotten(&client).await;
 }

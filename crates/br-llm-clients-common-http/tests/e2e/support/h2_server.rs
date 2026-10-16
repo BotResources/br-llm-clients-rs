@@ -3,7 +3,7 @@ use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use br_llm_clients_common_http::Endpoint;
@@ -13,7 +13,7 @@ use hyper::service::service_fn;
 use hyper::{Request, Response};
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use tokio::net::TcpListener;
-use tokio::sync::Notify;
+use tokio::sync::{Notify, watch};
 use tokio::task::JoinSet;
 use tokio_rustls::TlsAcceptor;
 
@@ -32,8 +32,9 @@ pub struct Options {
 
 pub struct TlsServer {
     pub addr: SocketAddr,
-    accepted: Arc<AtomicUsize>,
-    closed: Arc<AtomicUsize>,
+    accepted: Arc<watch::Sender<usize>>,
+    closed: Arc<watch::Sender<usize>>,
+    gate: Arc<watch::Sender<bool>>,
     kill: Arc<Notify>,
     delay_ms: Arc<AtomicU64>,
     task: tokio::task::JoinHandle<()>,
@@ -73,8 +74,10 @@ impl TlsServer {
         let killed = Arc::clone(&kill);
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
         let addr = listener.local_addr().expect("addr");
-        let accepted = Arc::new(AtomicUsize::new(0));
-        let closed = Arc::new(AtomicUsize::new(0));
+        let accepted = Arc::new(watch::channel(0usize).0);
+        let closed = Arc::new(watch::channel(0usize).0);
+        let gate = Arc::new(watch::channel(true).0);
+        let gated = Arc::clone(&gate);
         let closed_counter = Arc::clone(&closed);
         let counter = Arc::clone(&accepted);
         let task = tokio::spawn(async move {
@@ -83,7 +86,12 @@ impl TlsServer {
                 let Ok((tcp, _)) = listener.accept().await else {
                     break;
                 };
-                let index = counter.fetch_add(1, Ordering::SeqCst);
+                let mut index = 0;
+                counter.send_modify(|accepted| {
+                    index = *accepted;
+                    *accepted += 1;
+                });
+                let mut gate = gated.subscribe();
                 let killed = Arc::clone(&killed);
                 let delay = Arc::clone(&delay);
                 let acceptor = match &http1_acceptor {
@@ -96,6 +104,7 @@ impl TlsServer {
                     if index < stall_first {
                         std::future::pending::<()>().await;
                     }
+                    let _ = gate.wait_for(|open| *open).await;
                     let wait = Duration::from_millis(delay.load(Ordering::SeqCst));
                     tokio::time::sleep(wait).await;
                     let Ok(tls) = acceptor.accept(tcp).await else {
@@ -124,7 +133,7 @@ impl TlsServer {
                         () = serving => {}
                         () = killed.notified() => {}
                     }
-                    closed_counter.fetch_add(1, Ordering::SeqCst);
+                    closed_counter.send_modify(|closed| *closed += 1);
                 });
             }
         });
@@ -132,6 +141,7 @@ impl TlsServer {
             addr,
             accepted,
             closed,
+            gate,
             kill,
             delay_ms,
             task,
@@ -139,7 +149,23 @@ impl TlsServer {
     }
 
     pub fn accepted(&self) -> usize {
-        self.accepted.load(Ordering::SeqCst)
+        *self.accepted.borrow()
+    }
+
+    pub async fn wait_accepted(&self, count: usize) {
+        let _ = self
+            .accepted
+            .subscribe()
+            .wait_for(|accepted| *accepted >= count)
+            .await;
+    }
+
+    pub fn hold_handshakes(&self) {
+        self.gate.send_replace(false);
+    }
+
+    pub fn release_handshakes(&self) {
+        self.gate.send_replace(true);
     }
 
     pub fn set_handshake_delay(&self, delay: Duration) {
@@ -151,7 +177,15 @@ impl TlsServer {
     }
 
     pub fn closed(&self) -> usize {
-        self.closed.load(Ordering::SeqCst)
+        *self.closed.borrow()
+    }
+
+    pub async fn wait_closed(&self, count: usize) {
+        let _ = self
+            .closed
+            .subscribe()
+            .wait_for(|closed| *closed >= count)
+            .await;
     }
 
     pub fn endpoint(&self, path: &str) -> Endpoint {

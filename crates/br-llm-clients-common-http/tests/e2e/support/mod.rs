@@ -9,6 +9,8 @@ pub mod h2_server;
 pub mod leaks;
 pub mod pki;
 pub mod probe;
+pub mod probe_serve;
+pub mod probe_wire;
 pub mod proxy;
 pub mod raw;
 pub mod raw_h2;

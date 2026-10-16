@@ -1,10 +1,10 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::acquire_tests::Rig;
 use crate::h2state::H2State;
 use crate::limits::MAX_IDLE_PER_HOST;
 use crate::transport::Conn;
-use crate::turns::within_spins;
 
 pub(crate) async fn land_with_limit(rig: &Rig, limit: u32) -> (Arc<H2State>, Conn) {
     let (state, conn) = rig.land(rig.dialer()).await;
@@ -56,20 +56,30 @@ async fn given_an_idle_connection_trimmed_to_keep_eight_then_the_sends_waiting_o
         .map(|host| Arc::clone(&host.signal))
         .expect("host");
     let changes = signal.subscribe();
+    let mut freed = signal.subscribe();
     let last = conns.pop().expect("a connection");
     drop(conns);
     assert!(states.iter().all(|state| !state.is_retired()));
     let before = *changes.borrow();
     let held_pool = rig.shared.pool.lock();
+    let (woken, wake_seen) = std::sync::mpsc::channel();
+    let runtime = tokio::runtime::Handle::current();
+    let watcher = std::thread::spawn(move || {
+        let seen = runtime.block_on(freed.changed());
+        let _ = woken.send(seen.is_ok());
+    });
     let dropping = std::thread::spawn(move || drop(last));
-    within_spins(
-        || *changes.borrow() != before,
-        || "the freed stream did not wake the host".to_owned(),
+    assert!(
+        wake_seen
+            .recv_timeout(Duration::from_secs(30))
+            .expect("the freed stream woke the host"),
     );
     let after_the_freed_stream = *changes.borrow();
+    assert_ne!(after_the_freed_stream, before);
     assert!(!states.first().expect("oldest").is_retired());
     drop(held_pool);
     dropping.join().expect("the drop ends");
+    watcher.join().expect("the watcher ends");
     assert!(states.first().expect("oldest").is_retired());
     assert_ne!(
         *changes.borrow(),

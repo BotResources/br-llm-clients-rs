@@ -12,6 +12,7 @@ pub(crate) struct Hooks {
     settings_step: Slot,
     settled_step: Slot,
     end_step: Slot,
+    after_sweep: Slot,
 }
 
 fn set(slot: &Slot, hook: impl Fn() + Send + Sync + 'static) {
@@ -68,6 +69,14 @@ impl Hooks {
 
     pub(crate) fn run_end_step(&self) {
         run(&self.end_step);
+    }
+
+    pub(crate) fn on_after_sweep(&self, hook: impl Fn() + Send + Sync + 'static) {
+        set(&self.after_sweep, hook);
+    }
+
+    pub(crate) fn run_after_sweep(&self) {
+        run(&self.after_sweep);
     }
 
     pub(crate) fn run_before_scan(&self) {

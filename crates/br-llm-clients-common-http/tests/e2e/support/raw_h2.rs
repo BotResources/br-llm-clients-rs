@@ -6,7 +6,7 @@ use std::time::Duration;
 use br_llm_clients_common_http::Endpoint;
 use tokio::io::{AsyncWriteExt, split};
 use tokio::net::TcpListener;
-use tokio::sync::{Notify, mpsc};
+use tokio::sync::{Notify, mpsc, watch};
 use tokio::task::JoinSet;
 
 use super::frames::{
@@ -24,15 +24,16 @@ pub struct RawH2 {
     pub addr: SocketAddr,
     accepted: Arc<AtomicUsize>,
     streams: Arc<AtomicUsize>,
-    closed: Arc<AtomicUsize>,
+    closed: Arc<watch::Sender<usize>>,
     peak: Arc<AtomicUsize>,
     stop: Arc<Notify>,
+    gate: Arc<watch::Sender<bool>>,
     task: tokio::task::JoinHandle<()>,
 }
 
 struct Counters {
     opened: Arc<AtomicUsize>,
-    closed: Arc<AtomicUsize>,
+    closed: Arc<watch::Sender<usize>>,
     peak: Arc<AtomicUsize>,
 }
 
@@ -42,7 +43,9 @@ impl RawH2 {
         let addr = listener.local_addr().expect("addr");
         let accepted = Arc::new(AtomicUsize::new(0));
         let streams = Arc::new(AtomicUsize::new(0));
-        let closed = Arc::new(AtomicUsize::new(0));
+        let closed = Arc::new(watch::channel(0usize).0);
+        let gate = Arc::new(watch::channel(true).0);
+        let gated = Arc::clone(&gate);
         let peak = Arc::new(AtomicUsize::new(0));
         let stop = Arc::new(Notify::new());
         let stopped = Arc::clone(&stop);
@@ -65,7 +68,9 @@ impl RawH2 {
                     peak: Arc::clone(&tallest),
                 };
                 let policy = policy(index);
+                let mut gate = gated.subscribe();
                 connections.spawn(async move {
+                    let _ = gate.wait_for(|open| *open).await;
                     tokio::time::sleep(policy.accept_delay).await;
                     match policy.tls_fault {
                         TlsFault::Close => return,
@@ -90,6 +95,7 @@ impl RawH2 {
             closed,
             peak,
             stop,
+            gate,
             task,
         }
     }
@@ -98,8 +104,24 @@ impl RawH2 {
         self.stop.notify_one();
     }
 
+    pub fn hold_accepts(&self) {
+        self.gate.send_replace(false);
+    }
+
+    pub fn release_accepts(&self) {
+        self.gate.send_replace(true);
+    }
+
     pub fn closed(&self) -> usize {
-        self.closed.load(Ordering::SeqCst)
+        *self.closed.borrow()
+    }
+
+    pub async fn wait_closed(&self, count: usize) {
+        let _ = self
+            .closed
+            .subscribe()
+            .wait_for(|closed| *closed >= count)
+            .await;
     }
 
     pub fn peak_streams_on_one_connection(&self) -> usize {
@@ -145,7 +167,7 @@ where
         }
         None => session(tls, policy, opened, peak).await,
     }
-    closed.fetch_add(1, Ordering::SeqCst);
+    closed.send_modify(|closed| *closed += 1);
 }
 
 async fn session<S>(tls: S, policy: Policy, opened: Arc<AtomicUsize>, peak: Arc<AtomicUsize>)

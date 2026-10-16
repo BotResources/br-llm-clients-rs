@@ -1,7 +1,7 @@
 use br_llm_clients_common_http::{ApiKeyAuthorizer, Endpoint, Request, Secret, SendError};
 
 use crate::support::pki::Pki;
-use crate::support::probe::go_away_with;
+use crate::support::probe_wire::go_away_with;
 use crate::support::raw::RawServer;
 use crate::support::{guarded, trusting_client};
 
