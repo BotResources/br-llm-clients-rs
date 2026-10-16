@@ -8,6 +8,9 @@ pub(crate) struct Hooks {
     before_scan: Slot,
     after_scan: Slot,
     before_register: Slot,
+    after_unannounced: Slot,
+    settings_step: Slot,
+    settled_step: Slot,
 }
 
 fn set(slot: &Slot, hook: impl Fn() + Send + Sync + 'static) {
@@ -32,6 +35,30 @@ impl Hooks {
 
     pub(crate) fn on_register(&self, hook: impl Fn() + Send + Sync + 'static) {
         set(&self.before_register, hook);
+    }
+
+    pub(crate) fn on_settings_step(&self, hook: impl Fn() + Send + Sync + 'static) {
+        set(&self.settings_step, hook);
+    }
+
+    pub(crate) fn run_settings_step(&self) {
+        run(&self.settings_step);
+    }
+
+    pub(crate) fn on_after_unannounced(&self, hook: impl Fn() + Send + Sync + 'static) {
+        set(&self.after_unannounced, hook);
+    }
+
+    pub(crate) fn run_after_unannounced(&self) {
+        run(&self.after_unannounced);
+    }
+
+    pub(crate) fn on_settled_step(&self, hook: impl Fn() + Send + Sync + 'static) {
+        set(&self.settled_step, hook);
+    }
+
+    pub(crate) fn run_settled_step(&self) {
+        run(&self.settled_step);
     }
 
     pub(crate) fn run_before_scan(&self) {

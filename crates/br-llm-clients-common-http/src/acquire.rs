@@ -14,7 +14,7 @@ use crate::pool::{Plan, PoolKey, Wait, WaitKind};
 use crate::redact::Redactor;
 use crate::send_error::SendError;
 use crate::server_fault::{about_endpoint, protocol_failure};
-use crate::standing::Settled;
+use crate::settled::Settled;
 use crate::transport::{Conn, LiveGuard};
 
 pub(crate) const READY_GRACE: Duration = Duration::from_millis(250);
@@ -130,7 +130,7 @@ pub(crate) async fn acquire(
                 _waiting = Some(guard);
                 match kind {
                     WaitKind::Dial(landing) => {
-                        claim = Some(landing);
+                        claim = Some(Claim::Landing(landing));
                         let _ = changed.changed().await;
                     }
                     WaitKind::Stream(next) => {

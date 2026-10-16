@@ -8,6 +8,7 @@ use crate::endpoint::Endpoint;
 use crate::h2state::H2State;
 use crate::idle::IdleClock;
 use crate::pool::{HostHandle, Pool, PoolKey};
+use crate::transport::Signal;
 
 pub(crate) fn bare_state() -> Arc<H2State> {
     let pool = Arc::new(Pool::new(Duration::from_secs(30)));
@@ -19,6 +20,31 @@ pub(crate) fn bare_state() -> Arc<H2State> {
     };
     let (idle, _) = IdleClock::new(Duration::from_secs(30));
     H2State::new(idle, host)
+}
+
+pub(crate) fn signalled_state() -> (Arc<H2State>, Signal) {
+    let pool = Arc::new(Pool::new(Duration::from_secs(30)));
+    let key = PoolKey::of(&Endpoint::https("https://h.example/").expect("endpoint"));
+    let signal: Signal = Arc::new(watch::channel(0u64).0);
+    let host = HostHandle {
+        signal: Arc::clone(&signal),
+        pool: Arc::downgrade(&pool),
+        key,
+    };
+    let (idle, _) = IdleClock::new(Duration::from_secs(30));
+    (H2State::new(idle, host), signal)
+}
+
+pub(crate) fn pooled_state() -> (Arc<Pool>, Arc<H2State>) {
+    let pool = Arc::new(Pool::new(Duration::from_secs(30)));
+    let key = PoolKey::of(&Endpoint::https("https://h.example/").expect("endpoint"));
+    let host = HostHandle {
+        signal: Arc::new(watch::channel(0u64).0),
+        pool: Arc::downgrade(&pool),
+        key,
+    };
+    let (idle, _) = IdleClock::new(Duration::from_secs(30));
+    (pool, H2State::new(idle, host))
 }
 
 pub(crate) fn state_with_limit(limit: u32) -> Arc<H2State> {
@@ -159,8 +185,21 @@ fn given_an_idle_connection_with_room_then_it_can_be_trimmed() {
 }
 
 #[test]
-fn given_an_idle_connection_whose_settings_are_unknown_then_it_can_be_trimmed() {
-    assert!(bare_state().is_trimmable());
+fn given_an_idle_connection_whose_settings_are_unknown_then_it_counts_as_full_and_is_not_trimmed() {
+    let state = bare_state();
+    assert!(state.is_idle());
+    assert!(!state.is_trimmable());
+    state.apply_settings(Some(2));
+    assert!(state.is_trimmable());
+}
+
+#[test]
+fn given_an_idle_connection_that_was_lowered_to_zero_after_usable_settings_then_it_is_not_trimmed()
+{
+    let state = state_with_limit(2);
+    state.apply_settings(Some(0));
+    assert!(state.is_idle());
+    assert!(!state.is_trimmable());
 }
 
 #[test]

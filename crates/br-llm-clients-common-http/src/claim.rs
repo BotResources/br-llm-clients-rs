@@ -2,7 +2,7 @@ use std::sync::{Arc, OnceLock};
 
 use crate::dialer::DialFailure;
 use crate::h2state::H2State;
-use crate::standing::Settled;
+use crate::settled::Settled;
 
 pub(crate) struct Landing {
     state: OnceLock<Arc<H2State>>,
@@ -44,14 +44,6 @@ pub(crate) enum Claim {
 }
 
 impl Claim {
-    #[cfg(test)]
-    pub(crate) fn into_landing(self) -> Option<Arc<Landing>> {
-        match self {
-            Self::Landing(landing) => Some(landing),
-            Self::Conn(_) => None,
-        }
-    }
-
     pub(crate) fn settled(&self) -> Option<Settled> {
         match self {
             Self::Conn(state) => state.settled(),

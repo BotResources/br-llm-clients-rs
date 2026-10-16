@@ -19,6 +19,7 @@ const SLOW_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 const SENDS: usize = 64;
 const BUMPERS: usize = 3;
 const REPETITIONS: usize = 16;
+const ROUND_LIMIT: Duration = Duration::from_secs(60);
 
 struct Round {
     accepted: usize,
@@ -49,14 +50,25 @@ fn zero_then_eof() -> Policy {
     }
 }
 
-fn bumping(
-    client: &HttpClient,
-    key: &PoolKey,
-    stop: &Arc<AtomicBool>,
-) -> Vec<std::thread::JoinHandle<()>> {
-    (0..BUMPERS)
+struct Bumpers {
+    stop: Arc<AtomicBool>,
+    threads: Vec<std::thread::JoinHandle<()>>,
+}
+
+impl Drop for Bumpers {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        for thread in self.threads.drain(..) {
+            let _ = thread.join();
+        }
+    }
+}
+
+fn bumping(client: &HttpClient, key: &PoolKey) -> Bumpers {
+    let stop = Arc::new(AtomicBool::new(false));
+    let threads = (0..BUMPERS)
         .map(|_| {
-            let (client, key, stop) = (client.clone(), key.clone(), Arc::clone(stop));
+            let (client, key, stop) = (client.clone(), key.clone(), Arc::clone(&stop));
             std::thread::spawn(move || {
                 while !stop.load(Ordering::Relaxed) {
                     let signal = client
@@ -71,7 +83,8 @@ fn bumping(
                 }
             })
         })
-        .collect()
+        .collect();
+    Bumpers { stop, threads }
 }
 
 async fn round(policy: fn() -> Policy, connect_timeout: Duration) -> Round {
@@ -81,8 +94,7 @@ async fn round(policy: fn() -> Policy, connect_timeout: Duration) -> Round {
         knobs.extra_root_certificates = vec![Pki::trusted().ca_pem.clone()];
     });
     let endpoint = server.endpoint();
-    let stop = Arc::new(AtomicBool::new(false));
-    let bumpers = bumping(&client, &PoolKey::of(&endpoint), &stop);
+    let bumpers = bumping(&client, &PoolKey::of(&endpoint));
     let started = Instant::now();
     let mut sends = JoinSet::new();
     for _ in 0..SENDS {
@@ -97,10 +109,7 @@ async fn round(policy: fn() -> Policy, connect_timeout: Duration) -> Round {
         }
     }
     let took = started.elapsed();
-    stop.store(true, Ordering::Relaxed);
-    for bumper in bumpers {
-        bumper.join().expect("bumper");
-    }
+    drop(bumpers);
     Round {
         accepted: server.accepted(),
         took,
@@ -108,10 +117,13 @@ async fn round(policy: fn() -> Policy, connect_timeout: Duration) -> Round {
     }
 }
 
-async fn storm(policy: fn() -> Policy, connect_timeout: Duration) -> Vec<Round> {
+async fn storm(shape: &str, policy: fn() -> Policy, connect_timeout: Duration) -> Vec<Round> {
     let mut rounds = Vec::new();
-    for _ in 0..REPETITIONS {
-        rounds.push(round(policy, connect_timeout).await);
+    for index in 0..REPETITIONS {
+        let ended = tokio::time::timeout(ROUND_LIMIT, round(policy, connect_timeout)).await;
+        rounds.push(ended.unwrap_or_else(|_| {
+            panic!("{shape}: round {index} did not end within {ROUND_LIMIT:?}")
+        }));
     }
     rounds
 }
@@ -138,7 +150,7 @@ fn assert_three_connections_each_time(rounds: &[Round]) {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn given_wakes_of_the_host_while_a_silent_server_serves_a_burst_then_the_sends_use_three_connections_and_three_connect_timeouts()
  {
-    let rounds = storm(silent, CONNECT_TIMEOUT).await;
+    let rounds = storm("a silent server", silent, CONNECT_TIMEOUT).await;
     assert_three_connections_each_time(&rounds);
     for round in &rounds {
         assert!(round.took >= CONNECT_TIMEOUT * 3, "{:?}", round.took);
@@ -148,11 +160,25 @@ async fn given_wakes_of_the_host_while_a_silent_server_serves_a_burst_then_the_s
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn given_wakes_of_the_host_while_connections_end_before_their_settings_then_the_sends_use_three_connections()
  {
-    assert_three_connections_each_time(&storm(eof_before_settings, SLOW_CONNECT_TIMEOUT).await);
+    assert_three_connections_each_time(
+        &storm(
+            "connections that end before their settings",
+            eof_before_settings,
+            SLOW_CONNECT_TIMEOUT,
+        )
+        .await,
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn given_wakes_of_the_host_while_connections_announce_zero_and_end_then_the_sends_use_three_connections()
  {
-    assert_three_connections_each_time(&storm(zero_then_eof, SLOW_CONNECT_TIMEOUT).await);
+    assert_three_connections_each_time(
+        &storm(
+            "connections that announce zero and end",
+            zero_then_eof,
+            SLOW_CONNECT_TIMEOUT,
+        )
+        .await,
+    );
 }

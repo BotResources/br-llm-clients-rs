@@ -1,20 +1,19 @@
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use tokio::sync::watch;
 
+use crate::announced::Announced;
 use crate::idle::IdleClock;
 use crate::pool::HostHandle;
-use crate::standing::Settled;
+use crate::settled::Settled;
 use crate::transport::bump;
 
 pub(crate) struct H2State {
     inflight: Mutex<usize>,
-    peer_max: AtomicUsize,
-    known: watch::Sender<bool>,
+    announced: watch::Sender<Announced>,
     retired: AtomicBool,
     violation: Mutex<Option<String>>,
-    zero_since_first: AtomicBool,
     gone: watch::Sender<bool>,
     idle: IdleClock,
     host: HostHandle,
@@ -24,11 +23,9 @@ impl H2State {
     pub(crate) fn new(idle: IdleClock, host: HostHandle) -> Arc<Self> {
         Arc::new(Self {
             inflight: Mutex::new(0),
-            peer_max: AtomicUsize::new(0),
-            known: watch::channel(false).0,
+            announced: watch::channel(Announced::Awaiting).0,
             retired: AtomicBool::new(false),
             violation: Mutex::new(None),
-            zero_since_first: AtomicBool::new(false),
             gone: watch::channel(false).0,
             idle,
             host,
@@ -45,36 +42,25 @@ impl H2State {
     }
 
     pub(crate) fn apply_settings_run(&self, run: &[Option<u32>]) {
-        let mut first = self.awaiting_settings();
-        let mut zero_since_first = None;
-        let mut last_limit = None;
-        for max_concurrent_streams in run {
-            let limit = match max_concurrent_streams {
-                Some(value) => usize::try_from(*value).unwrap_or(usize::MAX),
-                None if first => usize::MAX,
-                None => continue,
-            };
-            if first {
-                zero_since_first = Some(limit == 0);
-                first = false;
-            } else if limit > 0 {
-                zero_since_first = Some(false);
-            }
-            last_limit = Some(limit);
-        }
-        let Some(limit) = last_limit else {
+        let Some(next) = self.announcement().after_run(run) else {
             return;
         };
-        if let Some(zero) = zero_since_first {
-            self.zero_since_first.store(zero, Ordering::SeqCst);
-        }
-        self.peer_max.store(limit, Ordering::SeqCst);
-        self.known.send_replace(true);
+        #[cfg(test)]
+        self.step();
+        self.announced.send_replace(next);
+        #[cfg(test)]
+        self.step();
         self.wake_host();
+        #[cfg(test)]
+        self.step();
+    }
+
+    fn announcement(&self) -> Announced {
+        *self.announced.borrow()
     }
 
     pub(crate) fn awaiting_settings(&self) -> bool {
-        !*self.known.borrow()
+        self.announcement().is_awaiting()
     }
 
     pub(crate) fn record_violation(&self, text: String) {
@@ -112,19 +98,17 @@ impl H2State {
     }
 
     pub(crate) fn is_trimmable(&self) -> bool {
-        self.is_idle() && !self.is_announced_full()
-    }
-
-    fn is_announced_full(&self) -> bool {
-        !self.awaiting_settings() && self.peer_max.load(Ordering::SeqCst) == 0
+        self.is_idle() && matches!(self.announcement(), Announced::Usable(limit) if limit > 0)
     }
 
     pub(crate) fn settled(&self) -> Option<Settled> {
+        let ended = self.is_retired() || self.announcement().is_zero_since_first();
+        #[cfg(test)]
+        self.step_settled();
         if let Some(text) = self.violation() {
             return Some(Settled::Broken(text));
         }
-        (self.is_retired() || self.zero_since_first.load(Ordering::SeqCst))
-            .then_some(Settled::Spent)
+        ended.then_some(Settled::Spent)
     }
 
     pub(crate) fn wake_host(&self) {
@@ -140,7 +124,7 @@ impl H2State {
             return None;
         }
         let mut count = self.count();
-        if *count >= self.peer_max.load(Ordering::SeqCst) {
+        if *count >= self.announcement().limit() {
             return None;
         }
         if !self.idle.disarm() {
@@ -176,9 +160,13 @@ impl Permit {
     }
 
     pub(crate) async fn usable_since_first_settings(&self) -> bool {
-        let mut known = self.0.known.subscribe();
-        let _ = known.wait_for(|known| *known).await;
-        !self.0.zero_since_first.load(Ordering::SeqCst)
+        let mut announced = self.0.announced.subscribe();
+        let zero = announced
+            .wait_for(|announced| !announced.is_awaiting())
+            .await
+            .map(|announced| announced.is_zero_since_first())
+            .unwrap_or_else(|_| self.0.announcement().is_zero_since_first());
+        !zero
     }
 }
 
@@ -201,6 +189,18 @@ impl Drop for Permit {
 
 #[cfg(test)]
 impl H2State {
+    fn step(&self) {
+        if let Some(pool) = self.host.pool.upgrade() {
+            pool.hooks.run_settings_step();
+        }
+    }
+
+    fn step_settled(&self) {
+        if let Some(pool) = self.host.pool.upgrade() {
+            pool.hooks.run_settled_step();
+        }
+    }
+
     pub(crate) fn before_next_arm(&self, hook: impl FnOnce() + Send + 'static) {
         self.idle.before_next_arm(hook);
     }

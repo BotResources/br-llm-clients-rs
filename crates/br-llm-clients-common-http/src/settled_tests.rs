@@ -1,8 +1,9 @@
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::h2state::H2State;
-use crate::h2state_tests::{bare_state, state_with_limit};
-use crate::standing::Settled;
+use crate::h2state_tests::{bare_state, pooled_state, state_with_limit};
+use crate::settled::Settled;
 
 fn is_open(state: &H2State) -> bool {
     state.settled().is_none()
@@ -163,4 +164,53 @@ fn given_first_zeros_applied_while_other_threads_look_then_a_look_that_sees_the_
         current.store(RUNS, Ordering::SeqCst);
     });
     assert_eq!(known_without_the_zero.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn given_a_violation_recorded_and_the_connection_retired_between_the_two_reads_of_a_look_then_the_look_reports_the_violation()
+ {
+    let (pool, state) = pooled_state();
+    state.apply_settings(Some(5));
+    pool.hooks.on_settled_step({
+        let state = Arc::clone(&state);
+        move || {
+            state.record_violation("the server broke a rule".to_owned());
+            state.retire();
+        }
+    });
+    assert!(matches!(
+        state.settled(),
+        Some(Settled::Broken(text)) if text == "the server broke a rule"
+    ));
+}
+
+#[test]
+fn given_a_violation_then_a_retirement_while_other_threads_look_then_no_look_reports_a_spent_attempt()
+ {
+    const RUNS: usize = 20_000;
+    const READERS: usize = 8;
+    let states: Vec<_> = (0..RUNS).map(|_| state_with_limit(5)).collect();
+    let current = AtomicUsize::new(0);
+    let spent = AtomicUsize::new(0);
+    let looks = AtomicUsize::new(0);
+    std::thread::scope(|scope| {
+        for _ in 0..READERS {
+            scope.spawn(|| {
+                while let Some(state) = states.get(current.load(Ordering::SeqCst)) {
+                    looks.fetch_add(1, Ordering::Relaxed);
+                    if is_spent(state) {
+                        spent.fetch_add(1, Ordering::Relaxed);
+                    }
+                }
+            });
+        }
+        for (index, state) in states.iter().enumerate() {
+            current.store(index, Ordering::SeqCst);
+            state.record_violation("the server broke a rule".to_owned());
+            state.retire();
+        }
+        current.store(RUNS, Ordering::SeqCst);
+    });
+    assert!(looks.load(Ordering::Relaxed) > 0);
+    assert_eq!(spent.load(Ordering::Relaxed), 0);
 }

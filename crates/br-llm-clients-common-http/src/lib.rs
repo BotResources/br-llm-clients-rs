@@ -10,6 +10,7 @@
 )]
 
 mod acquire;
+mod announced;
 mod authorize;
 mod authorizer;
 mod authorizer_error;
@@ -55,8 +56,8 @@ mod secret;
 mod send_error;
 mod server_fault;
 mod settings_watch;
+mod settled;
 mod spy_io;
-mod standing;
 mod texts;
 mod tls;
 mod transport;
@@ -86,6 +87,8 @@ mod acquire_race_tests;
 mod acquire_tests;
 #[cfg(test)]
 mod acquire_zero_tests;
+#[cfg(test)]
+mod announce_steps_tests;
 #[cfg(test)]
 mod authorize_tests;
 #[cfg(test)]
@@ -121,11 +124,11 @@ mod secret_tests;
 #[cfg(test)]
 mod server_fault_tests;
 #[cfg(test)]
+mod settled_tests;
+#[cfg(test)]
 mod spy_io_model_tests;
 #[cfg(test)]
 mod spy_io_tests;
-#[cfg(test)]
-mod standing_tests;
 #[cfg(test)]
 mod sweep_tests;
 #[cfg(test)]

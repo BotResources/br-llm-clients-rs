@@ -6,7 +6,7 @@ use crate::dialer::DialFailure;
 use crate::endpoint::Endpoint;
 use crate::h2state_tests::bare_state;
 use crate::pool::{Plan, Pool, PoolKey, Wait, WaitKind};
-use crate::standing::Settled;
+use crate::settled::Settled;
 use crate::transport::bump;
 
 fn key(host: &str) -> PoolKey {
@@ -66,7 +66,7 @@ fn given_a_wake_after_the_permit_scan_when_planning_a_wait_then_the_wait_already
 
 fn claim_of(wait: Wait) -> Claim {
     match wait.kind {
-        WaitKind::Dial(claim) => claim,
+        WaitKind::Dial(landing) => Claim::Landing(landing),
         WaitKind::Stream(_) => panic!("the send waits for a dial"),
     }
 }
@@ -166,7 +166,7 @@ fn given_a_waiter_still_to_read_a_failure_when_planning_another_host_then_the_fa
 fn landing_waited_for(plan: Plan) -> std::sync::Arc<crate::claim::Landing> {
     match plan {
         Plan::Wait(wait) => match wait.kind {
-            WaitKind::Dial(claim) => claim.into_landing().expect("a landing"),
+            WaitKind::Dial(landing) => landing,
             WaitKind::Stream(_) => panic!("the send waits for a dial"),
         },
         _ => panic!("the send waits"),

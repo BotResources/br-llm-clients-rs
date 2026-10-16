@@ -6,13 +6,13 @@ use std::time::Duration;
 use tokio::sync::watch;
 use tokio::time::Instant;
 
-use crate::claim::Claim;
+use crate::claim::{Claim, Landing};
 use crate::dialer::Dialer;
 use crate::endpoint::Endpoint;
 use crate::host::{Host, Idle, Proto};
 #[cfg(test)]
 use crate::pool_hooks::Hooks;
-use crate::standing::Settled;
+use crate::settled::Settled;
 use crate::transport::{Conn, H1Conn, LiveGuard, Signal, bump};
 
 pub(crate) const MAX_IDLE_PER_HOST: usize = 8;
@@ -51,7 +51,7 @@ impl HostHandle {
 }
 
 pub(crate) enum WaitKind {
-    Dial(Claim),
+    Dial(Arc<Landing>),
     Stream(Option<Claim>),
 }
 
@@ -130,6 +130,8 @@ impl Pool {
             .iter()
             .find(|entry| entry.state.limit_unknown())
             .map(|entry| Claim::Conn(Arc::clone(&entry.state)));
+        #[cfg(test)]
+        self.hooks.run_after_unannounced();
         if let Some(settled) = held.and_then(Claim::settled) {
             return Plan::Settled(settled);
         }
@@ -157,7 +159,7 @@ impl Pool {
                 Plan::Dial(self.dialer(key, host, true))
             }
             Some(Proto::H2) => wait(WaitKind::Stream(host.dialing.then(landing_claim))),
-            None if host.dialing => wait(WaitKind::Dial(landing_claim())),
+            None if host.dialing => wait(WaitKind::Dial(Arc::clone(&host.landing))),
             None => {
                 host.begin_gated_dial();
                 Plan::Dial(self.dialer(key, host, true))

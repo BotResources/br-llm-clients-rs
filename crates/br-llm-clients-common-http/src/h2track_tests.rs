@@ -5,10 +5,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
+use hyper::client::conn::http2;
+use hyper_util::rt::{TokioExecutor, TokioIo};
+
 use super::{Gone, track_streams};
 use crate::h2state::H2State;
-use crate::h2state_tests::{bare_state, state_with_limit};
-use crate::standing::Settled;
+use crate::h2state_tests::{bare_state, signalled_state, state_with_limit};
+use crate::payload::Payload;
+use crate::settled::Settled;
 
 struct ConnectionProbe {
     state: Arc<H2State>,
@@ -146,4 +150,49 @@ async fn given_a_connection_whose_first_settings_came_then_it_is_not_closed_when
         () = tokio::time::sleep(Duration::from_secs(60)) => {}
     }
     assert!(!state.is_retired());
+}
+
+#[test]
+fn given_a_connection_that_ends_then_the_sends_waiting_on_the_host_are_woken() {
+    let (state, signal) = signalled_state();
+    let changes = signal.subscribe();
+    assert!(!changes.has_changed().expect("open"));
+    drop(Gone(Arc::clone(&state)));
+    assert!(changes.has_changed().expect("open"));
+}
+
+#[test]
+fn given_a_connection_that_ends_then_the_sends_holding_a_stream_of_it_are_told_it_is_gone() {
+    let state = state_with_limit(10);
+    let permit = state.force_acquire();
+    let gone = permit.gone();
+    assert!(!*gone.borrow());
+    drop(Gone(Arc::clone(&state)));
+    assert!(*gone.borrow());
+}
+
+#[tokio::test]
+async fn given_a_connection_that_ended_by_itself_then_its_sender_stays_open_until_the_connection_is_dropped()
+ {
+    let (client_io, server_io) = tokio::io::duplex(65536);
+    let (sender, connection) = http2::Builder::new(TokioExecutor::new())
+        .handshake::<_, Payload>(TokioIo::new(client_io))
+        .await
+        .expect("handshake");
+    let mut connection = std::pin::pin!(connection);
+    drop(server_io);
+    assert!(connection.as_mut().await.is_err());
+    assert!(!sender.is_closed());
+}
+
+#[tokio::test]
+async fn given_a_connection_dropped_then_its_sender_is_closed() {
+    let (client_io, _server_io) = tokio::io::duplex(65536);
+    let (sender, connection) = http2::Builder::new(TokioExecutor::new())
+        .handshake::<_, Payload>(TokioIo::new(client_io))
+        .await
+        .expect("handshake");
+    assert!(!sender.is_closed());
+    drop(connection);
+    assert!(sender.is_closed());
 }
