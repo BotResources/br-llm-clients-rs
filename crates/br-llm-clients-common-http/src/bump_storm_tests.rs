@@ -20,6 +20,7 @@ const SLOW_CONNECT_TIMEOUT: Duration = Duration::from_secs(4);
 const SENDS: usize = 64;
 const BUMPERS: usize = 3;
 const REPETITIONS: usize = 6;
+const PARK_LIMIT: Duration = Duration::from_secs(10);
 const ROUND_LIMIT: Duration = Duration::from_secs(30);
 const STORM_LIMIT: Duration = Duration::from_secs(240);
 
@@ -116,7 +117,7 @@ async fn round(policy: fn() -> Policy, connect_timeout: Duration) -> Round {
         sends.spawn(async move { client.send(post(&endpoint, "x"), &NoAuthorizer).await });
     }
     within_time(
-        ROUND_LIMIT,
+        PARK_LIMIT,
         || waiting_behind_one_dial(&client, &key) == SENDS - 1,
         || "the sends never all parked behind the first dial".to_owned(),
     )
