@@ -77,8 +77,9 @@ async fn first_zero_then_raised_in_one_write(lost_before: usize) {
         "{lost_before} lost connections, {} connections",
         server.accepted()
     );
+    let dials_until_a_connection_is_usable = lost_before + 1;
     assert!(
-        server.accepted() <= lost_before + 3,
+        server.accepted() <= dials_until_a_connection_is_usable,
         "{}",
         server.accepted()
     );
@@ -117,7 +118,11 @@ async fn first_zero_raised_later(raise_after: Duration, early_may_be_raised: boo
         "before the raise: {:?}",
         kinds(&early)
     );
-    assert!(server.accepted() <= 5, "{} connections", server.accepted());
+    assert!(
+        server.accepted() <= MAX_CONNECTIONS,
+        "{} connections",
+        server.accepted()
+    );
     if !early_may_be_raised {
         tokio::time::sleep(raise_after / 2).await;
         let middle = timed_burst(&client, &server, 1).await;

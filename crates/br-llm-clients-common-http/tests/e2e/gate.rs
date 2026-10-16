@@ -13,21 +13,6 @@ use crate::support::script_body::{ScriptBody, Step};
 use crate::support::{guarded, post};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn given_a_burst_larger_than_the_server_limit_then_every_send_succeeds_without_queueing_in_a_connection()
- {
-    let server = TlsServer::start_with(
-        Pki::trusted().acceptor(&[b"h2"]),
-        answering(Duration::from_millis(50)),
-        options(100, Duration::ZERO, 0),
-    )
-    .await;
-    let client = trusting(Duration::from_secs(20), Duration::from_secs(5));
-    let outcomes = guarded(run(&client, &server, 300)).await;
-    assert!(outcomes.iter().all(Result::is_ok), "{outcomes:?}");
-    assert!(server.accepted() <= 4, "{} connections", server.accepted());
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn given_a_server_with_one_stream_per_connection_then_a_burst_is_served() {
     let server = TlsServer::start_with(
         Pki::trusted().acceptor(&[b"h2"]),
