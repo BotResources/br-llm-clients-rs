@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use br_llm_clients_common_http::{AuthorizerError, Endpoint, SendError};
+use br_llm_clients_common_http::{
+    AuthorizationRequest, AuthorizedHeader, Authorizer, AuthorizerError, BoxFuture, Endpoint,
+    SendError,
+};
 
 use crate::support::raw::{RawServer, Received, read_request, write_response};
 use crate::support::spy::Spy;
@@ -155,4 +158,37 @@ async fn given_a_returned_header_with_the_name_of_a_request_header_when_sent_the
     );
     assert_eq!(received.header_count("x-keep"), 1);
     assert_eq!(received.header("x-keep"), Some("signed"));
+}
+
+struct HeaderLookup {
+    found: std::sync::Mutex<Vec<Option<Vec<u8>>>>,
+}
+
+impl Authorizer for HeaderLookup {
+    fn authorize<'a>(
+        &'a self,
+        request: &'a AuthorizationRequest<'a>,
+    ) -> BoxFuture<'a, Result<Vec<AuthorizedHeader>, AuthorizerError>> {
+        *self.found.lock().expect("lock") = ["HOST", "content-length", "absent"]
+            .map(|name| request.header(name).map(<[u8]>::to_vec))
+            .to_vec();
+        Box::pin(async { Ok(Vec::new()) })
+    }
+}
+
+#[tokio::test]
+async fn given_an_authorizer_that_looks_a_header_up_by_name_then_the_name_is_compared_without_case_and_an_absent_one_is_none()
+ {
+    let (server, _seen) = echo_server().await;
+    let lookup = HeaderLookup {
+        found: std::sync::Mutex::new(Vec::new()),
+    };
+    guarded(client().send(post(&server.endpoint("/"), "THE-BODY"), &lookup))
+        .await
+        .expect("response");
+    let host = format!("127.0.0.1:{}", server.addr.port()).into_bytes();
+    assert_eq!(
+        *lookup.found.lock().expect("lock"),
+        vec![Some(host), Some(b"8".to_vec()), None]
+    );
 }

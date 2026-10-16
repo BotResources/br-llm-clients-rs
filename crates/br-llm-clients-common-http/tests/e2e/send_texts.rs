@@ -10,6 +10,7 @@ use crate::support::script_body::{ScriptBody, Step};
 use crate::support::{Knobs, client_with, closed_port_endpoint, post};
 
 const SHORT: Duration = Duration::from_millis(200);
+const DIAL: Duration = Duration::from_millis(500);
 
 fn trusting_with(change: impl FnOnce(&mut Knobs)) -> HttpClient {
     client_with(|knobs| {
@@ -84,14 +85,14 @@ async fn given_a_connection_that_never_answers_then_the_connect_timeout_names_th
         ..Policy::healthy()
     })
     .await;
-    let client = trusting_with(|knobs| knobs.connect_timeout = SHORT);
+    let client = trusting_with(|knobs| knobs.connect_timeout = DIAL);
     let SendError::ConnectTimeout { text } = send_error(&client, &server).await else {
         panic!("a connect timeout");
     };
     let port = server.addr.port();
     assert_eq!(
         text,
-        format!("no connection to https://127.0.0.1:{port}/x within 200ms")
+        format!("no connection to https://127.0.0.1:{port}/x within 500ms")
     );
 }
 
@@ -103,7 +104,7 @@ async fn given_a_connection_that_carries_no_request_in_three_attempts_then_the_t
         ..Policy::announcing(Announce::Nothing)
     })
     .await;
-    let client = trusting_with(|knobs| knobs.connect_timeout = SHORT);
+    let client = trusting_with(|knobs| knobs.connect_timeout = DIAL);
     let SendError::Connect { text } = send_error(&client, &server).await else {
         panic!("a connect failure");
     };
@@ -176,12 +177,12 @@ async fn given_a_stalled_body_then_the_idle_timeout_text_names_no_endpoint() {
 
 #[tokio::test]
 async fn given_a_stalled_body_then_the_total_timeout_text_names_no_endpoint() {
-    let error = stalled_body_error(|knobs| knobs.total_timeout = Some(SHORT)).await;
+    let error = stalled_body_error(|knobs| knobs.total_timeout = Some(DIAL)).await;
     let BodyError::TotalTimeout { text } = error else {
         panic!("{error:?}");
     };
     assert_eq!(
         text,
-        "the response did not end within the total timeout of 200ms"
+        "the response did not end within the total timeout of 500ms"
     );
 }

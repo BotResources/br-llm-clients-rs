@@ -62,7 +62,7 @@ fn given_no_user_agent_when_building_then_the_default_names_the_library_and_its_
     let value = base().validate().expect("valid");
     assert_eq!(
         value.to_str().expect("text"),
-        "br-llm-clients-common-http/0.1.0"
+        format!("br-llm-clients-common-http/{}", env!("CARGO_PKG_VERSION"))
     );
 }
 
