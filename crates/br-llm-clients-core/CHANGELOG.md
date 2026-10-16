@@ -9,6 +9,59 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.4.0
+
+### Changed
+
+- Breaking: the types of `br-llm-messages` in the public API (`Step`, `Usage`,
+  `StreamEvent`, `WireMessage`, `ModelId`, `ToolName`, `Text`, `StopReason`,
+  `ImageMime`) are now those of `br-llm-messages` 0.5.0 (tag
+  `br-llm-messages/v0.5.0`), its line 0.5. An importer that also uses
+  `br-llm-messages` must move to 0.5 too; the types of 0.4 and of 0.5 are not
+  the same types. These types keep the rules they had in 0.4: what 0.5
+  changes (a required id on a user input, entry ids unique in a
+  conversation, `DuplicateEntryId` in place of `DuplicateTurnId`, the
+  conversation schema `br-llm-messages/3`) lies in types this crate does not
+  use. The stored schema `br-llm-clients-core/1` and its JSON are unchanged.
+- Contract: the intent now states that the types of `br-llm-messages` it
+  names are those of its line 0.5. Nothing else in the contract changes.
+
+## 0.3.0
+
+### Added
+
+- `Client::settings(&self) -> &ClientSettings`: the second operation of a
+  client, which gives back the `ClientSettings` the client is bound to. It is
+  pure (not async, no I/O) and gives the common settings only; the
+  configuration of a provider library stays private to that library.
+
+### Changed
+
+- Breaking: `Client` gains the required method `settings`. Every implementor
+  must add it. The trait stays object-safe, `Send` and `Sync`.
+- Breaking: the types of `br-llm-messages` in the public API (`Step`, `Usage`,
+  `StreamEvent`, `WireMessage`, `ModelId`, `ToolName`, `Text`, `StopReason`,
+  `ImageMime`) are now those of `br-llm-messages` 0.4.0 (tag
+  `br-llm-messages/v0.4.0`). An importer that also uses `br-llm-messages` must
+  move to 0.4 too; the types of 0.3 and of 0.4 are not the same types. Its
+  rules come with it: a `ToolName` is now 1 to 64 ASCII letters, digits, `_`
+  or `-`, the first a letter or `_`, so a `ToolSpec`, a
+  `ToolSchemaRejected` error or a `CallOutcome` whose step holds a tool call
+  with another name no longer builds or loads. The stored schema
+  `br-llm-clients-core/1` is unchanged.
+- Contract: every main provider accepts a tool name that `br-llm-messages`
+  accepts; a provider that still refuses one gives `ToolSchemaRejected`. A tool
+  call of a reply whose name is not a valid `ToolName` makes the reply
+  `MalformedResponse`, like any error of `br-llm-messages` met while building
+  the `Step`.
+
+### Tests
+
+- A client held as a trait object gives back the settings it is bound to,
+  also while a call it made still borrows it.
+- A stored `ToolSpec`, `ToolSchemaRejected` error or successful `CallOutcome`
+  naming a tool that `br-llm-messages` 0.4 refuses does not load.
+
 ## 0.2.0
 
 ### Changed

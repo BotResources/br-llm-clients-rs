@@ -116,4 +116,8 @@ impl Client for MockClient {
     ) -> BoxFuture<'a, CallOutcome> {
         Box::pin(drive(&self.shared, &self.settings, request, sink))
     }
+
+    fn settings(&self) -> &ClientSettings {
+        &self.settings
+    }
 }

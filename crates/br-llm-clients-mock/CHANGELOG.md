@@ -9,6 +9,48 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.4.0
+
+### Changed
+
+- Breaking: follows `br-llm-clients-core` 0.4.0 and `br-llm-messages` 0.5.0
+  (tag `br-llm-messages/v0.5.0`), its line 0.5. The types of both libraries in
+  the public API are now those of these releases; an importer must move to
+  them too, because the types of the earlier releases are not the same types.
+  The behaviour of the mock is unchanged: what `br-llm-messages` 0.5 changes
+  (a required id on a user input, entry ids unique in a conversation,
+  `DuplicateEntryId` in place of `DuplicateTurnId`, the conversation schema
+  `br-llm-messages/3`) lies in types the mock does not use, and the steps,
+  stream events and stream draft it builds on are unchanged from 0.4.
+- Contract: the intent now states that the types of `br-llm-messages` it
+  names are those of its line 0.5. Nothing else in the contract changes.
+- Panic message updated: an assistant block kind unknown to 0.5 stays
+  `unreachable!`, and the message now names 0.5. A new kind needs a
+  `br-llm-messages` intent change, hence a new 0.x line outside `^0.5.0`.
+
+## 0.3.0
+
+### Added
+
+- `MockClient` implements `Client::settings`: each handle gives back its own
+  `ClientSettings`. A clone gives back the settings of the handle it was cloned
+  from, and a handle made with `with_settings` gives back the settings it was
+  made with.
+
+### Changed
+
+- Breaking: follows `br-llm-clients-core` 0.3.0 and `br-llm-messages` 0.4.0 (tag
+  `br-llm-messages/v0.4.0`). The types of both libraries in the public API are
+  now those of these releases; an importer must move to them too, because the
+  types of the earlier releases are not the same types. A `MockClient` handle
+  now also answers the new required `Client::settings` of core 0.3.
+
+### Tests
+
+- The original mock, a clone, a handle with other settings, a clone of that
+  handle and a handle made from it each give back their own settings, and a
+  call through a handle is logged with the settings that handle gives back.
+
 ## 0.2.0
 
 ### Changed
