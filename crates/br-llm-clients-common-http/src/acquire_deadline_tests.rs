@@ -118,10 +118,14 @@ async fn given_a_connect_timeout_text_when_the_path_holds_a_secret_then_the_secr
     let dialer = rig.dialer();
     let redactor = Redactor::new(["s3cr3t"]);
     let key = PoolKey::of(&endpoint);
-    let (outcome, ()) = tokio::join!(acquire(&rig.shared, &endpoint, &key, &redactor), async {
-        rig.waiting(1).await;
-        dialer.fail(DialFailure::Timeout);
-    });
+    let (outcome, ()) = tokio::time::timeout(Duration::from_secs(30), async {
+        tokio::join!(acquire(&rig.shared, &endpoint, &key, &redactor), async {
+            rig.waiting(1).await;
+            dialer.fail(DialFailure::Timeout);
+        })
+    })
+    .await
+    .expect("the waiter was not woken when the dial it waited for failed");
     let text = match outcome {
         Err(SendError::ConnectTimeout { text }) => text,
         Err(other) => panic!("{other:?}"),
@@ -204,4 +208,50 @@ async fn given_a_send_waiting_for_a_stream_while_a_dial_for_one_more_connection_
         matches!(error, SendError::HeadersTimeout { .. }),
         "{error:?}"
     );
+}
+
+#[tokio::test]
+async fn given_wakes_that_change_nothing_while_a_send_waits_for_a_stream_then_headers_timeout_still_ends_the_wait()
+ {
+    let server = RawH2::start(|_| Policy {
+        answer: Answer::Never,
+        ..Policy::announcing(Announce::Limit(1))
+    })
+    .await;
+    let endpoint = server.endpoint();
+    let rig = Rig::timed(
+        endpoint,
+        Some(server),
+        CONNECT_TIMEOUT,
+        Duration::from_millis(400),
+    );
+    let (full, _held) = rig.land(rig.dialer()).await;
+    full.apply_settings(Some(1));
+    let _capacity = rig.dialer();
+    let started = std::time::Instant::now();
+    let waiter = rig.waiter();
+    rig.waiting(1).await;
+    let bumping = {
+        let state = Arc::clone(&full);
+        tokio::spawn(async move {
+            for _ in 0..12 {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                state.wake_host();
+            }
+        })
+    };
+    let ended = tokio::time::timeout(Duration::from_secs(10), waiter)
+        .await
+        .expect("the wait for a stream has a deadline")
+        .expect("join");
+    let took = started.elapsed();
+    bumping.abort();
+    let Outcome::Failed(error) = ended else {
+        panic!("the waiter fails");
+    };
+    assert!(
+        matches!(error, SendError::HeadersTimeout { .. }),
+        "{error:?}"
+    );
+    assert!(took < Duration::from_millis(900), "{took:?}");
 }

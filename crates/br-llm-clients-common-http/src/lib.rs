@@ -128,6 +128,8 @@ mod spy_io_tests;
 mod standing_tests;
 #[cfg(test)]
 mod sweep_tests;
+#[cfg(test)]
+mod turns_tests;
 
 #[cfg(test)]
 extern crate self as br_llm_clients_common_http;

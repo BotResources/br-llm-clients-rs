@@ -19,6 +19,7 @@ use crate::support::config;
 use crate::support::pki::Pki;
 use crate::support::raw_h2::{Announce, Answer, Policy, RawH2};
 use crate::transport::Conn;
+use crate::turns_tests::within_turns;
 
 pub(crate) type Acquiring = Pin<Box<dyn Future<Output = Result<Acquisition, SendError>> + Send>>;
 
@@ -138,19 +139,33 @@ impl Rig {
         })
     }
 
+    fn parked(&self) -> usize {
+        self.shared
+            .pool
+            .lock()
+            .get(&self.key)
+            .map_or(0, |host| host.waiting.load(Ordering::SeqCst))
+    }
+
     pub(crate) async fn waiting(&self, count: usize) {
-        loop {
-            let waiting = self
-                .shared
-                .pool
-                .lock()
-                .get(&self.key)
-                .map_or(0, |host| host.waiting.load(Ordering::SeqCst));
-            if waiting >= count {
-                return;
-            }
-            tokio::task::yield_now().await;
-        }
+        within_turns(
+            || self.parked() >= count,
+            || {
+                format!(
+                    "{count} sends should be parked on the host and {} are: a send did not wait where it should, or a wake it needs never came",
+                    self.parked()
+                )
+            },
+        )
+        .await;
+    }
+
+    pub(crate) async fn dial_started(&self) {
+        within_turns(
+            || self.dialing(),
+            || "the send never started its dial".to_owned(),
+        )
+        .await;
     }
 
     pub(crate) async fn land(&self, dialer: Dialer) -> (Arc<H2State>, Conn) {
@@ -175,9 +190,9 @@ impl Rig {
 }
 
 pub(crate) async fn outcome(waiter: JoinHandle<Outcome>) -> Outcome {
-    tokio::time::timeout(Duration::from_secs(120), waiter)
+    tokio::time::timeout(Duration::from_secs(30), waiter)
         .await
-        .expect("the waiter ends")
+        .expect("the waiter never ended: a wake it waits for is missing")
         .expect("join")
 }
 

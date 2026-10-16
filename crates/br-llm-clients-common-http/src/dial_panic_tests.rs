@@ -26,9 +26,7 @@ async fn given_a_dial_that_panics_then_the_sends_that_waited_for_it_share_one_co
         }
     });
     let dialing = rig.waiter();
-    while !rig.dialing() {
-        tokio::task::yield_now().await;
-    }
+    rig.dial_started().await;
     let mut sends = vec![dialing];
     sends.extend((0..5).map(|_| rig.waiter()));
     rig.waiting(5).await;
@@ -63,10 +61,7 @@ async fn given_a_dial_task_that_panicked_or_was_aborted_then_the_dial_failed_wit
         let Err(DialFailure::Connect(text)) = joined(result) else {
             panic!("a lost dial is a Connect failure");
         };
-        let DialFailure::Connect(expected) = DialFailure::lost() else {
-            panic!("the lost dial is a Connect failure");
-        };
-        assert_eq!(text, expected);
+        assert_eq!(text, "the connection attempt ended without a result");
     }
 }
 

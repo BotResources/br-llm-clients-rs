@@ -4,6 +4,7 @@ use crate::acquire_tests::Rig;
 use crate::h2state::H2State;
 use crate::pool::MAX_IDLE_PER_HOST;
 use crate::transport::Conn;
+use crate::turns_tests::within_spins;
 
 async fn land_with_limit(rig: &Rig, limit: u32) -> (Arc<H2State>, Conn) {
     let (state, conn) = rig.land(rig.dialer()).await;
@@ -61,9 +62,10 @@ async fn given_an_idle_connection_trimmed_to_keep_eight_then_the_sends_waiting_o
     let before = *changes.borrow();
     let held_pool = rig.shared.pool.lock();
     let dropping = std::thread::spawn(move || drop(last));
-    while *changes.borrow() == before {
-        std::thread::yield_now();
-    }
+    within_spins(
+        || *changes.borrow() != before,
+        || "the freed stream did not wake the host".to_owned(),
+    );
     let after_the_freed_stream = *changes.borrow();
     assert!(!states.first().expect("oldest").is_retired());
     drop(held_pool);
