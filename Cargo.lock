@@ -99,7 +99,7 @@ version = "0.1.0"
 
 [[package]]
 name = "br-llm-clients-core"
-version = "0.2.0"
+version = "0.4.0"
 dependencies = [
  "br-llm-messages",
  "serde",
@@ -109,7 +109,7 @@ dependencies = [
 
 [[package]]
 name = "br-llm-clients-mock"
-version = "0.2.0"
+version = "0.4.0"
 dependencies = [
  "br-llm-clients-core",
  "br-llm-messages",
@@ -119,8 +119,8 @@ dependencies = [
 
 [[package]]
 name = "br-llm-messages"
-version = "0.3.0"
-source = "git+https://github.com/BotResources/br-llm-messages-rs?tag=br-llm-messages%2Fv0.3.0#f74615d343adb7542a6101a69727bc366b9106ff"
+version = "0.5.0"
+source = "git+https://github.com/BotResources/br-llm-messages-rs?tag=br-llm-messages%2Fv0.5.0#9f0a052beda362b9f9145b1a5482c4c24fbe4135"
 dependencies = [
  "serde",
  "serde_json",

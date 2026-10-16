@@ -58,3 +58,14 @@ fn given_a_stored_tool_with_an_empty_name_when_loaded_then_refused() {
     let stored = serde_json::json!({ "name": "", "description": "", "parameters": [] });
     assert!(serde_json::from_value::<ToolSpec>(stored).is_err());
 }
+
+#[test]
+fn given_a_stored_tool_whose_name_br_llm_messages_refuses_when_loaded_then_refused() {
+    for name in ["fs.read", "9lives", "-x", "a b", "é"] {
+        let stored = serde_json::json!({ "name": name, "description": "", "parameters": [] });
+        assert!(
+            serde_json::from_value::<ToolSpec>(stored).is_err(),
+            "{name} loaded"
+        );
+    }
+}
