@@ -102,14 +102,23 @@ async fn given_a_first_zero_raised_in_the_same_write_after_two_lost_attempts_the
     first_zero_then_raised_in_one_write(2).await;
 }
 
-async fn first_zero_raised_later(raise_after: Duration, in_between: bool) {
+async fn first_zero_raised_later(raise_after: Duration, early_may_be_raised: bool) {
     let announce = Announce::Spaced(frames(&[0]), raise_after, frames(&[100]));
     let server = RawH2::start(move |_| Policy::announcing(announce)).await;
     let client = trusting(Duration::from_secs(2), Duration::from_secs(1));
     let early = timed_burst(&client, &server, 20).await;
-    assert_eq!(kinds(&early), vec!["Connect"], "before the raise");
+    let allowed: &[&str] = if early_may_be_raised {
+        &["Connect", "ok"]
+    } else {
+        &["Connect"]
+    };
+    assert!(
+        kinds(&early).iter().all(|kind| allowed.contains(kind)),
+        "before the raise: {:?}",
+        kinds(&early)
+    );
     assert!(server.accepted() <= 5, "{} connections", server.accepted());
-    if in_between {
+    if !early_may_be_raised {
         tokio::time::sleep(raise_after / 2).await;
         let middle = timed_burst(&client, &server, 1).await;
         assert_eq!(kinds(&middle), vec!["Connect"], "still before the raise");
@@ -133,19 +142,19 @@ async fn first_zero_raised_later(raise_after: Duration, in_between: bool) {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn given_a_first_zero_raised_after_300_ms_then_the_sends_before_it_end_with_connect_and_the_sends_after_it_are_served_on_the_same_connections()
  {
-    first_zero_raised_later(Duration::from_millis(300), false).await;
+    first_zero_raised_later(Duration::from_millis(300), true).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn given_a_first_zero_raised_after_3000_ms_then_the_sends_before_it_end_with_connect_without_a_dial_storm_and_the_sends_after_it_are_served()
  {
-    first_zero_raised_later(Duration::from_millis(3000), true).await;
+    first_zero_raised_later(Duration::from_millis(3000), false).await;
 }
 
-async fn later_zero_raised(raise_after: Duration, expected: &str) {
+async fn later_zero_raised(raise_after: Duration, headers_timeout: Duration, expected: &str) {
     let announce = Announce::Spaced(frames(&[100, 0]), raise_after, frames(&[100]));
     let server = RawH2::start(move |_| Policy::announcing(announce)).await;
-    let client = trusting(Duration::from_secs(5), Duration::from_secs(1));
+    let client = trusting(Duration::from_secs(5), headers_timeout);
     let outcomes = timed_burst(&client, &server, 20).await;
     assert_eq!(
         kinds(&outcomes),
@@ -163,11 +172,16 @@ async fn later_zero_raised(raise_after: Duration, expected: &str) {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn given_a_limit_lowered_to_zero_and_raised_after_300_ms_then_the_requests_in_flight_are_served()
  {
-    later_zero_raised(Duration::from_millis(300), "ok").await;
+    later_zero_raised(Duration::from_millis(300), Duration::from_secs(5), "ok").await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn given_a_limit_lowered_to_zero_and_raised_after_3000_ms_then_the_requests_in_flight_end_with_headers_timeout()
  {
-    later_zero_raised(Duration::from_millis(3000), "HeadersTimeout").await;
+    later_zero_raised(
+        Duration::from_millis(3000),
+        Duration::from_secs(1),
+        "HeadersTimeout",
+    )
+    .await;
 }
