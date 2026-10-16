@@ -237,3 +237,46 @@ fn given_a_new_connection_alive_then_the_dialer_gets_a_permit_and_it_is_not_reti
     assert!(!state.is_retired());
     drop(permit);
 }
+
+#[tokio::test]
+async fn given_a_first_zero_then_the_permit_of_the_dialer_is_not_usable() {
+    let state = bare_state();
+    let permit = state.force_acquire();
+    state.apply_settings(Some(0));
+    assert!(!permit.usable_since_first_settings().await);
+}
+
+#[tokio::test]
+async fn given_a_first_zero_raised_before_the_permit_asks_then_it_is_usable() {
+    let state = bare_state();
+    let permit = state.force_acquire();
+    state.apply_settings(Some(0));
+    state.apply_settings(Some(4));
+    assert!(permit.usable_since_first_settings().await);
+}
+
+#[tokio::test]
+async fn given_a_usable_first_settings_then_a_later_zero_leaves_the_permit_usable() {
+    let state = bare_state();
+    let permit = state.force_acquire();
+    state.apply_settings_run(&[Some(4), Some(0)]);
+    assert!(permit.usable_since_first_settings().await);
+}
+
+#[tokio::test]
+async fn given_no_settings_yet_then_the_permit_waits_for_them_and_is_woken_by_the_first_ones() {
+    let state = bare_state();
+    let permit = state.force_acquire();
+    let waiting = tokio::spawn({
+        let state = Arc::clone(&state);
+        async move {
+            let permit = state.force_acquire();
+            permit.usable_since_first_settings().await
+        }
+    });
+    tokio::task::yield_now().await;
+    assert!(!waiting.is_finished());
+    state.apply_settings(Some(4));
+    assert!(waiting.await.expect("join"));
+    drop(permit);
+}
