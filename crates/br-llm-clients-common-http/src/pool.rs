@@ -6,10 +6,13 @@ use std::time::Duration;
 use tokio::sync::watch;
 use tokio::time::Instant;
 
-use crate::claim::{Claim, Standing};
+use crate::claim::Claim;
 use crate::dialer::Dialer;
 use crate::endpoint::Endpoint;
 use crate::host::{Host, Idle, Proto};
+#[cfg(test)]
+use crate::pool_hooks::Hooks;
+use crate::standing::Settled;
 use crate::transport::{Conn, H1Conn, LiveGuard, Signal, bump};
 
 pub(crate) const MAX_IDLE_PER_HOST: usize = 8;
@@ -48,15 +51,14 @@ impl HostHandle {
 }
 
 pub(crate) enum WaitKind {
-    Dial,
-    Stream,
+    Dial(Claim),
+    Stream(Option<Claim>),
 }
 
 pub(crate) struct Wait {
     pub(crate) changed: watch::Receiver<u64>,
     pub(crate) kind: WaitKind,
     pub(crate) guard: LiveGuard,
-    pub(crate) claim: Option<Claim>,
 }
 
 pub(crate) enum Plan {
@@ -64,16 +66,14 @@ pub(crate) enum Plan {
     TryIdle(H1Conn),
     Dial(Dialer),
     Wait(Wait),
-    Settled(Standing),
+    Settled(Settled),
 }
 
 pub(crate) struct Pool {
     hosts: Mutex<HashMap<PoolKey, Host>>,
     idle_limit: Duration,
     #[cfg(test)]
-    after_scan: Mutex<Option<Box<dyn Fn() + Send>>>,
-    #[cfg(test)]
-    before_register: Mutex<Option<std::sync::Arc<dyn Fn() + Send + Sync>>>,
+    pub(crate) hooks: Hooks,
 }
 
 impl Pool {
@@ -82,38 +82,8 @@ impl Pool {
             hosts: Mutex::new(HashMap::new()),
             idle_limit,
             #[cfg(test)]
-            after_scan: Mutex::new(None),
-            #[cfg(test)]
-            before_register: Mutex::new(None),
+            hooks: Hooks::default(),
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn run_before_register(&self) {
-        let hook = self
-            .before_register
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone();
-        if let Some(hook) = hook {
-            hook();
-        }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn on_register(&self, hook: impl Fn() + Send + Sync + 'static) {
-        *self
-            .before_register
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner) = Some(std::sync::Arc::new(hook));
-    }
-
-    #[cfg(test)]
-    pub(crate) fn run_after_scan(&self, hook: impl Fn() + Send + 'static) {
-        *self
-            .after_scan
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner) = Some(Box::new(hook));
     }
 
     fn reusable(&self, host: &Host) -> Option<Plan> {
@@ -126,13 +96,7 @@ impl Pool {
             }
         }
         #[cfg(test)]
-        if let Some(hook) = &*self
-            .after_scan
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-        {
-            hook();
-        }
+        self.hooks.run_after_scan();
         None
     }
 
@@ -147,17 +111,10 @@ impl Pool {
 
     pub(crate) fn plan(self: &Arc<Self>, key: &PoolKey, held: Option<&Claim>) -> Plan {
         let mut hosts = self.lock();
-        if let Some(settled) = held
-            .map(Claim::standing)
-            .filter(|standing| !matches!(standing, Standing::Open))
-        {
-            return Plan::Settled(settled);
-        }
         hosts.retain(|other, host| other == key || host.in_use());
         let host = hosts.entry(key.clone()).or_insert_with(Host::new);
         let changes = host.signal.subscribe();
-        host.h2
-            .retain(|entry| !entry.state.is_retired() && !entry.sender.is_closed());
+        host.drop_ended_h2();
         host.h1.retain(|idle| {
             !idle.conn.sender.is_closed() && idle.since.elapsed() <= self.idle_limit
         });
@@ -166,11 +123,16 @@ impl Pool {
         } else if host.h2.is_empty() && host.live_h1.load(Ordering::SeqCst) == 0 && !host.dialing {
             host.proto = None;
         }
+        #[cfg(test)]
+        self.hooks.run_before_scan();
         let unannounced = host
             .h2
             .iter()
             .find(|entry| entry.state.limit_unknown())
             .map(|entry| Claim::Conn(Arc::clone(&entry.state)));
+        if let Some(settled) = held.and_then(Claim::settled) {
+            return Plan::Settled(settled);
+        }
         if let Some(reuse) = self.reusable(host) {
             return reuse;
         }
@@ -178,16 +140,15 @@ impl Pool {
             return Plan::TryIdle(idle.conn);
         }
         let landing_claim = || Claim::Landing(Arc::clone(&host.landing));
-        let wait = |kind, claim| {
+        let wait = |kind| {
             Plan::Wait(Wait {
                 changed: changes,
                 kind,
                 guard: LiveGuard::new(&host.waiting),
-                claim,
             })
         };
         if unannounced.is_some() {
-            return wait(WaitKind::Stream, unannounced);
+            return wait(WaitKind::Stream(unannounced));
         }
         match host.proto {
             Some(Proto::H1) => Plan::Dial(self.dialer(key, host, false)),
@@ -195,8 +156,8 @@ impl Pool {
                 host.begin_gated_dial();
                 Plan::Dial(self.dialer(key, host, true))
             }
-            Some(Proto::H2) => wait(WaitKind::Stream, host.dialing.then(landing_claim)),
-            None if host.dialing => wait(WaitKind::Dial, Some(landing_claim())),
+            Some(Proto::H2) => wait(WaitKind::Stream(host.dialing.then(landing_claim))),
+            None if host.dialing => wait(WaitKind::Dial(landing_claim())),
             None => {
                 host.begin_gated_dial();
                 Plan::Dial(self.dialer(key, host, true))
@@ -234,8 +195,7 @@ impl Pool {
         let Some(host) = hosts.get_mut(key) else {
             return;
         };
-        host.h2
-            .retain(|entry| !entry.state.is_retired() && !entry.sender.is_closed());
+        host.drop_ended_h2();
         host.h1.retain(|idle| !idle.conn.sender.is_closed());
         if !host.in_use() {
             hosts.remove(key);
@@ -255,8 +215,7 @@ impl Pool {
                 .position(|entry| entry.state.is_trimmable() && !entry.state.is_retired());
             match oldest_idle {
                 Some(index) => {
-                    let entry = host.h2.remove(index);
-                    entry.state.retire();
+                    host.retire_and_remove_h2(index);
                     trimmed = true;
                 }
                 None => break,

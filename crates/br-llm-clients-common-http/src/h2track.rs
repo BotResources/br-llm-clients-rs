@@ -23,8 +23,8 @@ pub(crate) async fn track_streams<C>(connection: C, state: Arc<H2State>, setting
 where
     C: Future<Output = Result<(), hyper::Error>>,
 {
-    let _gone = Gone(Arc::clone(&state));
     let mut connection = pin!(connection);
+    let _gone = Gone(Arc::clone(&state));
     tokio::select! {
         ended = connection.as_mut() => {
             if let Err(error) = ended

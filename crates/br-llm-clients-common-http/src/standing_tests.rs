@@ -1,15 +1,15 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::claim::Standing;
 use crate::h2state::H2State;
 use crate::h2state_tests::{bare_state, state_with_limit};
+use crate::standing::Settled;
 
 fn is_open(state: &H2State) -> bool {
-    matches!(state.standing(), Standing::Open)
+    state.settled().is_none()
 }
 
 fn is_spent(state: &H2State) -> bool {
-    matches!(state.standing(), Standing::Spent)
+    matches!(state.settled(), Some(Settled::Spent))
 }
 
 #[test]
@@ -99,8 +99,8 @@ fn given_a_violation_then_it_is_reported_with_its_text_and_not_as_a_lost_attempt
     let state = bare_state();
     state.record_violation("the server broke a rule".to_owned());
     assert!(matches!(
-        state.standing(),
-        Standing::Broken(text) if text == "the server broke a rule"
+        state.settled(),
+        Some(Settled::Broken(text)) if text == "the server broke a rule"
     ));
 }
 

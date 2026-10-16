@@ -2,13 +2,7 @@ use std::sync::{Arc, OnceLock};
 
 use crate::dialer::DialFailure;
 use crate::h2state::H2State;
-
-pub(crate) enum Standing {
-    Open,
-    Spent,
-    Broken(String),
-    Failed(DialFailure),
-}
+use crate::standing::Settled;
 
 pub(crate) struct Landing {
     state: OnceLock<Arc<H2State>>,
@@ -36,13 +30,11 @@ impl Landing {
         let _ = self.failure.set(failure);
     }
 
-    fn standing(&self) -> Standing {
+    fn settled(&self) -> Option<Settled> {
         if let Some(failure) = self.failure.get() {
-            return Standing::Failed(failure.clone());
+            return Some(Settled::Failed(failure.clone()));
         }
-        self.state
-            .get()
-            .map_or(Standing::Open, |state| state.standing())
+        self.state.get().and_then(|state| state.settled())
     }
 }
 
@@ -60,10 +52,10 @@ impl Claim {
         }
     }
 
-    pub(crate) fn standing(&self) -> Standing {
+    pub(crate) fn settled(&self) -> Option<Settled> {
         match self {
-            Self::Conn(state) => state.standing(),
-            Self::Landing(landing) => landing.standing(),
+            Self::Conn(state) => state.settled(),
+            Self::Landing(landing) => landing.settled(),
         }
     }
 }

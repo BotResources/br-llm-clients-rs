@@ -57,6 +57,23 @@ impl Host {
             || self.live_h1.load(Ordering::SeqCst) > 0
     }
 
+    pub(crate) fn drop_ended_h2(&mut self) {
+        self.h2.retain(|entry| {
+            if entry.sender.is_closed() {
+                entry.state.retire();
+            }
+            !entry.state.is_retired()
+        });
+    }
+
+    pub(crate) fn retire_and_remove_h2(&mut self, index: usize) {
+        let Some(entry) = self.h2.get(index) else {
+            return;
+        };
+        entry.state.retire();
+        self.h2.remove(index);
+    }
+
     pub(crate) fn begin_gated_dial(&mut self) {
         self.dialing = true;
         self.landing = Landing::new();

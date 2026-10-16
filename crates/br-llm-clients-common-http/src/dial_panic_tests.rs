@@ -15,7 +15,7 @@ async fn given_a_dial_that_panics_then_the_sends_that_waited_for_it_share_one_co
     let rig = Rig::announcing_server(100).await;
     let dials = Arc::new(AtomicUsize::new(0));
     let released = Arc::new(AtomicBool::new(false));
-    rig.shared.pool.on_register({
+    rig.shared.pool.hooks.on_register({
         let (dials, released) = (Arc::clone(&dials), Arc::clone(&released));
         move || {
             dials.fetch_add(1, Ordering::SeqCst);

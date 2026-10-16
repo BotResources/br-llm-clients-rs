@@ -4,7 +4,7 @@ use std::time::Duration;
 use tokio::task::{JoinError, JoinHandle};
 use tokio::time::{Instant, timeout, timeout_at};
 
-use crate::claim::{Claim, Standing};
+use crate::claim::Claim;
 use crate::client::Shared;
 use crate::connect::{ConnectFailure, Target, open};
 use crate::deadline;
@@ -14,6 +14,7 @@ use crate::pool::{Plan, PoolKey, Wait, WaitKind};
 use crate::redact::Redactor;
 use crate::send_error::SendError;
 use crate::server_fault::{about_endpoint, protocol_failure};
+use crate::standing::Settled;
 use crate::transport::{Conn, LiveGuard};
 
 pub(crate) const READY_GRACE: Duration = Duration::from_millis(250);
@@ -97,19 +98,18 @@ pub(crate) async fn acquire(
             plan,
             Plan::Dial(_)
                 | Plan::Wait(Wait {
-                    kind: WaitKind::Dial,
+                    kind: WaitKind::Dial(_),
                     ..
                 })
         ) {
             state.headers_deadline = None;
         }
         match plan {
-            Plan::Settled(Standing::Spent) => return Ok(Acquisition::Spent),
-            Plan::Settled(Standing::Broken(text)) => {
+            Plan::Settled(Settled::Spent) => return Ok(Acquisition::Spent),
+            Plan::Settled(Settled::Broken(text)) => {
                 return Err(protocol_failure(redactor, endpoint, &text));
             }
-            Plan::Settled(Standing::Failed(failure)) => return Err(state.failure(failure)),
-            Plan::Settled(Standing::Open) => {}
+            Plan::Settled(Settled::Failed(failure)) => return Err(state.failure(failure)),
             Plan::Reuse(conn) => return Ok(Acquisition::Ready(state.ready(conn))),
             Plan::TryIdle(mut idle) => {
                 let ready = matches!(timeout(READY_GRACE, idle.sender.ready()).await, Ok(Ok(())));
@@ -126,15 +126,15 @@ pub(crate) async fn acquire(
                 mut changed,
                 kind,
                 guard,
-                claim: next,
             }) => {
                 _waiting = Some(guard);
-                claim = next;
                 match kind {
-                    WaitKind::Dial => {
+                    WaitKind::Dial(landing) => {
+                        claim = Some(landing);
                         let _ = changed.changed().await;
                     }
-                    WaitKind::Stream => {
+                    WaitKind::Stream(next) => {
+                        claim = next;
                         let limit = shared.config.headers_timeout;
                         let at = *state
                             .headers_deadline

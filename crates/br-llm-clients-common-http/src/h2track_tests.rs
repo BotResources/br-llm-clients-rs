@@ -1,8 +1,66 @@
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
 use super::{Gone, track_streams};
-use crate::claim::Standing;
+use crate::h2state::H2State;
 use crate::h2state_tests::{bare_state, state_with_limit};
+use crate::standing::Settled;
+
+struct ConnectionProbe {
+    state: Arc<H2State>,
+    retired_when_dropped: Arc<AtomicBool>,
+}
+
+impl Future for ConnectionProbe {
+    type Output = Result<(), hyper::Error>;
+
+    fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {
+        Poll::Pending
+    }
+}
+
+impl Drop for ConnectionProbe {
+    fn drop(&mut self) {
+        self.retired_when_dropped
+            .store(self.state.is_retired(), Ordering::SeqCst);
+    }
+}
+
+fn probe(state: &Arc<H2State>) -> (ConnectionProbe, Arc<AtomicBool>) {
+    let seen = Arc::new(AtomicBool::new(false));
+    let probe = ConnectionProbe {
+        state: Arc::clone(state),
+        retired_when_dropped: Arc::clone(&seen),
+    };
+    (probe, seen)
+}
+
+#[tokio::test(start_paused = true)]
+async fn given_a_connection_closed_because_its_first_settings_did_not_come_then_it_is_retired_before_the_connection_is_dropped()
+ {
+    let state = bare_state();
+    let (connection, retired_when_dropped) = probe(&state);
+    track_streams(connection, Arc::clone(&state), Duration::from_secs(7)).await;
+    assert!(retired_when_dropped.load(Ordering::SeqCst));
+}
+
+#[tokio::test(start_paused = true)]
+async fn given_a_tracked_connection_dropped_in_the_middle_then_it_is_retired_before_the_connection_is_dropped()
+ {
+    let state = state_with_limit(10);
+    let (connection, retired_when_dropped) = probe(&state);
+    let tracked = track_streams(connection, Arc::clone(&state), Duration::from_secs(7));
+    assert!(
+        tokio::time::timeout(Duration::from_secs(60), tracked)
+            .await
+            .is_err()
+    );
+    assert!(retired_when_dropped.load(Ordering::SeqCst));
+}
 
 #[test]
 fn given_a_connection_that_ends_then_it_is_retired_before_anyone_is_told_it_is_gone() {
@@ -39,7 +97,7 @@ async fn given_a_connection_that_ends_before_its_first_settings_then_a_send_that
     assert!(state.limit_unknown());
     assert!(state.violation().is_none());
     assert!(state.is_retired());
-    assert!(matches!(state.standing(), Standing::Spent));
+    assert!(matches!(state.settled(), Some(Settled::Spent)));
 }
 
 #[tokio::test]
@@ -71,7 +129,7 @@ async fn given_a_connection_whose_first_settings_do_not_come_within_the_wait_the
         .expect("the wait for the first settings never ends");
     assert_eq!(started.elapsed(), Duration::from_secs(7));
     assert!(state.is_retired());
-    assert!(matches!(state.standing(), Standing::Spent));
+    assert!(matches!(state.settled(), Some(Settled::Spent)));
 }
 
 #[tokio::test(start_paused = true)]

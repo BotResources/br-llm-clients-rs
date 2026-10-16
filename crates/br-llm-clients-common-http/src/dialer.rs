@@ -41,7 +41,7 @@ impl Dialer {
     pub(crate) fn register(mut self, opened: Opened) -> Option<Conn> {
         let pool = self.host.pool.upgrade()?;
         #[cfg(test)]
-        pool.run_before_register();
+        pool.hooks.run_before_register();
         let mut hosts = pool.lock();
         let host = hosts.entry(self.host.key.clone()).or_insert_with(Host::new);
         self.done = true;

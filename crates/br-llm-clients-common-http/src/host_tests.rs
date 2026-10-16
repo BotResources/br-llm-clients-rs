@@ -52,8 +52,7 @@ async fn given_sixteen_full_connections_and_no_dial_in_flight_then_a_send_waits_
     }
     match rig.shared.pool.plan(&rig.key, None) {
         Plan::Wait(wait) => {
-            assert!(matches!(wait.kind, WaitKind::Stream));
-            assert!(wait.claim.is_none());
+            assert!(matches!(wait.kind, WaitKind::Stream(None)));
         }
         _ => panic!("the send waits"),
     }

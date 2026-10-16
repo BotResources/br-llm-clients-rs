@@ -3,9 +3,9 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use tokio::sync::watch;
 
-use crate::claim::Standing;
 use crate::idle::IdleClock;
 use crate::pool::HostHandle;
+use crate::standing::Settled;
 use crate::transport::bump;
 
 pub(crate) struct H2State {
@@ -119,15 +119,12 @@ impl H2State {
         !self.awaiting_settings() && self.peer_max.load(Ordering::SeqCst) == 0
     }
 
-    pub(crate) fn standing(&self) -> Standing {
+    pub(crate) fn settled(&self) -> Option<Settled> {
         if let Some(text) = self.violation() {
-            return Standing::Broken(text);
+            return Some(Settled::Broken(text));
         }
-        if self.is_retired() || self.zero_since_first.load(Ordering::SeqCst) {
-            Standing::Spent
-        } else {
-            Standing::Open
-        }
+        (self.is_retired() || self.zero_since_first.load(Ordering::SeqCst))
+            .then_some(Settled::Spent)
     }
 
     pub(crate) fn wake_host(&self) {

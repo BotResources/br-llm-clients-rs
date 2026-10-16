@@ -2,11 +2,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::claim::Claim;
-use crate::claim::Standing;
 use crate::dialer::DialFailure;
 use crate::endpoint::Endpoint;
 use crate::h2state_tests::bare_state;
 use crate::pool::{Plan, Pool, PoolKey, Wait, WaitKind};
+use crate::standing::Settled;
 use crate::transport::bump;
 
 fn key(host: &str) -> PoolKey {
@@ -56,7 +56,7 @@ fn given_a_wake_after_the_permit_scan_when_planning_a_wait_then_the_wait_already
         panic!("the first send dials");
     };
     let signal = Arc::clone(&pool.lock().get(&host).expect("host").signal);
-    pool.run_after_scan(move || bump(&signal));
+    pool.hooks.on_after_scan(move || bump(&signal));
     let Plan::Wait(wait) = pool.plan(&host, None) else {
         panic!("the second send waits");
     };
@@ -65,11 +65,17 @@ fn given_a_wake_after_the_permit_scan_when_planning_a_wait_then_the_wait_already
 }
 
 fn claim_of(wait: Wait) -> Claim {
-    wait.claim.expect("a wait for a dial holds a claim")
+    match wait.kind {
+        WaitKind::Dial(claim) => claim,
+        WaitKind::Stream(_) => panic!("the send waits for a dial"),
+    }
 }
 
 fn failed_with_connect(claim: &Claim) -> bool {
-    matches!(claim.standing(), Standing::Failed(DialFailure::Connect(_)))
+    matches!(
+        claim.settled(),
+        Some(Settled::Failed(DialFailure::Connect(_)))
+    )
 }
 
 #[test]
@@ -83,7 +89,7 @@ fn given_a_waiter_when_the_dial_it_waited_for_fails_then_it_gets_that_failure_an
         panic!("the second send waits");
     };
     let claim = claim_of(wait);
-    assert!(matches!(claim.standing(), Standing::Open));
+    assert!(claim.settled().is_none());
     dialer.fail(connect_failure());
     assert!(failed_with_connect(&claim));
 }
@@ -103,7 +109,7 @@ fn given_a_failed_dial_when_a_send_that_did_not_wait_for_it_plans_then_it_dials_
     let Plan::Wait(wait) = pool.plan(&host, None) else {
         panic!("the third send waits");
     };
-    assert!(matches!(claim_of(wait).standing(), Standing::Open));
+    assert!(claim_of(wait).settled().is_none());
     drop(next);
 }
 
@@ -124,7 +130,7 @@ fn given_a_dial_dropped_without_an_outcome_when_a_waiter_checks_its_claim_then_i
     };
     let claim = claim_of(wait);
     drop(second);
-    assert!(matches!(claim.standing(), Standing::Open));
+    assert!(claim.settled().is_none());
     assert!(matches!(pool.plan(&host, None), Plan::Dial(_)));
 }
 
@@ -160,8 +166,8 @@ fn given_a_waiter_still_to_read_a_failure_when_planning_another_host_then_the_fa
 fn landing_waited_for(plan: Plan) -> std::sync::Arc<crate::claim::Landing> {
     match plan {
         Plan::Wait(wait) => match wait.kind {
-            WaitKind::Dial => wait.claim.and_then(Claim::into_landing).expect("a landing"),
-            WaitKind::Stream => panic!("the send waits for a dial"),
+            WaitKind::Dial(claim) => claim.into_landing().expect("a landing"),
+            WaitKind::Stream(_) => panic!("the send waits for a dial"),
         },
         _ => panic!("the send waits"),
     }

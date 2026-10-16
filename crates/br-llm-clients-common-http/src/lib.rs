@@ -44,6 +44,8 @@ mod limits;
 mod payload;
 mod percent;
 mod pool;
+#[cfg(test)]
+mod pool_hooks;
 mod prepare;
 mod redact;
 mod request;
@@ -54,6 +56,7 @@ mod send_error;
 mod server_fault;
 mod settings_watch;
 mod spy_io;
+mod standing;
 mod texts;
 mod tls;
 mod transport;
@@ -106,6 +109,8 @@ mod headers_tests;
 #[cfg(test)]
 mod payload_tests;
 #[cfg(test)]
+mod plan_settle_tests;
+#[cfg(test)]
 mod pool_tests;
 #[cfg(test)]
 mod request_tests;
@@ -126,6 +131,8 @@ mod sweep_tests;
 
 #[cfg(test)]
 extern crate self as br_llm_clients_common_http;
+#[cfg(test)]
+mod bump_storm_tests;
 #[cfg(test)]
 mod cap_tests;
 #[cfg(test)]
