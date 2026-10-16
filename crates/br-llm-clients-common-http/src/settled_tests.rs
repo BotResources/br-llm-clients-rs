@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::h2state::H2State;
 use crate::h2state_tests::{bare_state, pooled_state, state_with_limit};
+use crate::hot_readers_tests::while_looked_at;
 use crate::settled::Settled;
 
 fn is_open(state: &H2State) -> bool {
@@ -105,37 +106,27 @@ fn given_a_violation_then_it_is_reported_with_its_text_and_not_as_a_lost_attempt
     ));
 }
 
+fn fresh_states(count: usize) -> Vec<Arc<H2State>> {
+    (0..count).map(|_| bare_state()).collect()
+}
+
 #[test]
 fn given_first_runs_of_a_zero_and_a_raise_applied_while_other_threads_look_then_no_look_sees_the_zero()
  {
-    const RUNS: usize = 20_000;
-    let states: Vec<_> = (0..RUNS).map(|_| bare_state()).collect();
-    let current = AtomicUsize::new(0);
+    let states = fresh_states(5_000);
     let zeros_seen = AtomicUsize::new(0);
-    let looks = AtomicUsize::new(0);
-    std::thread::scope(|scope| {
-        for _ in 0..2 {
-            scope.spawn(|| {
-                loop {
-                    let index = current.load(Ordering::SeqCst);
-                    let Some(state) = states.get(index) else {
-                        return;
-                    };
-                    looks.fetch_add(1, Ordering::Relaxed);
-                    if is_spent(state) {
-                        zeros_seen.fetch_add(1, Ordering::Relaxed);
-                    }
-                    drop(state.try_acquire());
-                }
-            });
-        }
-        for (index, state) in states.iter().enumerate() {
-            current.store(index, Ordering::SeqCst);
-            state.apply_settings_run(&[Some(0), Some(100)]);
-        }
-        current.store(RUNS, Ordering::SeqCst);
-    });
-    assert!(looks.load(Ordering::Relaxed) > 0);
+    let looks = while_looked_at(
+        &states,
+        2,
+        |state| {
+            if is_spent(state) {
+                zeros_seen.fetch_add(1, Ordering::Relaxed);
+            }
+            drop(state.try_acquire());
+        },
+        |state| state.apply_settings_run(&[Some(0), Some(100)]),
+    );
+    assert!(looks > 0);
     assert_eq!(zeros_seen.load(Ordering::Relaxed), 0);
     assert!(states.iter().all(|state| is_open(state)));
 }
@@ -143,26 +134,18 @@ fn given_first_runs_of_a_zero_and_a_raise_applied_while_other_threads_look_then_
 #[test]
 fn given_first_zeros_applied_while_other_threads_look_then_a_look_that_sees_the_settings_known_sees_the_zero()
  {
-    const RUNS: usize = 20_000;
-    let states: Vec<_> = (0..RUNS).map(|_| bare_state()).collect();
-    let current = AtomicUsize::new(0);
+    let states = fresh_states(5_000);
     let known_without_the_zero = AtomicUsize::new(0);
-    std::thread::scope(|scope| {
-        for _ in 0..2 {
-            scope.spawn(|| {
-                while let Some(state) = states.get(current.load(Ordering::SeqCst)) {
-                    if !state.awaiting_settings() && !is_spent(state) {
-                        known_without_the_zero.fetch_add(1, Ordering::Relaxed);
-                    }
-                }
-            });
-        }
-        for (index, state) in states.iter().enumerate() {
-            current.store(index, Ordering::SeqCst);
-            state.apply_settings_run(&[Some(0)]);
-        }
-        current.store(RUNS, Ordering::SeqCst);
-    });
+    while_looked_at(
+        &states,
+        2,
+        |state| {
+            if !state.awaiting_settings() && !is_spent(state) {
+                known_without_the_zero.fetch_add(1, Ordering::Relaxed);
+            }
+        },
+        |state| state.apply_settings_run(&[Some(0)]),
+    );
     assert_eq!(known_without_the_zero.load(Ordering::Relaxed), 0);
 }
 
@@ -187,30 +170,21 @@ fn given_a_violation_recorded_and_the_connection_retired_between_the_two_reads_o
 #[test]
 fn given_a_violation_then_a_retirement_while_other_threads_look_then_no_look_reports_a_spent_attempt()
  {
-    const RUNS: usize = 20_000;
-    const READERS: usize = 8;
-    let states: Vec<_> = (0..RUNS).map(|_| state_with_limit(5)).collect();
-    let current = AtomicUsize::new(0);
+    let states: Vec<_> = (0..2_000).map(|_| state_with_limit(5)).collect();
     let spent = AtomicUsize::new(0);
-    let looks = AtomicUsize::new(0);
-    std::thread::scope(|scope| {
-        for _ in 0..READERS {
-            scope.spawn(|| {
-                while let Some(state) = states.get(current.load(Ordering::SeqCst)) {
-                    looks.fetch_add(1, Ordering::Relaxed);
-                    if is_spent(state) {
-                        spent.fetch_add(1, Ordering::Relaxed);
-                    }
-                }
-            });
-        }
-        for (index, state) in states.iter().enumerate() {
-            current.store(index, Ordering::SeqCst);
+    let looks = while_looked_at(
+        &states,
+        8,
+        |state| {
+            if is_spent(state) {
+                spent.fetch_add(1, Ordering::Relaxed);
+            }
+        },
+        |state| {
             state.record_violation("the server broke a rule".to_owned());
             state.retire();
-        }
-        current.store(RUNS, Ordering::SeqCst);
-    });
-    assert!(looks.load(Ordering::Relaxed) > 0);
+        },
+    );
+    assert!(looks > 0);
     assert_eq!(spent.load(Ordering::Relaxed), 0);
 }

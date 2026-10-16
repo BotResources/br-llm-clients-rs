@@ -157,6 +157,8 @@ mod h2state_tests;
 #[cfg(test)]
 mod host_tests;
 #[cfg(test)]
+mod hot_readers_tests;
+#[cfg(test)]
 mod idle_cap_tests;
 #[cfg(test)]
 mod lifetime_tests;
