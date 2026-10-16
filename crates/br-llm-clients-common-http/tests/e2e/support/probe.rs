@@ -30,10 +30,18 @@ pub enum Script {
     Graceful(usize),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Arrived {
+    pub id: String,
+    pub key: Option<String>,
+    pub body: Vec<u8>,
+}
+
 pub struct Probe {
     pub addr: SocketAddr,
     pub accepted: Arc<AtomicUsize>,
     pub arrivals: Arc<Mutex<Vec<String>>>,
+    pub arrived: Arc<Mutex<Vec<Arrived>>>,
     pub processed: Arc<Mutex<Vec<String>>>,
     task: tokio::task::JoinHandle<()>,
 }
@@ -44,13 +52,15 @@ impl Probe {
         let addr = listener.local_addr().expect("addr");
         let accepted = Arc::new(AtomicUsize::new(0));
         let arrivals = Arc::new(Mutex::new(Vec::new()));
+        let arrived = Arc::new(Mutex::new(Vec::new()));
         let processed = Arc::new(Mutex::new(Vec::new()));
         let refusals = Arc::new(AtomicUsize::new(0));
         let acceptor = Pki::trusted().acceptor(&[b"h2"]);
-        let (count, seen, done) = (
+        let (count, seen, done, full) = (
             Arc::clone(&accepted),
             Arc::clone(&arrivals),
             Arc::clone(&processed),
+            Arc::clone(&arrived),
         );
         let task = tokio::spawn(async move {
             let mut connections = JoinSet::new();
@@ -59,11 +69,12 @@ impl Probe {
                     break;
                 };
                 let index = count.fetch_add(1, Ordering::SeqCst);
-                let (acceptor, seen, done, refusals) = (
+                let (acceptor, seen, done, refusals, full) = (
                     acceptor.clone(),
                     Arc::clone(&seen),
                     Arc::clone(&done),
                     Arc::clone(&refusals),
+                    Arc::clone(&full),
                 );
                 connections.spawn(async move {
                     let Ok(tls) = acceptor.accept(tcp).await else {
@@ -102,6 +113,24 @@ impl Probe {
                             .unwrap_or_default()
                             .to_owned();
                         seen.lock().expect("lock").push(id.clone());
+                        let (parts, body) = request.into_parts();
+                        let key = parts
+                            .headers
+                            .get("x-api-key")
+                            .and_then(|v| v.to_str().ok())
+                            .map(str::to_owned);
+                        let body =
+                            if matches!(script, Script::ZeroWindowClose | Script::ZeroWindowGoAway)
+                            {
+                                Vec::new()
+                            } else {
+                                read_body(body).await
+                            };
+                        full.lock().expect("lock").push(Arrived {
+                            id: id.clone(),
+                            key,
+                            body,
+                        });
                         let refuse = match script {
                             Script::RefuseAll => true,
                             Script::RefuseFirst(n) => refusals.fetch_add(1, Ordering::SeqCst) < n,
@@ -157,6 +186,7 @@ impl Probe {
             addr,
             accepted,
             arrivals,
+            arrived,
             processed,
             task,
         }
@@ -166,6 +196,10 @@ impl Probe {
         Endpoint::https(&format!("https://127.0.0.1:{}/x", self.addr.port())).expect("endpoint")
     }
 
+    pub fn arrived(&self) -> Vec<Arrived> {
+        self.arrived.lock().expect("lock").clone()
+    }
+
     pub fn arrivals(&self) -> Vec<String> {
         self.arrivals.lock().expect("lock").clone()
     }
@@ -173,6 +207,18 @@ impl Probe {
     pub fn processed(&self) -> Vec<String> {
         self.processed.lock().expect("lock").clone()
     }
+}
+
+async fn read_body(mut body: h2::RecvStream) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let reading = async {
+        while let Some(Ok(chunk)) = body.data().await {
+            let _ = body.flow_control().release_capacity(chunk.len());
+            bytes.extend_from_slice(&chunk);
+        }
+    };
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), reading).await;
+    bytes
 }
 
 async fn gather_more<T>(conn: &mut h2::server::Connection<T, Bytes>, seen: &Mutex<Vec<String>>)

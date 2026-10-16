@@ -95,3 +95,35 @@ async fn given_a_busy_host_and_a_send_that_started_a_dial_for_one_more_connectio
     assert_eq!(server.accepted(), 3);
     drop(held);
 }
+
+fn holding_every_stream() -> Policy {
+    Policy {
+        answer: Answer::Frames(|stream| response_head(stream, None, false)),
+        ..Policy::announcing(Announce::Limit(1))
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn given_a_send_that_started_a_dial_and_is_not_polled_again_when_the_connection_allows_one_stream_then_it_stays_full_until_the_send_is_dropped()
+ {
+    let server = RawH2::start(|_| holding_every_stream()).await;
+    let client = trusting(CONNECT_TIMEOUT, HEADERS_TIMEOUT);
+    let mut stalled = started_send(&client, &server);
+    polled_once(&mut stalled).await;
+    while server.accepted() == 0 {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let beside = client
+        .send(post(&server.endpoint(), "beside"), &NoAuthorizer)
+        .await
+        .expect("a send beside the stalled one");
+    assert_eq!(server.accepted(), 2);
+    drop(stalled);
+    let after = client
+        .send(post(&server.endpoint(), "after"), &NoAuthorizer)
+        .await
+        .expect("a send after the stalled one was dropped");
+    assert_eq!(server.accepted(), 2);
+    drop((beside, after));
+}

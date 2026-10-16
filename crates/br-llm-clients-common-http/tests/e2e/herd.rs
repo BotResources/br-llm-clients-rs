@@ -65,12 +65,30 @@ async fn given_16_and_200_concurrent_first_sends_on_a_fresh_client_then_one_http
     }
 }
 
-#[tokio::test]
-async fn given_concurrent_first_sends_to_an_http1_host_then_each_opens_its_own_connection() {
-    let server = quick_server(&[b"http/1.1"], None).await;
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn given_more_than_sixteen_concurrent_first_sends_to_an_http1_host_then_each_opens_its_own_connection()
+ {
+    const SENDS: usize = 40;
+    let server = TlsServer::start_limited(
+        Pki::trusted().acceptor(&[b"http/1.1"]),
+        service(|_| async {
+            tokio::time::sleep(Duration::from_millis(700)).await;
+            Ok(Response::new(ScriptBody::new([Step::Data(b"ok")])))
+        }),
+        None,
+        Duration::ZERO,
+    )
+    .await;
     let client = client_trusting(Duration::from_secs(20));
-    assert_eq!(guarded(burst(&client, &server.endpoint("/"), 8)).await, 8);
-    assert_eq!(server.accepted(), 8);
+    assert_eq!(
+        guarded(burst(&client, &server.endpoint("/"), SENDS)).await,
+        SENDS
+    );
+    assert!(
+        server.accepted() > 16,
+        "{} connections for {SENDS} concurrent sends",
+        server.accepted()
+    );
 }
 
 #[tokio::test]

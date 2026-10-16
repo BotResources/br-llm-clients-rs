@@ -1,6 +1,8 @@
+use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 
-use br_llm_clients_common_http::{BodyError, NoAuthorizer};
+use br_llm_clients_common_http::{BodyError, BodyStream, NoAuthorizer};
+use bytes::Bytes;
 use tokio::io::AsyncWriteExt;
 
 use crate::support::raw::{RawServer, read_request, write_raw};
@@ -72,4 +74,60 @@ async fn given_a_slow_server_when_a_new_read_waits_longer_than_the_limit_then_th
         "{:?}",
         started.elapsed()
     );
+}
+
+fn poll_once(body: &mut BodyStream) -> Poll<Result<Option<Bytes>, BodyError>> {
+    body.poll_next_chunk(&mut Context::from_waker(Waker::noop()))
+}
+
+#[tokio::test]
+async fn given_a_read_made_with_poll_next_chunk_that_stays_pending_when_it_is_polled_again_after_the_idle_timeout_then_it_fails_with_idle_timeout()
+ {
+    let server = slow_chunks(Duration::from_secs(60), Duration::from_secs(120)).await;
+    let client = client_with(|c| c.idle_timeout = Duration::from_millis(300));
+    let mut response = guarded(client.send(post(&server.endpoint("/"), "a"), &NoAuthorizer))
+        .await
+        .expect("response");
+    let started = tokio::time::Instant::now();
+    assert!(poll_once(response.body_mut()).is_pending());
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let Poll::Ready(Err(error)) = poll_once(response.body_mut()) else {
+        panic!("the second poll must end the wait that the first one started");
+    };
+    assert!(matches!(error, BodyError::IdleTimeout { .. }), "{error:?}");
+    assert!(
+        started.elapsed() >= Duration::from_millis(500),
+        "{:?}",
+        started.elapsed()
+    );
+}
+
+#[tokio::test]
+async fn given_a_chunk_that_arrives_between_two_polls_then_the_wait_starts_again_from_that_chunk() {
+    let server = slow_chunks(Duration::from_millis(400), Duration::from_millis(900)).await;
+    let client = client_with(|c| c.idle_timeout = Duration::from_millis(600));
+    let mut response = guarded(client.send(post(&server.endpoint("/"), "a"), &NoAuthorizer))
+        .await
+        .expect("response");
+    assert!(poll_once(response.body_mut()).is_pending());
+    tokio::time::sleep(Duration::from_millis(450)).await;
+    let Poll::Ready(Ok(Some(first))) = poll_once(response.body_mut()) else {
+        panic!("the first chunk arrived");
+    };
+    assert_eq!(first.as_ref(), b"hello");
+    let mut polled = poll_once(response.body_mut());
+    tokio::time::sleep(Duration::from_millis(350)).await;
+    for _ in 0..40 {
+        if !polled.is_pending() {
+            break;
+        }
+        polled = poll_once(response.body_mut());
+        if polled.is_pending() {
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    }
+    let Poll::Ready(Ok(Some(second))) = polled else {
+        panic!("800 ms passed since the first poll but only 350 ms since the chunk: {polled:?}");
+    };
+    assert_eq!(second.as_ref(), b"world");
 }

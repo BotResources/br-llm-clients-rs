@@ -123,6 +123,8 @@ mod recreated_host_tests;
 #[cfg(test)]
 mod request_tests;
 #[cfg(test)]
+mod resend_closed_tests;
+#[cfg(test)]
 mod retry_after_tests;
 #[cfg(test)]
 mod secret_tests;
@@ -138,6 +140,8 @@ mod spy_io_tests;
 mod sweep_tests;
 #[cfg(test)]
 mod trim_tests;
+#[cfg(test)]
+mod turns;
 #[cfg(test)]
 mod turns_tests;
 
@@ -163,6 +167,8 @@ mod h2cap_tests;
 mod h2state_tests;
 #[cfg(test)]
 mod host_tests;
+#[cfg(test)]
+mod hot_readers;
 #[cfg(test)]
 mod hot_readers_tests;
 #[cfg(test)]

@@ -106,13 +106,29 @@ form to decide whether a version ships.
   connection that announced zero stays pooled until it is idle for 30 s and is
   never trimmed to keep 8 idle ones, and neither is a connection whose first
   SETTINGS are not read yet, which counts as full, so the 16 connections of a
-  host cap also holds for them; sends beyond it wait within `headers_timeout` and end with
-  `HeadersTimeout`. The connect deadline starts with each dial the send itself
+  host cap also holds for them; sends beyond it wait within `headers_timeout`
+  and end with `HeadersTimeout`. The connect deadline starts with each dial the send itself
   makes and never counts the time spent behind the dial of another send, which
   has no deadline of its own. A host leaves the pool when its last connection
   has ended and nothing uses it; the host of an HTTP/1 connection that ended
   while a response was still being read stays until the next send to any host
-  looks at the pool.
+  looks at the pool. A host also stays in the pool while any dial of it is in
+  flight, gated or not, so a connection that arrives from a dial is registered
+  in the host whose wake-up signal it captured, and every wake that connection
+  makes (its SETTINGS, a stream freed, its end) reaches the sends that wait on
+  that host, also when the last HTTP/1 connection of the host closed during the
+  dial and the dial then comes back as HTTP/2. The room for one more HTTP/2
+  connection is one decision, taken after the ended connections are dropped, for
+  the plan of a send and for the registration of an arrival alike: a retired
+  connection that was not swept yet does not count toward the 16, so a live
+  arrival is not closed because of it.
+- Idle trimming. When more than 8 connections of a host are idle, the oldest
+  idle ones that have announced a limit are retired, and this is done when a
+  stream is freed and also when SETTINGS that make an idle connection count as
+  idle are read. A send that waited for a connection that the trimming retired
+  does not lose an attempt: it plans again (the other idle connections are
+  there to be used). A connection that ended, or that was retired for any other
+  reason, still costs the send that waited for it one attempt.
 - Settings and limits. A server limit of zero makes the connection full, not
   unknown. The stream limit is read from the SETTINGS frames as they arrive on
   the wire, entry by
@@ -130,8 +146,9 @@ form to decide whether a version ships.
   HTTP/2 library has accepted the bytes that carried it, so a server that
   announces a limit, even zero, and then breaks a rule is `Protocol` for every
   send, not `Connect`.
-  Addresses of a name are tried with a fixed 250 ms pause between the starts of
-  two attempts. HTTP/2 connections send keep-alive pings after 30 s without
+  Addresses of a name are tried with a pause of at most 250 ms between the
+  starts of two attempts (fixed): the next address starts at once when the
+  previous one fails. HTTP/2 connections send keep-alive pings after 30 s without
   anything received from the server, also when idle, and close when a ping gets
   no answer within 10 s. An idle connection is closed after 30 s by a timer, not
   only when looked at; at most 8 idle connections are kept per host, whatever

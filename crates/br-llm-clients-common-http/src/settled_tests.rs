@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::h2state::H2State;
 use crate::h2state_tests::{bare_state, pooled_state, state_with_limit};
-use crate::hot_readers_tests::while_looked_at;
+use crate::hot_readers::while_looked_at;
 use crate::settled::Settled;
 
 fn is_open(state: &H2State) -> bool {

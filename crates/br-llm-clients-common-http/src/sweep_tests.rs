@@ -3,6 +3,7 @@ use std::time::Duration;
 use crate::authorizers::NoAuthorizer;
 use crate::client::HttpClient;
 use crate::endpoint::Endpoint;
+use crate::send_error::SendError;
 use crate::support::frames::response_head;
 use crate::support::pki::Pki;
 use crate::support::raw::{RawServer, read_request, wait_for_close, write_response};
@@ -105,5 +106,28 @@ async fn given_two_connections_to_a_host_when_the_idle_one_expires_then_the_host
     assert_eq!(client.pool().lock().len(), 1);
     assert_eq!(client.pool().h2_connections(), 1);
     drop(held);
+    hosts_forgotten(&client).await;
+}
+
+#[tokio::test]
+async fn given_connections_that_announced_a_limit_of_zero_then_each_is_closed_after_the_idle_limit_without_a_stream()
+ {
+    let server = RawH2::start(|_| Policy::announcing(Announce::Limit(0))).await;
+    let client = client();
+    let error = guarded(client.send(post(&server.endpoint(), "x"), &NoAuthorizer))
+        .await
+        .unwrap_err();
+    assert!(matches!(error, SendError::Connect { .. }), "{error:?}");
+    assert_eq!(server.accepted(), 3);
+    let started = tokio::time::Instant::now();
+    while client.pool().h2_connections() > 0 || server.closed() < 3 {
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "{} connections are pooled and {} are closed after the idle limit",
+            client.pool().h2_connections(),
+            server.closed()
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
     hosts_forgotten(&client).await;
 }

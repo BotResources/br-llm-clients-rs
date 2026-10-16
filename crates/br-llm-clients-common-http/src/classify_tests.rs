@@ -111,6 +111,12 @@ async fn given_a_goaway_asking_for_http_1_1_then_the_failure_is_a_protocol_failu
 }
 
 #[tokio::test]
+async fn given_a_stream_reset_asking_for_http_1_1_then_the_failure_is_a_protocol_failure() {
+    let error = error_after_headers(reset(HTTP_1_1_REQUIRED)).await;
+    assert_eq!(classify(&error, true, true), Cause::Protocol);
+}
+
+#[tokio::test]
 async fn given_a_refused_stream_then_the_request_is_unprocessed_and_the_connection_kept() {
     let error = error_after_headers(reset(REFUSED_STREAM)).await;
     assert_eq!(

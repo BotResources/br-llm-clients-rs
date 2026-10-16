@@ -20,6 +20,7 @@ const SENDS: usize = 64;
 const BUMPERS: usize = 3;
 const REPETITIONS: usize = 16;
 const ROUND_LIMIT: Duration = Duration::from_secs(60);
+const STORM_LIMIT: Duration = Duration::from_secs(240);
 
 struct Round {
     accepted: usize,
@@ -117,68 +118,84 @@ async fn round(policy: fn() -> Policy, connect_timeout: Duration) -> Round {
     }
 }
 
-async fn storm(shape: &str, policy: fn() -> Policy, connect_timeout: Duration) -> Vec<Round> {
-    let mut rounds = Vec::new();
-    for index in 0..REPETITIONS {
-        let ended = tokio::time::timeout(ROUND_LIMIT, round(policy, connect_timeout)).await;
-        rounds.push(ended.unwrap_or_else(|_| {
-            panic!("{shape}: round {index} did not end within {ROUND_LIMIT:?}")
-        }));
-    }
-    rounds
+async fn storm(
+    shape: &str,
+    policy: fn() -> Policy,
+    connect_timeout: Duration,
+    check: impl Fn(usize, &Round),
+) {
+    let rounds = async {
+        for index in 0..REPETITIONS {
+            let ended = tokio::time::timeout(ROUND_LIMIT, round(policy, connect_timeout)).await;
+            let ended = ended.unwrap_or_else(|_| {
+                panic!("{shape}: round {index} did not end within {ROUND_LIMIT:?}")
+            });
+            check(index, &ended);
+        }
+    };
+    tokio::time::timeout(STORM_LIMIT, rounds)
+        .await
+        .unwrap_or_else(|_| {
+            panic!("{shape}: {REPETITIONS} rounds did not end within {STORM_LIMIT:?}")
+        });
 }
 
-fn assert_three_connections_each_time(rounds: &[Round]) {
-    for (index, round) in rounds.iter().enumerate() {
-        assert_eq!(
-            round.accepted, 3,
-            "round {index}: a waiter lost the attempt of the connection it waited for ({:?})",
-            round.took
-        );
-        assert_eq!(round.failures.len(), SENDS);
-        assert!(
-            round
-                .failures
-                .iter()
-                .all(|error| matches!(error, SendError::Connect { .. })),
-            "round {index}: {:?}",
-            round.failures.first()
-        );
-    }
+fn assert_three_connections(index: usize, round: &Round) {
+    assert_eq!(
+        round.accepted, 3,
+        "round {index}: a waiter lost the attempt of the connection it waited for ({:?})",
+        round.took
+    );
+    assert_eq!(round.failures.len(), SENDS, "round {index}");
+    assert!(
+        round
+            .failures
+            .iter()
+            .all(|error| matches!(error, SendError::Connect { .. })),
+        "round {index}: {:?}",
+        round.failures.first()
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn given_wakes_of_the_host_while_a_silent_server_serves_a_burst_then_the_sends_use_three_connections_and_three_connect_timeouts()
  {
-    let rounds = storm("a silent server", silent, CONNECT_TIMEOUT).await;
-    assert_three_connections_each_time(&rounds);
-    for round in &rounds {
-        assert!(round.took >= CONNECT_TIMEOUT * 3, "{:?}", round.took);
-    }
+    storm(
+        "a silent server",
+        silent,
+        CONNECT_TIMEOUT,
+        |index, round| {
+            assert_three_connections(index, round);
+            assert!(
+                round.took >= CONNECT_TIMEOUT * 3,
+                "round {index}: {:?}",
+                round.took
+            );
+        },
+    )
+    .await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn given_wakes_of_the_host_while_connections_end_before_their_settings_then_the_sends_use_three_connections()
  {
-    assert_three_connections_each_time(
-        &storm(
-            "connections that end before their settings",
-            eof_before_settings,
-            SLOW_CONNECT_TIMEOUT,
-        )
-        .await,
-    );
+    storm(
+        "connections that end before their settings",
+        eof_before_settings,
+        SLOW_CONNECT_TIMEOUT,
+        assert_three_connections,
+    )
+    .await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn given_wakes_of_the_host_while_connections_announce_zero_and_end_then_the_sends_use_three_connections()
  {
-    assert_three_connections_each_time(
-        &storm(
-            "connections that announce zero and end",
-            zero_then_eof,
-            SLOW_CONNECT_TIMEOUT,
-        )
-        .await,
-    );
+    storm(
+        "connections that announce zero and end",
+        zero_then_eof,
+        SLOW_CONNECT_TIMEOUT,
+        assert_three_connections,
+    )
+    .await;
 }

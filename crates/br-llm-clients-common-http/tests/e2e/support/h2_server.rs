@@ -66,7 +66,7 @@ impl TlsServer {
             stall_first,
             http1_first,
         } = options;
-        let http1_acceptor = Pki::trusted().acceptor(&[b"http/1.1"]);
+        let http1_acceptor = (http1_first > 0).then(|| Pki::trusted().acceptor(&[b"http/1.1"]));
         let delay_ms = Arc::new(AtomicU64::new(millis(handshake_delay)));
         let delay = Arc::clone(&delay_ms);
         let kill = Arc::new(Notify::new());
@@ -86,10 +86,9 @@ impl TlsServer {
                 let index = counter.fetch_add(1, Ordering::SeqCst);
                 let killed = Arc::clone(&killed);
                 let delay = Arc::clone(&delay);
-                let acceptor = if index < http1_first {
-                    http1_acceptor.clone()
-                } else {
-                    acceptor.clone()
+                let acceptor = match &http1_acceptor {
+                    Some(http1) if index < http1_first => http1.clone(),
+                    _ => acceptor.clone(),
                 };
                 let service = Arc::clone(&service);
                 let closed_counter = Arc::clone(&closed_counter);

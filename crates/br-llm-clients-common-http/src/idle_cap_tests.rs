@@ -4,7 +4,7 @@ use crate::acquire_tests::Rig;
 use crate::h2state::H2State;
 use crate::pool::MAX_IDLE_PER_HOST;
 use crate::transport::Conn;
-use crate::turns_tests::within_spins;
+use crate::turns::within_spins;
 
 async fn land_with_limit(rig: &Rig, limit: u32) -> (Arc<H2State>, Conn) {
     let (state, conn) = rig.land(rig.dialer()).await;

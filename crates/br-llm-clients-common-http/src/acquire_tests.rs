@@ -19,7 +19,7 @@ use crate::support::config;
 use crate::support::pki::Pki;
 use crate::support::raw_h2::{Announce, Answer, Policy, RawH2};
 use crate::transport::Conn;
-use crate::turns_tests::within_turns;
+use crate::turns::within_turns;
 
 pub(crate) type Acquiring = Pin<Box<dyn Future<Output = Result<Acquisition, SendError>> + Send>>;
 
