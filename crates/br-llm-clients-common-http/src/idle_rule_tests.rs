@@ -115,16 +115,26 @@ async fn given_eight_idle_http1_connections_when_another_is_released_then_the_ol
     );
 }
 
-#[tokio::test]
-async fn given_a_retired_connection_not_yet_swept_among_nine_idle_ones_then_it_does_not_count_and_no_live_one_is_trimmed()
- {
+async fn nine_idle_connections_one_of_them_retired_but_not_swept(retired: usize) {
     let rig = Rig::silent_server().await;
     let (states, mut conns) = busy_connections(&rig, MAX_IDLE_PER_HOST + 1).await;
-    states[0].end();
-    drop(conns.remove(0));
+    states[retired].end();
+    drop(conns.remove(retired));
     drop(conns);
-    assert_eq!(live(&states[1..]), MAX_IDLE_PER_HOST);
+    assert_eq!(live(&states), MAX_IDLE_PER_HOST);
     assert_eq!(idle_total(&rig), MAX_IDLE_PER_HOST);
+}
+
+#[tokio::test]
+async fn given_the_oldest_of_nine_idle_connections_retired_but_not_swept_then_it_does_not_count_and_no_live_one_is_trimmed()
+ {
+    nine_idle_connections_one_of_them_retired_but_not_swept(0).await;
+}
+
+#[tokio::test]
+async fn given_a_younger_one_of_nine_idle_connections_retired_but_not_swept_then_it_does_not_count_and_no_live_one_is_trimmed()
+ {
+    nine_idle_connections_one_of_them_retired_but_not_swept(MAX_IDLE_PER_HOST / 2).await;
 }
 
 #[tokio::test]
@@ -139,6 +149,10 @@ async fn given_a_closed_http1_connection_not_yet_swept_and_eight_idle_http2_conn
         || "the closed HTTP/1 connection never showed as closed".to_owned(),
     )
     .await;
+    pause();
+    let last = conns.pop().expect("a connection");
+    go_idle_one_step_apart(conns).await;
+    h1.idle.arm();
     rig.shared
         .pool
         .lock()
@@ -149,8 +163,7 @@ async fn given_a_closed_http1_connection_not_yet_swept_and_eight_idle_http2_conn
             conn: h1,
             since: tokio::time::Instant::now(),
         });
-    let last = conns.pop().expect("a connection");
-    drop(conns);
+    advance(STEP).await;
     drop(last);
     assert_eq!(live(&states), MAX_IDLE_PER_HOST);
     assert_eq!(idle_total(&rig), MAX_IDLE_PER_HOST);
