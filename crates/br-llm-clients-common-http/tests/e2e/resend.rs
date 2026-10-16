@@ -292,7 +292,7 @@ async fn given_a_refused_stream_when_sent_again_then_the_second_arrival_carries_
     let arrived = Arrived {
         id: "r1".to_owned(),
         key: Some("key-1".to_owned()),
-        body: b"payload".to_vec(),
+        body: Some(b"payload".to_vec()),
     };
     assert_eq!(probe.arrived(), [arrived.clone(), arrived]);
     assert_eq!(authorizer.0.load(Ordering::SeqCst), 1);

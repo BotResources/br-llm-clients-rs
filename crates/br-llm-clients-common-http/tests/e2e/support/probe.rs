@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -34,8 +35,13 @@ pub enum Script {
 pub struct Arrived {
     pub id: String,
     pub key: Option<String>,
-    pub body: Vec<u8>,
+    pub body: Option<Vec<u8>>,
 }
+
+type Accepted = (
+    http::Request<h2::RecvStream>,
+    h2::server::SendResponse<Bytes>,
+);
 
 pub struct Probe {
     pub addr: SocketAddr,
@@ -101,7 +107,16 @@ impl Probe {
                         return;
                     };
                     let mut served = 0usize;
-                    while let Some(Ok((request, mut respond))) = conn.accept().await {
+                    let mut queued: VecDeque<Accepted> = VecDeque::new();
+                    loop {
+                        let next = match queued.pop_front() {
+                            Some(next) => next,
+                            None => match conn.accept().await {
+                                Some(Ok(next)) => next,
+                                _ => break,
+                            },
+                        };
+                        let (request, mut respond) = next;
                         served = served.saturating_add(1);
                         if matches!(script, Script::Graceful(after) if after == served) {
                             conn.graceful_shutdown();
@@ -119,13 +134,11 @@ impl Probe {
                             .get("x-api-key")
                             .and_then(|v| v.to_str().ok())
                             .map(str::to_owned);
-                        let body =
-                            if matches!(script, Script::ZeroWindowClose | Script::ZeroWindowGoAway)
-                            {
-                                Vec::new()
-                            } else {
-                                read_body(body).await
-                            };
+                        let body = if matches!(script, Script::RefuseFirst(_)) {
+                            Some(read_body_driving(&mut conn, &mut queued, body).await)
+                        } else {
+                            None
+                        };
                         full.lock().expect("lock").push(Arrived {
                             id: id.clone(),
                             key,
@@ -209,16 +222,32 @@ impl Probe {
     }
 }
 
-async fn read_body(mut body: h2::RecvStream) -> Vec<u8> {
+async fn read_body_driving<T>(
+    conn: &mut h2::server::Connection<T, Bytes>,
+    queued: &mut VecDeque<Accepted>,
+    mut body: h2::RecvStream,
+) -> Vec<u8>
+where
+    T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+    let mut flow = body.flow_control().clone();
     let mut bytes = Vec::new();
-    let reading = async {
-        while let Some(Ok(chunk)) = body.data().await {
-            let _ = body.flow_control().release_capacity(chunk.len());
-            bytes.extend_from_slice(&chunk);
+    let mut accepting = true;
+    loop {
+        tokio::select! {
+            chunk = body.data() => match chunk {
+                Some(Ok(chunk)) => {
+                    let _ = flow.release_capacity(chunk.len());
+                    bytes.extend_from_slice(&chunk);
+                }
+                _ => return bytes,
+            },
+            accepted = conn.accept(), if accepting => match accepted {
+                Some(Ok(next)) => queued.push_back(next),
+                _ => accepting = false,
+            },
         }
-    };
-    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), reading).await;
-    bytes
+    }
 }
 
 async fn gather_more<T>(conn: &mut h2::server::Connection<T, Bytes>, seen: &Mutex<Vec<String>>)
