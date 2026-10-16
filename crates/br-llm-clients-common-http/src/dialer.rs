@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::claim::Landing;
 use crate::connect::Opened;
 use crate::host::{H2Entry, Host, Proto};
-use crate::pool::HostHandle;
+use crate::pool::{HostHandle, MAX_H2_PER_HOST};
 use crate::transport::{Conn, bump};
 
 #[derive(Clone)]
@@ -53,15 +53,23 @@ impl Dialer {
             }
             Opened::H2 { sender, state } => {
                 host.proto = Some(Proto::H2);
-                let permit = state.force_acquire();
-                if let Some(landing) = &self.landing {
-                    landing.land(&state);
+                if host.h2.len() >= MAX_H2_PER_HOST {
+                    state.retire();
+                    if let Some(landing) = &self.landing {
+                        landing.land(&state);
+                    }
+                    None
+                } else {
+                    let permit = state.force_acquire();
+                    if let Some(landing) = &self.landing {
+                        landing.land(&state);
+                    }
+                    host.h2.push(H2Entry {
+                        sender: sender.clone(),
+                        state,
+                    });
+                    Some(Conn::H2 { sender, permit })
                 }
-                host.h2.push(H2Entry {
-                    sender: sender.clone(),
-                    state,
-                });
-                Some(Conn::H2 { sender, permit })
             }
         };
         if self.gated() {

@@ -17,6 +17,7 @@ use tokio::sync::Notify;
 use tokio::task::JoinSet;
 use tokio_rustls::TlsAcceptor;
 
+use super::pki::Pki;
 use super::script_body::ScriptBody;
 
 pub type Reply = Pin<Box<dyn Future<Output = Result<Response<ScriptBody>, io::Error>> + Send>>;
@@ -26,6 +27,7 @@ pub struct Options {
     pub max_streams: Option<u32>,
     pub handshake_delay: std::time::Duration,
     pub stall_first: usize,
+    pub http1_first: usize,
 }
 
 pub struct TlsServer {
@@ -52,6 +54,7 @@ impl TlsServer {
             max_streams,
             handshake_delay,
             stall_first: 0,
+            http1_first: 0,
         };
         Self::start_with(acceptor, service, options).await
     }
@@ -61,7 +64,9 @@ impl TlsServer {
             max_streams,
             handshake_delay,
             stall_first,
+            http1_first,
         } = options;
+        let http1_acceptor = Pki::trusted().acceptor(&[b"http/1.1"]);
         let delay_ms = Arc::new(AtomicU64::new(millis(handshake_delay)));
         let delay = Arc::clone(&delay_ms);
         let kill = Arc::new(Notify::new());
@@ -81,7 +86,11 @@ impl TlsServer {
                 let index = counter.fetch_add(1, Ordering::SeqCst);
                 let killed = Arc::clone(&killed);
                 let delay = Arc::clone(&delay);
-                let acceptor = acceptor.clone();
+                let acceptor = if index < http1_first {
+                    http1_acceptor.clone()
+                } else {
+                    acceptor.clone()
+                };
                 let service = Arc::clone(&service);
                 let closed_counter = Arc::clone(&closed_counter);
                 connections.spawn(async move {

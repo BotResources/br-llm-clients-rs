@@ -26,6 +26,7 @@ async fn given_a_burst_against_a_one_stream_server_then_never_more_than_sixteen_
             max_streams: Some(1),
             handshake_delay: Duration::ZERO,
             stall_first: 0,
+            http1_first: 0,
         },
     )
     .await;

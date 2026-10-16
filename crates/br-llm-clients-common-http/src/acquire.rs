@@ -118,9 +118,10 @@ pub(crate) async fn acquire(
                 }
             }
             Plan::Dial(dialer) => {
-                if let Some(conn) = dial(&mut state, dialer).await? {
-                    return Ok(Acquisition::Ready(state.ready(conn)));
-                }
+                return match dial(&mut state, dialer).await? {
+                    Some(conn) => Ok(Acquisition::Ready(state.ready(conn))),
+                    None => Ok(Acquisition::Spent),
+                };
             }
             Plan::Wait(Wait {
                 mut changed,

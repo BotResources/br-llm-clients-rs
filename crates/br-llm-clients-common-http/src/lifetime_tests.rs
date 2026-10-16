@@ -234,6 +234,7 @@ async fn given_sixteen_idle_http2_connections_then_only_eight_are_kept() {
             max_streams: Some(1),
             handshake_delay: Duration::ZERO,
             stall_first: 0,
+            http1_first: 0,
         },
     )
     .await;

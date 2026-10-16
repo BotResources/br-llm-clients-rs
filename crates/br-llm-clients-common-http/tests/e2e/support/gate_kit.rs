@@ -61,6 +61,7 @@ pub fn options(max_streams: u32, handshake_delay: Duration, stall_first: usize) 
         max_streams: Some(max_streams),
         handshake_delay,
         stall_first,
+        http1_first: 0,
     }
 }
 

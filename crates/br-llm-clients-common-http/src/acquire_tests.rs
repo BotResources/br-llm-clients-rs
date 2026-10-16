@@ -23,7 +23,7 @@ use crate::turns_tests::within_turns;
 
 pub(crate) type Acquiring = Pin<Box<dyn Future<Output = Result<Acquisition, SendError>> + Send>>;
 
-const SETTINGS_WAIT: Duration = Duration::from_secs(60);
+pub(crate) const SETTINGS_WAIT: Duration = Duration::from_secs(60);
 pub(crate) const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub(crate) enum Outcome {

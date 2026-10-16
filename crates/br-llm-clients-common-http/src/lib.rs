@@ -88,6 +88,8 @@ mod acquire_tests;
 #[cfg(test)]
 mod acquire_zero_tests;
 #[cfg(test)]
+mod alpn_cap_tests;
+#[cfg(test)]
 mod announce_steps_tests;
 #[cfg(test)]
 mod authorize_tests;
@@ -148,6 +150,8 @@ mod driver_tests;
 mod exchange_tests;
 #[cfg(test)]
 mod fixed_values_tests;
+#[cfg(test)]
+mod h2cap_tests;
 #[cfg(test)]
 mod h2state_tests;
 #[cfg(test)]
