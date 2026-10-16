@@ -56,11 +56,11 @@ async fn given_an_idle_connection_trimmed_to_keep_eight_then_the_sends_waiting_o
         .map(|host| Arc::clone(&host.signal))
         .expect("host");
     let changes = signal.subscribe();
-    let mut freed = signal.subscribe();
     let last = conns.pop().expect("a connection");
     drop(conns);
     assert!(states.iter().all(|state| !state.is_retired()));
     let before = *changes.borrow();
+    let mut freed = signal.subscribe();
     let held_pool = rig.shared.pool.lock();
     let (woken, wake_seen) = std::sync::mpsc::channel();
     let runtime = tokio::runtime::Handle::current();

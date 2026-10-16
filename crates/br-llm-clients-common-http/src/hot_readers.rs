@@ -49,8 +49,8 @@ pub(crate) fn while_looked_at(
                 }
             });
         }
-        let deadline = Instant::now() + TIME_FOR_THE_LOOKS;
         for (index, state) in states.iter().enumerate() {
+            let deadline = Instant::now() + TIME_FOR_THE_LOOKS;
             current.store(index, Ordering::SeqCst);
             let before = looks.load(Ordering::SeqCst);
             while looks.load(Ordering::SeqCst) < before.saturating_add(LOOKS_BEFORE_THE_WRITE) {

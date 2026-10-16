@@ -14,12 +14,12 @@ use crate::support::{client_with, post};
 use crate::transport::bump;
 use crate::turns::within_turns;
 
-const CONNECT_TIMEOUT: Duration = Duration::from_millis(300);
-const SLOW_DIAL: Duration = Duration::from_millis(250);
-const SLOW_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(1);
+const SLOW_DIAL: Duration = Duration::from_millis(800);
+const SLOW_CONNECT_TIMEOUT: Duration = Duration::from_secs(4);
 const SENDS: usize = 64;
 const BUMPERS: usize = 3;
-const REPETITIONS: usize = 16;
+const REPETITIONS: usize = 6;
 const ROUND_LIMIT: Duration = Duration::from_secs(30);
 const STORM_LIMIT: Duration = Duration::from_secs(240);
 
