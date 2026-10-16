@@ -24,8 +24,16 @@ form to decide whether a version ships.
   sent.
 - Connections. While the protocol of a host is unknown only one connection is
   opened for it and concurrent sends wait for its outcome (HTTP/2: they share
-  it; HTTP/1.1: each opens its own; a failed attempt is the failure of every send
-  that waited for it, and none of them dials again). When every stream of a
+  it; HTTP/1.1: each opens its own). A dial that fails (name resolution, TCP,
+  TLS or `connect_timeout`) is the outcome of every send that waited for it,
+  also when the protocol of the host is known and the dial was for one more
+  connection: each of them fails with that one failure, of one kind, in about
+  the time of one dial, and none of them dials again. A send that arrives after
+  the failure was told is not affected by it and dials for itself. A dial
+  makes progress whether or not the send that started it is polled again: it
+  runs in a task that the send owns and that stops when the send is dropped, so
+  a send that started a dial and is never polled again does not hold up the
+  other sends. When every stream of a
   host's HTTP/2 connections is in use another connection is opened, up to 16
   per host, then a send waits within `headers_timeout`, which is one deadline
   per attempt: it restarts when the send dials again, and runs from the moment a
@@ -39,23 +47,31 @@ form to decide whether a version ships.
   connection while every stream is in use) and then cannot use costs that send
   exactly one of its three attempts, whatever the reason: the connection never
   sent SETTINGS, ended before or after them (EOF, reset, GOAWAY), was retired,
-  or announced a limit of zero in its first SETTINGS. The send does not dial its
-  own connection for it. So connections stay in the order of the attempts, not
+  or kept a limit of zero since its first SETTINGS. The send does not dial its
+  own connection for it, neither when the connection opened and could not be
+  used, nor when the dial failed (then the send fails with the failure of that
+  dial, see Connections). So connections stay in the order of the attempts, not
   of the sends: a server that never sends SETTINGS, that announces a limit of
   zero, or that closes or resets right after its SETTINGS ends every send with
   `Connect` after three attempts on a handful of connections. A connection that
   breaks an HTTP/2 rule is `Protocol` for every send that waited for it. A limit
-  that a server lowers to zero after a usable first SETTINGS costs no attempt.
-  A connection that announced zero stays pooled until it is idle for 30 s and is
+  that a server lowers to zero after a usable first SETTINGS costs no attempt,
+  also when the two frames come in the same read: the request is handed to the
+  connection and waits behind the limit, bounded by `headers_timeout`. A first
+  SETTINGS of zero that a later SETTINGS raises makes the connection usable for
+  every send, also for the sends that waited for it. A connection that
+  announced zero stays pooled until it is idle for 30 s and is
   never trimmed to keep 8 idle ones, so the 16 connections of a host cap also
   holds for them; sends beyond it wait within `headers_timeout` and end with
   `HeadersTimeout`. The connect deadline starts with each dial the send itself
   makes and never counts the time spent behind the dial of another send; a wait
   behind a dial that does not end is bounded by `connect_timeout` from the start
-  of that wait. A host whose last connection ended leaves the pool at once.
+  of that wait. A host leaves the pool when its last connection has ended and
+  nothing uses it; the host of an HTTP/1 connection that ended while a response
+  was still being read stays until the next send to any host looks at the pool.
 - Settings and limits. A server limit of zero makes the connection full, not
-  unknown. The stream
-  limit is read from the SETTINGS frames as they arrive on the wire, entry by
+  unknown. The stream limit is read from the SETTINGS frames as they arrive on
+  the wire, entry by
   entry as the bytes stream through (an entry split across reads is carried, no
   frame size is capped and memory stays bounded), so a SETTINGS frame of any
   legal size is read exactly, a change by the server (also a drop to zero) is
@@ -104,10 +120,10 @@ form to decide whether a version ships.
   length), and also for the HTTP/2 stream reset that follows a body shorter than
   its length. On HTTP/2 a frame that goes past the declared length is
   `Interrupted` when declared bytes were still missing before that frame, and
-  `Protocol` when the whole length had already been delivered. The library
-  reads any stream reset that the HTTP/2 library itself makes with
-  PROTOCOL_ERROR while declared bytes are missing as that cut, whatever rule the
-  server broke. On HTTP/1.1 a body longer than its declared length is cut
+  `Protocol` when the whole length had already been delivered. A stream reset
+  that the HTTP/2 library itself makes with PROTOCOL_ERROR while declared bytes
+  are missing is read as that cut; the tests prove it for a frame that goes
+  past the declared length and for a pseudo header in trailers. On HTTP/1.1 a body longer than its declared length is cut
   silently at the declared length. An HTTP/2 stream reset with NO_ERROR, or a
   GOAWAY with NO_ERROR that excludes the stream, when no length was declared
   cannot be told from an end, so the importer relies on its own end marker (with
@@ -119,8 +135,12 @@ form to decide whether a version ships.
   library rejects them, so the library does not read the body of such a
   response). One function builds every `Protocol` text of a send, a text that
   names the fault first and the endpoint after it so that a long path cannot
-  crowd the fault out, whether the fault meets a waiter or the request. Texts
-  keep ASCII only. An idle connection is closed under a claim: a connection that
+  crowd the fault out, whether the fault meets a waiter or the request. The
+  `Connect` and `Tls` texts of a dial end the same way (`reason: kind
+  (endpoint)`), and the `ConnectTimeout` text of a dial names the endpoint; the
+  other texts (`HeadersTimeout`, `TotalTimeout`, `Interrupted`, the `Connect` of
+  three used attempts and every `BodyError`) do not name it. Texts keep ASCII
+  only. An idle connection is closed under a claim: a connection that
   is being taken is never closed by its idle timer, and an expired one is never
   taken.
 - Limits. A response head larger than 64 KiB, or with more than 1024 header

@@ -61,12 +61,14 @@ async fn given_a_connection_whose_first_settings_do_not_come_within_the_wait_the
  {
     let state = bare_state();
     let started = tokio::time::Instant::now();
-    track_streams(
+    let tracked = track_streams(
         std::future::pending::<Result<(), hyper::Error>>(),
         std::sync::Arc::clone(&state),
         Duration::from_secs(7),
-    )
-    .await;
+    );
+    tokio::time::timeout(Duration::from_secs(60), tracked)
+        .await
+        .expect("the wait for the first settings never ends");
     assert_eq!(started.elapsed(), Duration::from_secs(7));
     assert!(state.is_retired());
     assert!(matches!(state.standing(), Standing::Spent));
