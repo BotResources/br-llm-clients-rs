@@ -173,3 +173,35 @@ async fn given_a_send_that_waited_for_a_stream_and_then_waits_behind_another_dia
     let ready = ready.expect("the waiter goes on");
     assert!(ready.headers_deadline > tokio::time::Instant::now());
 }
+
+#[tokio::test]
+async fn given_a_send_waiting_for_a_stream_while_a_dial_for_one_more_connection_is_open_then_headers_timeout_ends_the_wait()
+ {
+    let server = RawH2::start(|_| Policy {
+        answer: Answer::Never,
+        ..Policy::announcing(Announce::Limit(1))
+    })
+    .await;
+    let endpoint = server.endpoint();
+    let rig = Rig::timed(
+        endpoint,
+        Some(server),
+        CONNECT_TIMEOUT,
+        Duration::from_millis(300),
+    );
+    let (full, _held) = rig.land(rig.dialer()).await;
+    full.apply_settings(Some(1));
+    let _capacity = rig.dialer();
+    let waiter = rig.waiter();
+    let ended = tokio::time::timeout(Duration::from_secs(10), waiter)
+        .await
+        .expect("the wait for a stream has a deadline")
+        .expect("join");
+    let Outcome::Failed(error) = ended else {
+        panic!("the waiter fails");
+    };
+    assert!(
+        matches!(error, SendError::HeadersTimeout { .. }),
+        "{error:?}"
+    );
+}

@@ -138,3 +138,29 @@ fn given_first_runs_of_a_zero_and_a_raise_applied_while_other_threads_look_then_
     assert_eq!(zeros_seen.load(Ordering::Relaxed), 0);
     assert!(states.iter().all(|state| is_open(state)));
 }
+
+#[test]
+fn given_first_zeros_applied_while_other_threads_look_then_a_look_that_sees_the_settings_known_sees_the_zero()
+ {
+    const RUNS: usize = 20_000;
+    let states: Vec<_> = (0..RUNS).map(|_| bare_state()).collect();
+    let current = AtomicUsize::new(0);
+    let known_without_the_zero = AtomicUsize::new(0);
+    std::thread::scope(|scope| {
+        for _ in 0..2 {
+            scope.spawn(|| {
+                while let Some(state) = states.get(current.load(Ordering::SeqCst)) {
+                    if !state.awaiting_settings() && !is_spent(state) {
+                        known_without_the_zero.fetch_add(1, Ordering::Relaxed);
+                    }
+                }
+            });
+        }
+        for (index, state) in states.iter().enumerate() {
+            current.store(index, Ordering::SeqCst);
+            state.apply_settings_run(&[Some(0)]);
+        }
+        current.store(RUNS, Ordering::SeqCst);
+    });
+    assert_eq!(known_without_the_zero.load(Ordering::Relaxed), 0);
+}
