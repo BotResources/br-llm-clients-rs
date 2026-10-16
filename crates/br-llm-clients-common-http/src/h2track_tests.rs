@@ -1,18 +1,20 @@
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
 use hyper::client::conn::http2;
 use hyper_util::rt::{TokioExecutor, TokioIo};
+use tokio::io::AsyncWriteExt;
 
 use super::{Gone, track_streams};
 use crate::h2state::H2State;
-use crate::h2state_tests::{bare_state, signalled_state, state_with_limit};
+use crate::h2state_tests::{bare_state, pooled_state, signalled_state, state_with_limit};
 use crate::payload::Payload;
 use crate::settled::Settled;
+use crate::support::frames::{SETTINGS, frame};
 
 struct ConnectionProbe {
     state: Arc<H2State>,
@@ -195,4 +197,27 @@ async fn given_a_connection_dropped_then_its_sender_is_closed() {
     assert!(!sender.is_closed());
     drop(connection);
     assert!(sender.is_closed());
+}
+
+#[tokio::test]
+async fn given_a_connection_that_breaks_a_rule_then_the_violation_is_recorded_before_the_connection_is_retired()
+ {
+    let (pool, state) = pooled_state();
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    pool.hooks.on_retire_step({
+        let (state, seen) = (Arc::clone(&state), Arc::clone(&seen));
+        move || seen.lock().expect("seen").push(state.violation().is_some())
+    });
+    let (client_io, mut server_io) = tokio::io::duplex(65536);
+    let (_sender, connection) = http2::Builder::new(TokioExecutor::new())
+        .handshake::<_, Payload>(TokioIo::new(client_io))
+        .await
+        .expect("handshake");
+    server_io
+        .write_all(&frame(SETTINGS, 0, 1, &[]))
+        .await
+        .expect("write");
+    track_streams(connection, Arc::clone(&state), Duration::from_secs(60)).await;
+    assert!(state.violation().is_some());
+    assert_eq!(*seen.lock().expect("seen"), vec![true]);
 }

@@ -184,7 +184,7 @@ async fn run_dial(shared: Arc<Shared>, target: Target, dialer: Dialer) -> DialOu
         Err(_) => DialFailure::Timeout,
         Ok(Err(ConnectFailure::Connect(text))) => DialFailure::Connect(text),
         Ok(Err(ConnectFailure::Tls(text))) => DialFailure::Tls(text),
-        Ok(Ok(opened)) => return Ok(dialer.register(opened)),
+        Ok(Ok(opened)) => return Ok(dialer.register(opened).into_conn()),
     };
     dialer.fail(failure.clone());
     Err(failure)

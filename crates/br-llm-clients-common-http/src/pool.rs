@@ -114,7 +114,7 @@ impl Pool {
         hosts.retain(|other, host| other == key || host.in_use());
         let host = hosts.entry(key.clone()).or_insert_with(Host::new);
         let changes = host.signal.subscribe();
-        host.drop_ended_h2();
+        let room = host.has_h2_room();
         host.h1.retain(|idle| {
             !idle.conn.sender.is_closed() && idle.since.elapsed() <= self.idle_limit
         });
@@ -154,7 +154,7 @@ impl Pool {
         }
         match host.proto {
             Some(Proto::H1) => Plan::Dial(self.dialer(key, host, false)),
-            Some(Proto::H2) if host.h2.len() < MAX_H2_PER_HOST && !host.dialing => {
+            Some(Proto::H2) if room && !host.dialing => {
                 host.begin_gated_dial();
                 Plan::Dial(self.dialer(key, host, true))
             }
@@ -168,12 +168,10 @@ impl Pool {
     }
 
     fn dialer(self: &Arc<Self>, key: &PoolKey, host: &Host, gated: bool) -> Dialer {
-        Dialer::new(
-            HostHandle {
-                signal: Arc::clone(&host.signal),
-                pool: Arc::downgrade(self),
-                key: key.clone(),
-            },
+        Dialer::on(
+            host,
+            Arc::downgrade(self),
+            key.clone(),
             gated.then(|| Arc::clone(&host.landing)),
         )
     }
@@ -217,7 +215,7 @@ impl Pool {
                 .position(|entry| entry.state.is_trimmable() && !entry.state.is_retired());
             match oldest_idle {
                 Some(index) => {
-                    host.retire_and_remove_h2(index);
+                    host.trim_h2(index);
                     trimmed = true;
                 }
                 None => break,

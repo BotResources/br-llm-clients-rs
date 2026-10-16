@@ -174,3 +174,35 @@ async fn given_a_usable_connection_and_a_later_zero_when_sends_look_at_every_ste
     let seen = stages(&[&[Some(100)]], &[Some(0)]).await;
     goes_from_to(&seen, Stage::Usable, Stage::Full);
 }
+
+#[tokio::test]
+async fn given_a_run_of_settings_when_the_host_is_woken_then_what_the_server_announced_is_already_published()
+ {
+    let rig = Rig::silent_server().await;
+    let (state, _held) = rig.land(rig.dialer()).await;
+    let changes = rig
+        .shared
+        .pool
+        .lock()
+        .get(&rig.key)
+        .expect("host")
+        .signal
+        .subscribe();
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    rig.shared.pool.hooks.on_settings_step({
+        let (state, seen) = (Arc::clone(&state), Arc::clone(&seen));
+        move || {
+            let woken = changes.has_changed().expect("open");
+            seen.lock()
+                .expect("seen")
+                .push((state.awaiting_settings(), woken));
+        }
+    });
+    state.apply_settings(Some(5));
+    let seen = seen.lock().expect("seen").clone();
+    assert!(
+        seen.iter().all(|(awaiting, woken)| !(*woken && *awaiting)),
+        "{seen:?}"
+    );
+    assert_eq!(seen.last(), Some(&(false, true)));
+}

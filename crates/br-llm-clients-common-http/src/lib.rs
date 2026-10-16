@@ -51,6 +51,7 @@ mod prepare;
 mod redact;
 mod request;
 mod response;
+mod retirement;
 mod retry_after;
 mod secret;
 mod send_error;
@@ -118,6 +119,8 @@ mod plan_settle_tests;
 #[cfg(test)]
 mod pool_tests;
 #[cfg(test)]
+mod recreated_host_tests;
+#[cfg(test)]
 mod request_tests;
 #[cfg(test)]
 mod retry_after_tests;
@@ -134,6 +137,8 @@ mod spy_io_tests;
 #[cfg(test)]
 mod sweep_tests;
 #[cfg(test)]
+mod trim_tests;
+#[cfg(test)]
 mod turns_tests;
 
 #[cfg(test)]
@@ -144,6 +149,8 @@ mod bump_storm_tests;
 mod cap_tests;
 #[cfg(test)]
 mod classify_tests;
+#[cfg(test)]
+mod dialer_rig_tests;
 #[cfg(test)]
 mod driver_tests;
 #[cfg(test)]

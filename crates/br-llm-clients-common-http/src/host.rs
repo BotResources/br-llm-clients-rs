@@ -6,7 +6,8 @@ use tokio::time::Instant;
 
 use crate::claim::Landing;
 use crate::h2state::H2State;
-use crate::transport::{H1Conn, H2Sender, Signal};
+use crate::pool::MAX_H2_PER_HOST;
+use crate::transport::{H1Conn, H2Sender, LiveGuard, Signal};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Proto {
@@ -32,6 +33,7 @@ pub(crate) struct Host {
     pub(crate) h1: Vec<Idle>,
     pub(crate) live_h1: Arc<AtomicUsize>,
     pub(crate) waiting: Arc<AtomicUsize>,
+    dials: Arc<AtomicUsize>,
     pub(crate) signal: Signal,
 }
 
@@ -45,6 +47,7 @@ impl Host {
             h1: Vec::new(),
             live_h1: Arc::new(AtomicUsize::new(0)),
             waiting: Arc::new(AtomicUsize::new(0)),
+            dials: Arc::new(AtomicUsize::new(0)),
             signal: Arc::new(watch::channel(0u64).0),
         }
     }
@@ -52,6 +55,7 @@ impl Host {
     pub(crate) fn in_use(&self) -> bool {
         self.dialing
             || self.waiting.load(Ordering::SeqCst) > 0
+            || self.dials.load(Ordering::SeqCst) > 0
             || !self.h2.is_empty()
             || !self.h1.is_empty()
             || self.live_h1.load(Ordering::SeqCst) > 0
@@ -66,11 +70,20 @@ impl Host {
         });
     }
 
-    pub(crate) fn retire_and_remove_h2(&mut self, index: usize) {
+    pub(crate) fn has_h2_room(&mut self) -> bool {
+        self.drop_ended_h2();
+        self.h2.len() < MAX_H2_PER_HOST
+    }
+
+    pub(crate) fn pin_for_dial(&self) -> LiveGuard {
+        LiveGuard::new(&self.dials)
+    }
+
+    pub(crate) fn trim_h2(&mut self, index: usize) {
         let Some(entry) = self.h2.get(index) else {
             return;
         };
-        entry.state.retire();
+        entry.state.trim();
         self.h2.remove(index);
     }
 

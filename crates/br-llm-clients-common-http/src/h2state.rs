@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::future::pending;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use tokio::sync::watch;
@@ -6,13 +6,14 @@ use tokio::sync::watch;
 use crate::announced::Announced;
 use crate::idle::IdleClock;
 use crate::pool::HostHandle;
+use crate::retirement::Retirement;
 use crate::settled::Settled;
 use crate::transport::bump;
 
 pub(crate) struct H2State {
     inflight: Mutex<usize>,
     announced: watch::Sender<Announced>,
-    retired: AtomicBool,
+    retirement: Retirement,
     violation: Mutex<Option<String>>,
     gone: watch::Sender<bool>,
     idle: IdleClock,
@@ -24,7 +25,7 @@ impl H2State {
         Arc::new(Self {
             inflight: Mutex::new(0),
             announced: watch::channel(Announced::Awaiting).0,
-            retired: AtomicBool::new(false),
+            retirement: Retirement::new(),
             violation: Mutex::new(None),
             gone: watch::channel(false).0,
             idle,
@@ -55,6 +56,11 @@ impl H2State {
         self.step();
     }
 
+    pub(crate) fn announce_run(&self, run: &[Option<u32>]) {
+        self.apply_settings_run(run);
+        self.trim_host();
+    }
+
     fn announcement(&self) -> Announced {
         *self.announced.borrow()
     }
@@ -82,7 +88,13 @@ impl H2State {
     }
 
     pub(crate) fn retire(&self) {
-        self.retired.store(true, Ordering::SeqCst);
+        #[cfg(test)]
+        self.step_retire();
+        self.retirement.end();
+    }
+
+    pub(crate) fn trim(&self) {
+        self.retirement.trim();
     }
 
     pub(crate) fn limit_unknown(&self) -> bool {
@@ -90,7 +102,7 @@ impl H2State {
     }
 
     pub(crate) fn is_retired(&self) -> bool {
-        self.retired.load(Ordering::SeqCst)
+        self.retirement.is_retired()
     }
 
     pub(crate) fn is_idle(&self) -> bool {
@@ -102,7 +114,7 @@ impl H2State {
     }
 
     pub(crate) fn settled(&self) -> Option<Settled> {
-        let ended = self.is_retired() || self.announcement().is_zero_since_first();
+        let ended = self.retirement.is_ended() || self.announcement().is_zero_since_first();
         #[cfg(test)]
         self.step_settled();
         if let Some(text) = self.violation() {
@@ -113,6 +125,12 @@ impl H2State {
 
     pub(crate) fn wake_host(&self) {
         bump(&self.host.signal);
+    }
+
+    fn trim_host(&self) {
+        if let Some(pool) = self.host.pool.upgrade() {
+            pool.trim_idle(&self.host.key);
+        }
     }
 
     pub(crate) fn arm_idle(&self) {
@@ -161,12 +179,14 @@ impl Permit {
 
     pub(crate) async fn usable_since_first_settings(&self) -> bool {
         let mut announced = self.0.announced.subscribe();
-        let zero = announced
+        let Ok(settled) = announced
             .wait_for(|announced| !announced.is_awaiting())
             .await
-            .map(|announced| announced.is_zero_since_first())
-            .unwrap_or_else(|_| self.0.announcement().is_zero_since_first());
-        !zero
+            .map(|announced| *announced)
+        else {
+            return pending().await;
+        };
+        !settled.is_zero_since_first()
     }
 }
 
@@ -181,8 +201,8 @@ impl Drop for Permit {
             *count == 0
         };
         self.0.wake_host();
-        if let Some(pool) = self.0.host.pool.upgrade().filter(|_| became_idle) {
-            pool.trim_idle(&self.0.host.key);
+        if became_idle {
+            self.0.trim_host();
         }
     }
 }
@@ -192,6 +212,12 @@ impl H2State {
     fn step(&self) {
         if let Some(pool) = self.host.pool.upgrade() {
             pool.hooks.run_settings_step();
+        }
+    }
+
+    fn step_retire(&self) {
+        if let Some(pool) = self.host.pool.upgrade() {
+            pool.hooks.run_retire_step();
         }
     }
 

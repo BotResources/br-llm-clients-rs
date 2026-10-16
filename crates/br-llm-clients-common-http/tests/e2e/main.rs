@@ -25,6 +25,7 @@ mod herd;
 mod idle_reads;
 mod limits;
 mod protocol_texts;
+mod recreated_host;
 mod resend;
 mod response;
 mod reuse;

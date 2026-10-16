@@ -37,23 +37,22 @@ async fn pool_holding_a_closed_connection_that_is_not_retired() -> Ended {
     let sender = closed_sender().await;
     let pool = Arc::new(Pool::new(Duration::from_secs(30)));
     let key = PoolKey::of(&Endpoint::https("https://h.example/").expect("endpoint"));
-    let state = {
+    let handle = {
         let mut hosts = pool.lock();
         let host = hosts.entry(key.clone()).or_insert_with(Host::new);
-        let handle = HostHandle {
+        HostHandle {
             signal: Arc::clone(&host.signal),
             pool: Arc::downgrade(&pool),
             key: key.clone(),
-        };
-        let (idle, _) = IdleClock::new(Duration::from_secs(30));
-        let state = H2State::new(idle, handle);
-        state.apply_settings(Some(5));
-        host.h2.push(H2Entry {
-            sender,
-            state: Arc::clone(&state),
-        });
-        state
+        }
     };
+    let (idle, _) = IdleClock::new(Duration::from_secs(30));
+    let state = H2State::new(idle, handle);
+    state.apply_settings(Some(5));
+    pool.lock().get_mut(&key).expect("host").h2.push(H2Entry {
+        sender,
+        state: Arc::clone(&state),
+    });
     assert!(!state.is_retired());
     Ended { pool, key, state }
 }

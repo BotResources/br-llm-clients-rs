@@ -34,7 +34,7 @@ impl<T: AsyncRead + Unpin> AsyncRead for SettingsSpy<T> {
     ) -> Poll<io::Result<()>> {
         let this = &mut *self;
         if !this.announced.is_empty() {
-            this.state.apply_settings_run(&this.announced);
+            this.state.announce_run(&this.announced);
             this.announced.clear();
         }
         let before = buf.filled().len();

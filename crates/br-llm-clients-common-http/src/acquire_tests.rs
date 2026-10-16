@@ -184,7 +184,7 @@ impl Rig {
             panic!("the connection is HTTP/2");
         };
         let state = Arc::clone(state);
-        let conn = dialer.register(opened).expect("registered");
+        let conn = dialer.register(opened).into_conn().expect("registered");
         (state, conn)
     }
 }

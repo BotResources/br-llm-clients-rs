@@ -4,7 +4,7 @@ use std::time::Duration;
 use crate::acquire_tests::Rig;
 use crate::endpoint::Endpoint;
 use crate::host::Host;
-use crate::pool::{Plan, Pool, PoolKey, WaitKind};
+use crate::pool::{MAX_H2_PER_HOST, Plan, Pool, PoolKey, WaitKind};
 use crate::transport::LiveGuard;
 
 fn key(host: &str) -> PoolKey {
@@ -56,4 +56,21 @@ async fn given_sixteen_full_connections_and_no_dial_in_flight_then_a_send_waits_
         }
         _ => panic!("the send waits"),
     }
+}
+
+#[tokio::test]
+async fn given_sixteen_connections_of_which_one_is_retired_then_the_host_has_room() {
+    let rig = Rig::silent_server().await;
+    let mut kept = Vec::new();
+    for _ in 0..MAX_H2_PER_HOST {
+        let (state, conn) = rig.land(rig.dialer()).await;
+        state.apply_settings(Some(1));
+        kept.push((state, conn));
+    }
+    let mut hosts = rig.shared.pool.lock();
+    let host = hosts.get_mut(&rig.key).expect("host");
+    assert!(!host.has_h2_room());
+    kept[0].0.retire();
+    assert!(host.has_h2_room());
+    assert_eq!(host.h2.len(), MAX_H2_PER_HOST - 1);
 }
