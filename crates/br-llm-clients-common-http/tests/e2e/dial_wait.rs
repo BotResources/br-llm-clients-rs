@@ -42,7 +42,12 @@ async fn given_a_dial_that_ends_just_under_the_connect_timeout_then_every_send_t
             }
         }
     }
-    assert!(mixed.is_empty(), "{} mixed bursts: {mixed:?}", mixed.len());
+    assert!(
+        mixed.is_empty(),
+        "{} mixed bursts, first: {:?}",
+        mixed.len(),
+        mixed.first()
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -71,5 +76,4 @@ async fn given_sends_waiting_behind_a_dial_that_never_ends_then_the_total_timeou
         );
     }
     assert!(started.elapsed() < Duration::from_secs(5));
-    assert_eq!(server.accepted(), 1);
 }

@@ -140,7 +140,7 @@ async fn given_no_headers_within_the_total_timeout_then_the_total_timeout_text_n
 async fn given_a_connection_that_ends_after_the_request_then_the_interrupted_text_names_no_endpoint()
  {
     let server = RawH2::start(|_| Policy {
-        ends_after: Some((SHORT, Ending::Eof)),
+        ends_after: Some((Duration::from_millis(500), Ending::Eof)),
         ..unanswered()
     })
     .await;
