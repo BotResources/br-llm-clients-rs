@@ -6,7 +6,7 @@ use crate::endpoint::Endpoint;
 use crate::support::frames::response_head;
 use crate::support::pki::Pki;
 use crate::support::raw::{RawServer, read_request, wait_for_close, write_response};
-use crate::support::raw_h2::{Answer, Policy, RawH2};
+use crate::support::raw_h2::{Announce, Answer, Policy, RawH2};
 use crate::support::{config, guarded, post};
 use crate::tuning::Tuning;
 
@@ -73,19 +73,37 @@ async fn given_an_idle_http2_connection_that_expires_then_its_host_leaves_the_po
 }
 
 #[tokio::test]
-async fn given_a_host_with_a_connection_still_in_use_then_it_stays_in_the_pool_when_another_one_expires()
+async fn given_two_connections_to_a_host_when_the_idle_one_expires_then_the_host_stays_for_the_one_in_use()
  {
-    let server = RawH2::start(|_| Policy {
-        answer: Answer::Frames(|stream| response_head(stream, None, false)),
+    let server = RawH2::start(|index| Policy {
+        announce: Announce::Limit(if index == 0 { 1 } else { 100 }),
+        answer: if index == 0 {
+            Answer::Frames(|stream| response_head(stream, None, false))
+        } else {
+            Answer::After(Duration::ZERO)
+        },
         ..Policy::healthy()
     })
     .await;
     let client = client();
     let endpoint = server.endpoint();
-    let held = guarded(client.send(post(&endpoint, "x"), &NoAuthorizer))
+    let held = guarded(client.send(post(&endpoint, "held"), &NoAuthorizer))
         .await
         .expect("response");
-    tokio::time::sleep(IDLE * 3).await;
+    one_send(&client, &endpoint).await;
+    assert_eq!(server.accepted(), 2);
+    assert_eq!(client.pool().h2_connections(), 2);
+    let started = tokio::time::Instant::now();
+    while client.pool().h2_connections() > 1 {
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "the idle connection never expired"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    tokio::time::sleep(IDLE * 2).await;
     assert_eq!(client.pool().lock().len(), 1);
+    assert_eq!(client.pool().h2_connections(), 1);
     drop(held);
+    hosts_forgotten(&client).await;
 }

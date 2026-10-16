@@ -1,6 +1,8 @@
 use br_llm_clients_common_http::{BodyError, NoAuthorizer, Response, SendError};
 
-use crate::support::frames::{DATA, frame, goaway_frame, response_head};
+use crate::support::frames::{
+    DATA, END_HEADERS, END_STREAM, HEADERS, frame, goaway_frame, response_head,
+};
 use crate::support::h2_body::{BodyScript, BodyServer, End};
 use crate::support::pki::Pki;
 use crate::support::raw_h2::{Answer, Policy, RawH2};
@@ -121,5 +123,19 @@ async fn given_a_goaway_with_no_error_that_excludes_the_stream_and_a_declared_le
  {
     let (_, outcome) =
         goaway_outcome(five_of_ten_bytes_then_a_goaway_that_excludes_the_stream).await;
+    assert!(interrupted(&outcome), "{outcome:?}");
+}
+
+fn five_of_ten_bytes_then_trailers_with_a_pseudo_header(stream: u32) -> Vec<u8> {
+    let mut wire = response_head(stream, Some("10"), false);
+    wire.extend_from_slice(&frame(DATA, 0, stream, b"01234"));
+    wire.extend_from_slice(&frame(HEADERS, END_STREAM | END_HEADERS, stream, &[0x88]));
+    wire
+}
+
+#[tokio::test]
+async fn given_a_stream_level_rule_broken_while_declared_bytes_are_missing_then_it_is_interrupted()
+{
+    let (_, outcome) = goaway_outcome(five_of_ten_bytes_then_trailers_with_a_pseudo_header).await;
     assert!(interrupted(&outcome), "{outcome:?}");
 }

@@ -19,11 +19,11 @@ pub(crate) fn bounded(text: &str) -> String {
 }
 
 pub(crate) fn dns_failure(error: &io::Error) -> String {
-    format!("name resolution failed ({})", error.kind())
+    format!("name resolution failed: {}", error.kind())
 }
 
 pub(crate) fn tcp_failure(error: &io::Error) -> String {
-    format!("could not connect ({})", error.kind())
+    format!("could not connect: {}", error.kind())
 }
 
 pub(crate) fn tls_failure(error: &io::Error) -> String {
@@ -36,7 +36,7 @@ pub(crate) fn tls_failure(error: &io::Error) -> String {
             "the server ended the handshake with a TLS alert".to_owned()
         }
         Some(_) => "the TLS handshake failed".to_owned(),
-        None => format!("the TLS handshake failed ({})", error.kind()),
+        None => format!("the TLS handshake failed: {}", error.kind()),
     }
 }
 
@@ -75,7 +75,7 @@ pub(crate) fn hyper_text(error: &hyper::Error) -> String {
         return h2_text(h2_error);
     }
     if let Some(io_error) = find_source::<io::Error>(error) {
-        return format!("the connection failed ({})", io_error.kind());
+        return format!("the connection failed: {}", io_error.kind());
     }
     let text = if error.is_parse() || error.is_parse_version_h2() {
         "the response head is not valid HTTP or is too large"
@@ -99,12 +99,12 @@ fn h2_text(error: &h2::Error) -> String {
     } else if error.is_reset() {
         "the stream was reset"
     } else if let Some(io_error) = error.get_io() {
-        return format!("the HTTP/2 connection failed ({})", io_error.kind());
+        return format!("the HTTP/2 connection failed: {}", io_error.kind());
     } else {
         "the HTTP/2 exchange failed"
     };
     match error.reason() {
-        Some(reason) => format!("{kind} (HTTP/2 reason: {})", reason.description()),
+        Some(reason) => format!("{kind}, HTTP/2 reason: {}", reason.description()),
         None => kind.to_owned(),
     }
 }

@@ -1,3 +1,5 @@
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -18,6 +20,8 @@ use crate::support::pki::Pki;
 use crate::support::raw_h2::{Announce, Answer, Policy, RawH2};
 use crate::transport::Conn;
 
+pub(crate) type Acquiring = Pin<Box<dyn Future<Output = Result<Acquisition, SendError>> + Send>>;
+
 const SETTINGS_WAIT: Duration = Duration::from_secs(60);
 pub(crate) const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -31,7 +35,7 @@ pub(crate) struct Rig {
     pub(crate) shared: Arc<Shared>,
     pub(crate) endpoint: Endpoint,
     pub(crate) key: PoolKey,
-    _server: Option<RawH2>,
+    server: Option<RawH2>,
 }
 
 impl Rig {
@@ -53,26 +57,67 @@ impl Rig {
         Self::new(endpoint, Some(server), connect_timeout)
     }
 
+    pub(crate) async fn announcing_server(limit: u32) -> Self {
+        let server = RawH2::start(move |_| Policy {
+            answer: Answer::Never,
+            ..Policy::announcing(Announce::Limit(limit))
+        })
+        .await;
+        let endpoint = server.endpoint();
+        Self::new(endpoint, Some(server), CONNECT_TIMEOUT)
+    }
+
+    pub(crate) fn accepted(&self) -> usize {
+        self.server.as_ref().map_or(0, RawH2::accepted)
+    }
+
+    pub(crate) fn dialing(&self) -> bool {
+        self.shared
+            .pool
+            .lock()
+            .get(&self.key)
+            .is_some_and(|host| host.dialing)
+    }
+
+    pub(crate) fn acquisition(&self) -> Acquiring {
+        let (shared, endpoint, key) = (
+            Arc::clone(&self.shared),
+            self.endpoint.clone(),
+            self.key.clone(),
+        );
+        Box::pin(async move { acquire(&shared, &endpoint, &key, &Redactor::default()).await })
+    }
+
     pub(crate) fn offline() -> Self {
         let endpoint = Endpoint::https("https://h.example/x").expect("endpoint");
         Self::new(endpoint, None, CONNECT_TIMEOUT)
     }
 
     fn new(endpoint: Endpoint, server: Option<RawH2>, connect_timeout: Duration) -> Self {
+        Self::timed(endpoint, server, connect_timeout, config().headers_timeout)
+    }
+
+    pub(crate) fn timed(
+        endpoint: Endpoint,
+        server: Option<RawH2>,
+        connect_timeout: Duration,
+        headers_timeout: Duration,
+    ) -> Self {
         let mut knobs = config();
         knobs.connect_timeout = connect_timeout;
+        knobs.headers_timeout = headers_timeout;
         knobs.extra_root_certificates = vec![Pki::trusted().ca_pem.clone()];
         let client = HttpClient::new(knobs.build()).expect("client");
         Self {
             shared: Arc::clone(client.shared()),
             key: PoolKey::of(&endpoint),
             endpoint,
-            _server: server,
+            server,
         }
     }
 
     pub(crate) fn dialer(&self) -> Dialer {
-        match self.shared.pool.plan(&self.key, None) {
+        match self.shared.pool.plan(&self.key) {
             Plan::Dial(dialer) => dialer,
             _ => panic!("the send dials"),
         }

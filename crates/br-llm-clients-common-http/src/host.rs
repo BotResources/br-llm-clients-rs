@@ -5,7 +5,6 @@ use tokio::sync::watch;
 use tokio::time::Instant;
 
 use crate::claim::Landing;
-use crate::dialer::DialFailure;
 use crate::h2state::H2State;
 use crate::transport::{H1Conn, H2Sender, Signal};
 
@@ -25,11 +24,6 @@ pub(crate) struct H2Entry {
     pub(crate) state: Arc<H2State>,
 }
 
-pub(crate) struct Recorded {
-    pub(crate) seq: u64,
-    pub(crate) failure: DialFailure,
-}
-
 pub(crate) struct Host {
     pub(crate) proto: Option<Proto>,
     pub(crate) dialing: bool,
@@ -39,8 +33,6 @@ pub(crate) struct Host {
     pub(crate) live_h1: Arc<AtomicUsize>,
     pub(crate) waiting: Arc<AtomicUsize>,
     pub(crate) signal: Signal,
-    pub(crate) failure: Option<Recorded>,
-    failures: u64,
 }
 
 impl Host {
@@ -54,8 +46,6 @@ impl Host {
             live_h1: Arc::new(AtomicUsize::new(0)),
             waiting: Arc::new(AtomicUsize::new(0)),
             signal: Arc::new(watch::channel(0u64).0),
-            failure: None,
-            failures: 0,
         }
     }
 
@@ -70,23 +60,6 @@ impl Host {
     pub(crate) fn begin_gated_dial(&mut self) {
         self.dialing = true;
         self.landing = Landing::new();
-    }
-
-    pub(crate) fn record_failure(&mut self, failure: DialFailure) {
-        self.failures = self.failures.saturating_add(1);
-        self.failure = Some(Recorded {
-            seq: self.failures,
-            failure,
-        });
-    }
-
-    pub(crate) fn clear_failure(&mut self) {
-        self.failure = None;
-    }
-
-    #[cfg(test)]
-    pub(crate) fn has_failure(&self) -> bool {
-        self.failure.is_some()
     }
 
     pub(crate) fn idle_total(&self) -> usize {

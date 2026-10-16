@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use tokio::task::JoinHandle;
 use tokio::time::{Instant, timeout, timeout_at};
 
 use crate::claim::{Claim, Landing};
@@ -100,7 +101,6 @@ pub(crate) async fn acquire(
         dial_wait: None,
         headers_deadline: None,
     };
-    let mut waited_from: Option<u64> = None;
     let mut _waiting: Option<LiveGuard> = None;
     let mut claim: Option<Claim> = None;
     loop {
@@ -108,10 +108,11 @@ pub(crate) async fn acquire(
             match held.standing() {
                 Standing::Spent => return Ok(Acquisition::Spent),
                 Standing::Broken(text) => return Err(protocol_failure(redactor, endpoint, &text)),
+                Standing::Failed(failure) => return Err(state.failure(failure)),
                 Standing::Open => {}
             }
         }
-        let plan = shared.pool.plan(key, waited_from);
+        let plan = shared.pool.plan(key);
         _waiting = None;
         if matches!(
             plan,
@@ -136,24 +137,20 @@ pub(crate) async fn acquire(
                     return Ok(Acquisition::Ready(state.ready(conn)));
                 }
             }
-            Plan::Failed(failure) => return Err(state.failure(failure)),
             Plan::Wait(Wait {
                 mut changed,
                 kind,
-                seq,
                 guard,
                 claim: held,
             }) => {
                 _waiting = Some(guard);
+                claim = held;
                 let (at, timed_out) = match kind {
-                    WaitKind::Dial(landing) => {
-                        waited_from = Some(seq);
-                        let at = state.dial_wait_deadline(&landing);
-                        claim = Some(Claim::Landing(landing));
-                        (at, state.failure(DialFailure::Timeout))
-                    }
+                    WaitKind::Dial(landing) => (
+                        state.dial_wait_deadline(&landing),
+                        state.failure(DialFailure::Timeout),
+                    ),
                     WaitKind::Stream => {
-                        claim = held;
                         let limit = shared.config.headers_timeout;
                         let at = *state
                             .headers_deadline
@@ -169,18 +166,37 @@ pub(crate) async fn acquire(
     }
 }
 
+struct AbortOnDrop<T>(JoinHandle<T>);
+
+impl<T> Drop for AbortOnDrop<T> {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
 async fn dial(state: &mut Waiting<'_>, dialer: Dialer) -> Result<Option<Conn>, SendError> {
-    let shared = state.shared;
+    let mut task = AbortOnDrop(tokio::spawn(run_dial(
+        Arc::clone(state.shared),
+        state.endpoint.clone(),
+        dialer,
+    )));
+    let outcome = (&mut task.0).await.unwrap_or_else(|_| {
+        Err(DialFailure::Connect(
+            "the connection attempt ended without a result".to_owned(),
+        ))
+    });
+    outcome.map_err(|failure| state.failure(failure))
+}
+
+async fn run_dial(
+    shared: Arc<Shared>,
+    endpoint: Endpoint,
+    dialer: Dialer,
+) -> Result<Option<Conn>, DialFailure> {
     let limit = shared.config.connect_timeout;
     let opened = timeout_at(
         deadline::after(Instant::now(), limit),
-        open(
-            &shared.tls,
-            state.endpoint,
-            &dialer.host,
-            shared.tuning,
-            limit,
-        ),
+        open(&shared.tls, &endpoint, &dialer.host, shared.tuning, limit),
     )
     .await;
     let failure = match opened {
@@ -189,7 +205,6 @@ async fn dial(state: &mut Waiting<'_>, dialer: Dialer) -> Result<Option<Conn>, S
         Ok(Err(ConnectFailure::Tls(text))) => DialFailure::Tls(text),
         Ok(Ok(opened)) => return Ok(dialer.register(opened)),
     };
-    let error = state.failure(failure.clone());
-    dialer.fail(failure);
-    Err(error)
+    dialer.fail(failure.clone());
+    Err(failure)
 }

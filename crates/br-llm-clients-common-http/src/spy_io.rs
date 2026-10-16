@@ -33,8 +33,9 @@ impl<T: AsyncRead + Unpin> AsyncRead for SettingsSpy<T> {
         buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
         let this = &mut *self;
-        for max in this.announced.drain(..) {
-            this.state.apply_settings(max);
+        if !this.announced.is_empty() {
+            this.state.apply_settings_run(&this.announced);
+            this.announced.clear();
         }
         let before = buf.filled().len();
         let polled = Pin::new(&mut self.inner).poll_read(cx, buf);

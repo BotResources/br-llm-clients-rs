@@ -6,7 +6,7 @@ use std::time::Duration;
 use br_llm_clients_common_http::Endpoint;
 use tokio::io::{AsyncWriteExt, split};
 use tokio::net::TcpListener;
-use tokio::sync::mpsc;
+use tokio::sync::{Notify, mpsc};
 use tokio::task::JoinSet;
 
 use super::frames::{
@@ -14,7 +14,7 @@ use super::frames::{
     read_frame, read_preface, settings_frame, settings_frame_padded,
 };
 use super::pki::Pki;
-pub use super::raw_h2_policy::{Announce, Answer, Ending, Policy};
+pub use super::raw_h2_policy::{Announce, Answer, Ending, Policy, TlsFault};
 
 const RST_STREAM: u8 = 3;
 const WINDOW_UPDATE: u8 = 8;
@@ -26,6 +26,7 @@ pub struct RawH2 {
     streams: Arc<AtomicUsize>,
     closed: Arc<AtomicUsize>,
     peak: Arc<AtomicUsize>,
+    stop: Arc<Notify>,
     task: tokio::task::JoinHandle<()>,
 }
 
@@ -43,12 +44,19 @@ impl RawH2 {
         let streams = Arc::new(AtomicUsize::new(0));
         let closed = Arc::new(AtomicUsize::new(0));
         let peak = Arc::new(AtomicUsize::new(0));
+        let stop = Arc::new(Notify::new());
+        let stopped = Arc::clone(&stop);
         let acceptor = Pki::trusted().acceptor(&[b"h2"]);
         let (count, opened) = (Arc::clone(&accepted), Arc::clone(&streams));
         let (ended, tallest) = (Arc::clone(&closed), Arc::clone(&peak));
         let task = tokio::spawn(async move {
             let mut connections = JoinSet::new();
-            while let Ok((tcp, _)) = listener.accept().await {
+            loop {
+                let accepted = tokio::select! {
+                    accepted = listener.accept() => accepted,
+                    () = stopped.notified() => break,
+                };
+                let Ok((tcp, _)) = accepted else { break };
                 let index = count.fetch_add(1, Ordering::SeqCst);
                 let acceptor = acceptor.clone();
                 let counters = Counters {
@@ -59,6 +67,11 @@ impl RawH2 {
                 let policy = policy(index);
                 connections.spawn(async move {
                     tokio::time::sleep(policy.accept_delay).await;
+                    match policy.tls_fault {
+                        TlsFault::Close => return,
+                        TlsFault::Hang => std::future::pending::<()>().await,
+                        TlsFault::None => {}
+                    }
                     if let Ok(tls) = acceptor.accept(tcp).await {
                         if matches!(policy.ends_after, Some((_, Ending::Reset))) {
                             reset_on_close(tls.get_ref().0);
@@ -67,6 +80,8 @@ impl RawH2 {
                     }
                 });
             }
+            drop(listener);
+            while connections.join_next().await.is_some() {}
         });
         Self {
             addr,
@@ -74,8 +89,13 @@ impl RawH2 {
             streams,
             closed,
             peak,
+            stop,
             task,
         }
+    }
+
+    pub fn refuse_new_connections(&self) {
+        self.stop.notify_one();
     }
 
     pub fn closed(&self) -> usize {
@@ -149,6 +169,14 @@ where
             drop(out.send(settings_frame_padded(filler, limit)));
         }
         Announce::Raw(bytes) => drop(out.send(bytes.to_vec())),
+        Announce::Spaced(first, delay, then) => {
+            drop(out.send(first.to_vec()));
+            let out = out.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(delay).await;
+                drop(out.send(then.to_vec()));
+            });
+        }
         Announce::RawAfter(delay, bytes) => {
             let out = out.clone();
             tokio::spawn(async move {

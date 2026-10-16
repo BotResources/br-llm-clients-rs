@@ -32,13 +32,8 @@ where
             {
                 state.record_violation(hyper_text(&error));
             }
-            if state.awaiting_settings() && state.violation().is_none() {
-                state.mark_silent();
-            }
         }
-        () = settings_missing(&state, settings_wait) => {
-            state.mark_silent();
-        }
+        () = settings_missing(&state, settings_wait) => {}
     }
 }
 

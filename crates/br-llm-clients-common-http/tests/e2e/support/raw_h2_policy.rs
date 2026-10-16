@@ -8,6 +8,14 @@ pub enum Announce {
     Padded { filler: usize, limit: u32 },
     Raw(&'static [u8]),
     RawAfter(Duration, &'static [u8]),
+    Spaced(&'static [u8], Duration, &'static [u8]),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum TlsFault {
+    None,
+    Close,
+    Hang,
 }
 
 #[derive(Clone, Copy)]
@@ -34,6 +42,7 @@ pub struct Policy {
     pub accept_delay: Duration,
     pub goaway_on_headers: Option<u32>,
     pub goaway_after: Option<(Duration, u32)>,
+    pub tls_fault: TlsFault,
 }
 
 impl Policy {
@@ -46,6 +55,7 @@ impl Policy {
             accept_delay: Duration::ZERO,
             goaway_on_headers: None,
             goaway_after: None,
+            tls_fault: TlsFault::None,
         }
     }
 

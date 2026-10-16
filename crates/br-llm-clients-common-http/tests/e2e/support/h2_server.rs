@@ -4,7 +4,6 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-
 use std::time::Duration;
 
 use br_llm_clients_common_http::Endpoint;

@@ -1,8 +1,8 @@
 use std::time::Duration;
 
-use br_llm_clients_common_http::{NoAuthorizer, SendError};
+use br_llm_clients_common_http::NoAuthorizer;
 
-use crate::support::burst::{Timed, slowest_of, timed_burst};
+use crate::support::burst::{kind_of, kinds, slowest_of, timed_burst};
 use crate::support::frames::{goaway_frame, settings_frame};
 use crate::support::gate_kit::trusting;
 use crate::support::post;
@@ -29,28 +29,6 @@ fn shape(announce: Announce, eof_after: Option<Duration>) -> Policy {
         accept_delay: ACCEPT_DELAY,
         ..Policy::announcing(announce)
     }
-}
-
-fn kind_of(outcome: &Result<(), SendError>) -> &'static str {
-    match outcome {
-        Ok(()) => "ok",
-        Err(SendError::Connect { .. }) => "Connect",
-        Err(SendError::ConnectTimeout { .. }) => "ConnectTimeout",
-        Err(SendError::HeadersTimeout { .. }) => "HeadersTimeout",
-        Err(SendError::Interrupted { .. }) => "Interrupted",
-        Err(SendError::Protocol { .. }) => "Protocol",
-        Err(_) => "other",
-    }
-}
-
-fn kinds(outcomes: &Timed) -> Vec<&'static str> {
-    let mut kinds: Vec<&'static str> = outcomes
-        .iter()
-        .map(|(outcome, _)| kind_of(outcome))
-        .collect();
-    kinds.sort_unstable();
-    kinds.dedup();
-    kinds
 }
 
 async fn assert_one_kind_with_bounded_connections(policy: Policy, name: &str, expected: &str) {

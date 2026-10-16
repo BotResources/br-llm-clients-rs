@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use tokio::sync::watch;
 
+use crate::dialer::DialFailure;
 use crate::idle::IdleClock;
 use crate::pool::HostHandle;
 use crate::transport::bump;
@@ -11,6 +12,7 @@ pub(crate) enum Standing {
     Open,
     Spent,
     Broken(String),
+    Failed(DialFailure),
 }
 
 pub(crate) struct H2State {
@@ -19,8 +21,7 @@ pub(crate) struct H2State {
     known: watch::Sender<bool>,
     retired: AtomicBool,
     violation: Mutex<Option<String>>,
-    silent: AtomicBool,
-    opened_full: AtomicBool,
+    zero_since_first: AtomicBool,
     gone: watch::Sender<bool>,
     idle: IdleClock,
     host: HostHandle,
@@ -34,8 +35,7 @@ impl H2State {
             known: watch::channel(false).0,
             retired: AtomicBool::new(false),
             violation: Mutex::new(None),
-            silent: AtomicBool::new(false),
-            opened_full: AtomicBool::new(false),
+            zero_since_first: AtomicBool::new(false),
             gone: watch::channel(false).0,
             idle,
             host,
@@ -46,19 +46,33 @@ impl H2State {
         self.inflight.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
+    #[cfg(test)]
     pub(crate) fn apply_settings(&self, max_concurrent_streams: Option<u32>) {
-        let first = self.awaiting_settings();
-        let limit = match max_concurrent_streams {
-            Some(value) => usize::try_from(value).unwrap_or(usize::MAX),
-            None if first => usize::MAX,
-            None => return,
-        };
-        if first && limit == 0 {
-            self.opened_full.store(true, Ordering::SeqCst);
+        self.apply_settings_run(&[max_concurrent_streams]);
+    }
+
+    pub(crate) fn apply_settings_run(&self, run: &[Option<u32>]) {
+        let mut first = self.awaiting_settings();
+        let mut applied = false;
+        for max_concurrent_streams in run {
+            let limit = match max_concurrent_streams {
+                Some(value) => usize::try_from(*value).unwrap_or(usize::MAX),
+                None if first => usize::MAX,
+                None => continue,
+            };
+            if first {
+                self.zero_since_first.store(limit == 0, Ordering::SeqCst);
+                first = false;
+            } else if limit > 0 {
+                self.zero_since_first.store(false, Ordering::SeqCst);
+            }
+            self.peer_max.store(limit, Ordering::SeqCst);
+            applied = true;
         }
-        self.peer_max.store(limit, Ordering::SeqCst);
-        self.known.send_replace(true);
-        self.wake_host();
+        if applied {
+            self.known.send_replace(true);
+            self.wake_host();
+        }
     }
 
     pub(crate) fn awaiting_settings(&self) -> bool {
@@ -70,15 +84,6 @@ impl H2State {
             .violation
             .lock()
             .unwrap_or_else(PoisonError::into_inner) = Some(text);
-    }
-
-    pub(crate) fn mark_silent(&self) {
-        self.silent.store(true, Ordering::SeqCst);
-        self.retire();
-    }
-
-    pub(crate) fn is_silent(&self) -> bool {
-        self.silent.load(Ordering::SeqCst)
     }
 
     pub(crate) fn violation(&self) -> Option<String> {
@@ -117,13 +122,10 @@ impl H2State {
     }
 
     pub(crate) fn standing(&self) -> Standing {
-        if self.is_silent() {
-            return Standing::Spent;
-        }
         if let Some(text) = self.violation() {
             return Standing::Broken(text);
         }
-        if self.is_retired() || self.opened_full.load(Ordering::SeqCst) {
+        if self.is_retired() || self.zero_since_first.load(Ordering::SeqCst) {
             Standing::Spent
         } else {
             Standing::Open
@@ -178,10 +180,10 @@ impl Permit {
         self.0.violation()
     }
 
-    pub(crate) async fn announced_limit(&self) -> usize {
+    pub(crate) async fn usable_since_first_settings(&self) -> bool {
         let mut known = self.0.known.subscribe();
         let _ = known.wait_for(|known| *known).await;
-        self.0.peer_max.load(Ordering::SeqCst)
+        !self.0.zero_since_first.load(Ordering::SeqCst)
     }
 }
 

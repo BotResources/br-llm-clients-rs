@@ -1,15 +1,18 @@
 use std::sync::{Arc, OnceLock};
 
+use crate::dialer::DialFailure;
 use crate::h2state::{H2State, Standing};
 
 pub(crate) struct Landing {
     state: OnceLock<Arc<H2State>>,
+    failure: OnceLock<DialFailure>,
 }
 
 impl Landing {
     pub(crate) fn new() -> Arc<Self> {
         Arc::new(Self {
             state: OnceLock::new(),
+            failure: OnceLock::new(),
         })
     }
 
@@ -17,8 +20,22 @@ impl Landing {
         let _ = self.state.set(Arc::clone(state));
     }
 
+    #[cfg(test)]
     pub(crate) fn landed(&self) -> Option<&Arc<H2State>> {
         self.state.get()
+    }
+
+    pub(crate) fn fail(&self, failure: DialFailure) {
+        let _ = self.failure.set(failure);
+    }
+
+    fn standing(&self) -> Standing {
+        if let Some(failure) = self.failure.get() {
+            return Standing::Failed(failure.clone());
+        }
+        self.state
+            .get()
+            .map_or(Standing::Open, |state| state.standing())
     }
 }
 
@@ -31,7 +48,7 @@ impl Claim {
     pub(crate) fn standing(&self) -> Standing {
         match self {
             Self::Conn(state) => state.standing(),
-            Self::Landing(landing) => landing.landed().map_or(Standing::Open, |s| s.standing()),
+            Self::Landing(landing) => landing.standing(),
         }
     }
 }

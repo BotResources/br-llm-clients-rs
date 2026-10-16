@@ -7,6 +7,8 @@ mod body_overrun;
 mod canary;
 mod cold_bursts;
 mod collect;
+mod dial_failure;
+mod dial_stall;
 mod drop;
 mod dup_stress;
 mod encoding;
@@ -32,6 +34,7 @@ mod settings_ended;
 mod settings_silent;
 mod settings_size;
 mod settings_waiters;
+mod settings_zero;
 mod stream;
 #[allow(dead_code)] // the helpers are shared with the unit tests, which use the rest
 mod support;

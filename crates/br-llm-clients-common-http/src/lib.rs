@@ -86,6 +86,8 @@ mod config_tests;
 #[cfg(test)]
 mod debug_tests;
 #[cfg(test)]
+mod dial_tests;
+#[cfg(test)]
 mod encoding_tests;
 #[cfg(test)]
 mod endpoint_build_tests;
@@ -112,6 +114,8 @@ mod spy_io_model_tests;
 #[cfg(test)]
 mod spy_io_tests;
 #[cfg(test)]
+mod standing_tests;
+#[cfg(test)]
 mod sweep_tests;
 
 #[cfg(test)]
@@ -128,6 +132,10 @@ mod exchange_tests;
 mod fixed_values_tests;
 #[cfg(test)]
 mod h2state_tests;
+#[cfg(test)]
+mod host_tests;
+#[cfg(test)]
+mod idle_cap_tests;
 #[cfg(test)]
 mod lifetime_tests;
 #[cfg(test)]

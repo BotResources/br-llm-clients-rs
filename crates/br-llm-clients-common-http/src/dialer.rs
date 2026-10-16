@@ -56,7 +56,6 @@ impl Dialer {
                 Some(Conn::H2 { sender, permit })
             }
         };
-        host.clear_failure();
         if self.gated() {
             host.dialing = false;
         }
@@ -66,14 +65,14 @@ impl Dialer {
 
     pub(crate) fn fail(mut self, failure: DialFailure) {
         self.done = true;
-        if !self.gated() {
+        let Some(landing) = &self.landing else {
             return;
-        }
+        };
+        landing.fail(failure);
         if let Some(pool) = self.host.pool.upgrade() {
             let mut hosts = pool.lock();
             if let Some(host) = hosts.get_mut(&self.host.key) {
                 host.dialing = false;
-                host.record_failure(failure);
                 bump(&host.signal);
             }
         }

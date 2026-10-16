@@ -39,7 +39,7 @@ pub(crate) async fn send_h2(
     request: http::Request<Payload>,
     taken: &Arc<AtomicBool>,
 ) -> Result<http::Response<Incoming>, Unsent> {
-    if permit.announced_limit().await == 0 {
+    if !permit.usable_since_first_settings().await {
         return Err(Unsent::Unprocessed {
             taken: false,
             retire: false,

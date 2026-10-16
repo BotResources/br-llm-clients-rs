@@ -7,10 +7,10 @@ use tokio::sync::watch;
 use tokio::time::Instant;
 
 use crate::claim::{Claim, Landing};
-use crate::dialer::{DialFailure, Dialer};
+use crate::dialer::Dialer;
 use crate::endpoint::Endpoint;
 use crate::host::{Host, Idle, Proto};
-use crate::transport::{Conn, H1Conn, LiveGuard, Signal};
+use crate::transport::{Conn, H1Conn, LiveGuard, Signal, bump};
 
 pub(crate) const MAX_IDLE_PER_HOST: usize = 8;
 pub(crate) const MAX_H2_PER_HOST: usize = 16;
@@ -55,7 +55,6 @@ pub(crate) enum WaitKind {
 pub(crate) struct Wait {
     pub(crate) changed: watch::Receiver<u64>,
     pub(crate) kind: WaitKind,
-    pub(crate) seq: u64,
     pub(crate) guard: LiveGuard,
     pub(crate) claim: Option<Claim>,
 }
@@ -65,7 +64,6 @@ pub(crate) enum Plan {
     TryIdle(H1Conn),
     Dial(Dialer),
     Wait(Wait),
-    Failed(DialFailure),
 }
 
 pub(crate) struct Pool {
@@ -122,7 +120,7 @@ impl Pool {
         self.hosts.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    pub(crate) fn plan(self: &Arc<Self>, key: &PoolKey, waited_from: Option<u64>) -> Plan {
+    pub(crate) fn plan(self: &Arc<Self>, key: &PoolKey) -> Plan {
         let mut hosts = self.lock();
         hosts.retain(|other, host| other == key || host.in_use());
         let host = hosts.entry(key.clone()).or_insert_with(Host::new);
@@ -148,12 +146,11 @@ impl Pool {
         if let Some(idle) = host.h1.pop() {
             return Plan::TryIdle(idle.conn);
         }
-        let seq = host.failure.as_ref().map_or(0, |recorded| recorded.seq);
+        let landing_claim = || Claim::Landing(Arc::clone(&host.landing));
         let wait = |kind, claim| {
             Plan::Wait(Wait {
                 changed: changes,
                 kind,
-                seq,
                 guard: LiveGuard::new(&host.waiting),
                 claim,
             })
@@ -167,22 +164,15 @@ impl Pool {
                 host.begin_gated_dial();
                 Plan::Dial(self.dialer(key, host, true))
             }
-            Some(Proto::H2) => {
-                let claim = host
-                    .dialing
-                    .then(|| Claim::Landing(Arc::clone(&host.landing)));
-                wait(WaitKind::Stream, claim)
+            Some(Proto::H2) => wait(WaitKind::Stream, host.dialing.then(landing_claim)),
+            None if host.dialing => wait(
+                WaitKind::Dial(Arc::clone(&host.landing)),
+                Some(landing_claim()),
+            ),
+            None => {
+                host.begin_gated_dial();
+                Plan::Dial(self.dialer(key, host, true))
             }
-            None if host.dialing => wait(WaitKind::Dial(Arc::clone(&host.landing)), None),
-            None => match (&host.failure, waited_from) {
-                (Some(recorded), Some(from)) if recorded.seq > from => {
-                    Plan::Failed(recorded.failure.clone())
-                }
-                _ => {
-                    host.begin_gated_dial();
-                    Plan::Dial(self.dialer(key, host, true))
-                }
-            },
         }
     }
 
@@ -229,6 +219,7 @@ impl Pool {
         let Some(host) = hosts.get_mut(key) else {
             return;
         };
+        let mut trimmed = false;
         while host.idle_total() > MAX_IDLE_PER_HOST {
             let oldest_idle = host
                 .h2
@@ -238,9 +229,13 @@ impl Pool {
                 Some(index) => {
                     let entry = host.h2.remove(index);
                     entry.state.retire();
+                    trimmed = true;
                 }
                 None => break,
             }
+        }
+        if trimmed {
+            bump(&host.signal);
         }
     }
 }
