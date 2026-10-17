@@ -1,0 +1,10 @@
+[package]
+name = "br-llm-clients-common-sse"
+version = "0.1.0"
+description = "Server-Sent Events decoder: turns the bytes of a response body into frames, with a size limit and no hidden damage"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]

@@ -1,0 +1,50 @@
+# Changelog
+
+All notable changes to `br-llm-clients-common-sse` are documented here. The git tag
+`br-llm-clients-common-sse/v{version}` releases the crate; this crate is versioned
+separately from the other crates of the repository. Format follows
+[Keep a Changelog](https://keepachangelog.com/); versions follow semver.
+Release headings are plain `## X.Y.Z` — the release pipeline greps that exact
+form to decide whether a version ships.
+
+## Unreleased
+
+## 0.1.0
+
+### Added
+
+- `Decoder`, a plain value that turns the bytes of a Server-Sent Events response
+  body into frames. `Decoder::new(limit)` refuses a limit of zero with
+  `DecodeError::InvalidLimit`; `Decoder::default()` uses `DEFAULT_LIMIT`
+  (8 MiB, 8 388 608 bytes). `feed(chunk, &mut frames)` appends the frames the
+  chunk completes, in order, to a list the caller owns, so frames completed
+  before an error in the same chunk are not lost. `finish()` tells the decoder
+  that the input has ended.
+- `Frame`, built only by the decoder, with `event()` (absent when empty, so an
+  importer that follows the WHATWG default maps absent to `message` itself),
+  `data()` (data lines joined with one line feed, none at the end) and
+  `into_parts()`, which gives both by value.
+- `DecodeError`, one error type owned by the library, non-exhaustive, with a text
+  for people on every case: `InvalidLimit`, `FrameTooLarge { limit }`,
+  `InvalidUtf8`, `InputTruncated`, `InputEnded`. No case carries a lower layer's
+  error.
+- The frames returned do not depend on the chunk boundaries. A frame is returned
+  by the chunk that holds its closing line end; a carriage return is a complete
+  line end without waiting for a line feed. A leading byte order mark is skipped.
+- The held bytes (unfinished line, event name and data text of the open frame)
+  are limited; complete comment, `id`, `retry` and unknown field lines hold
+  nothing. The limit counts held bytes, not the capacity of the buffers; the
+  line buffer is shrunk after a large line, and every buffer is released when an
+  error latches. The bytes of an incomplete byte order mark count as an
+  unfinished line.
+- `Debug` of `Decoder` shows the limit, the count of held bytes and flags, never
+  the held text.
+- After any error, including one returned by `finish`, `feed` and `finish`
+  return the same error again. After a successful `finish`, `finish` succeeds
+  again and `feed` returns `InputEnded`.
+- Departures from the WHATWG rules, on purpose: invalid UTF-8 in a `data` or
+  `event` line is an error (the bytes of a comment and of an ignored field are
+  not checked at all); an input that ends inside a frame, or in the middle of
+  any line, is an error; a size limit exists; an empty event name is absent
+  instead of `message`.
+- No dependency, no runtime, no network, no clock.
