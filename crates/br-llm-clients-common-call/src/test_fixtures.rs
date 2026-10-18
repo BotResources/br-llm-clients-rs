@@ -73,3 +73,21 @@ pub(crate) async fn failure_of(spec: &CallSpec, request: &ClientRequest) -> Clie
         .1
         .expect_err("a failure")
 }
+
+pub(crate) struct Busy(tokio::task::JoinHandle<()>);
+
+impl Busy {
+    pub(crate) fn keep() -> Self {
+        Self(tokio::spawn(async {
+            loop {
+                tokio::task::yield_now().await;
+            }
+        }))
+    }
+}
+
+impl Drop for Busy {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}

@@ -1,5 +1,5 @@
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 use br_llm_clients_common_http::Headers;
 use br_llm_clients_core::{ClientError, ClientRequest, OutputMode};
@@ -7,21 +7,8 @@ use br_llm_clients_core::{ClientError, ClientRequest, OutputMode};
 use crate::dialect::Dialect;
 use crate::encoded_request::EncodedRequest;
 use crate::error_info::ErrorInfo;
-use crate::payload::{Payload, PayloadError};
-use crate::payload_decoder::{End, PayloadDecoder};
-use crate::provider_event::ProviderEvent;
-
-pub(crate) struct SilentDecoder;
-
-impl PayloadDecoder for SilentDecoder {
-    fn payload(&mut self, _payload: Payload) -> Result<Vec<ProviderEvent>, PayloadError> {
-        Ok(Vec::new())
-    }
-
-    fn end(&mut self) -> Result<End, PayloadError> {
-        Ok(End::MarkerMissing)
-    }
-}
+use crate::payload_decoder::PayloadDecoder;
+use crate::test_decoder::{DecoderLog, EndScript, ScriptDecoder};
 
 pub(crate) type Refine = Box<dyn Fn(&ErrorInfo) -> Option<ClientError> + Send + Sync>;
 
@@ -34,6 +21,9 @@ pub(crate) struct ScriptedDialect {
     pub(crate) encode_calls: AtomicUsize,
     pub(crate) seen_bodies: Mutex<Vec<String>>,
     pub(crate) seen_infos: Mutex<Vec<ErrorInfo>>,
+    pub(crate) log: Arc<DecoderLog>,
+    pub(crate) seen_modes: Mutex<Vec<OutputMode>>,
+    pub(crate) end: EndScript,
 }
 
 impl Default for ScriptedDialect {
@@ -47,6 +37,9 @@ impl Default for ScriptedDialect {
             encode_calls: AtomicUsize::new(0),
             seen_bodies: Mutex::new(Vec::new()),
             seen_infos: Mutex::new(Vec::new()),
+            log: Arc::new(DecoderLog::default()),
+            seen_modes: Mutex::new(Vec::new()),
+            end: EndScript::Events(Vec::new()),
         }
     }
 }
@@ -58,6 +51,10 @@ impl ScriptedDialect {
 
     pub(crate) fn seen_bodies(&self) -> Vec<String> {
         self.seen_bodies.lock().expect("seen").clone()
+    }
+
+    pub(crate) fn seen_modes(&self) -> Vec<OutputMode> {
+        self.seen_modes.lock().expect("seen").clone()
     }
 
     pub(crate) fn seen_infos(&self) -> Vec<ErrorInfo> {
@@ -80,8 +77,13 @@ impl Dialect for ScriptedDialect {
         Ok(encoded)
     }
 
-    fn decoder(&self, _output: &OutputMode) -> Box<dyn PayloadDecoder> {
-        Box::new(SilentDecoder)
+    fn decoder(&self, output: &OutputMode) -> Box<dyn PayloadDecoder> {
+        self.log.note_created();
+        self.seen_modes.lock().expect("seen").push(output.clone());
+        Box::new(ScriptDecoder {
+            log: Arc::clone(&self.log),
+            end: self.end.clone(),
+        })
     }
 
     fn error_code(&self, body: &str) -> Option<String> {

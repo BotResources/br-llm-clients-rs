@@ -24,9 +24,12 @@ impl Received {
     }
 }
 
+pub(crate) type Gate = Pin<Box<dyn Future<Output = ()> + Send>>;
+
 pub(crate) struct Wire {
     pub(crate) bytes: Vec<u8>,
-    pub(crate) before: Option<Pin<Box<dyn Future<Output = ()> + Send>>>,
+    pub(crate) before: Option<Gate>,
+    pub(crate) later: Vec<(Gate, Vec<u8>)>,
 }
 
 pub(crate) fn http(status: &str, headers: &[(&str, &str)], body: &[u8]) -> Wire {
@@ -49,6 +52,31 @@ pub(crate) fn raw(bytes: Vec<u8>) -> Wire {
     Wire {
         bytes,
         before: None,
+        later: Vec::new(),
+    }
+}
+
+pub(crate) fn streamed(
+    status: &str,
+    headers: &[(&str, &str)],
+    first: &[u8],
+    later: Vec<(Gate, Vec<u8>)>,
+) -> Wire {
+    let total = later
+        .iter()
+        .fold(first.len(), |sum, (_, part)| sum.saturating_add(part.len()));
+    let mut bytes = format!("HTTP/1.1 {status}\r\n").into_bytes();
+    for (name, value) in headers {
+        bytes.extend_from_slice(format!("{name}: {value}\r\n").as_bytes());
+    }
+    bytes.extend_from_slice(
+        format!("content-length: {total}\r\nconnection: close\r\n\r\n").as_bytes(),
+    );
+    bytes.extend_from_slice(first);
+    Wire {
+        bytes,
+        before: None,
+        later,
     }
 }
 
@@ -129,6 +157,11 @@ async fn serve(
     }
     let _ = stream.write_all(&wire.bytes).await;
     let _ = stream.flush().await;
+    for (gate, part) in wire.later {
+        gate.await;
+        let _ = stream.write_all(&part).await;
+        let _ = stream.flush().await;
+    }
     let _ = stream.shutdown().await;
 }
 

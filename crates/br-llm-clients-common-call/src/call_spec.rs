@@ -13,10 +13,6 @@ pub struct CallSpec {
     pub(crate) http: HttpClient,
     pub(crate) extra_headers: Vec<(String, String)>,
     pub(crate) secrets: Secrets,
-    #[allow(
-        dead_code,
-        reason = "the stream reader that fills the Step is not written yet"
-    )]
     pub(crate) model: ModelId,
 }
 

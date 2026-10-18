@@ -1,30 +1,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::task::JoinHandle;
 use tokio::time::advance;
 
 use crate::test_dialect::ScriptedDialect;
-use crate::test_fixtures::{assistant_first_request, run_call, spec_for, user_request};
+use crate::test_fixtures::{Busy, assistant_first_request, run_call, spec_for, user_request};
 use crate::test_server::{TestServer, http};
-
-struct Busy(JoinHandle<()>);
-
-impl Busy {
-    fn keep() -> Self {
-        Self(tokio::spawn(async {
-            loop {
-                tokio::task::yield_now().await;
-            }
-        }))
-    }
-}
-
-impl Drop for Busy {
-    fn drop(&mut self) {
-        self.0.abort();
-    }
-}
 
 async fn slow_server(wait: Duration) -> TestServer {
     TestServer::start(move |_| {

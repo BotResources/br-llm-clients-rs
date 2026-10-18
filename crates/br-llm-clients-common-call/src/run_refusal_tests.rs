@@ -112,7 +112,8 @@ async fn given_each_refusal_status_over_the_wire_when_run_then_the_error_follows
 }
 
 #[tokio::test]
-async fn given_statuses_from_200_to_299_when_run_then_they_are_not_refusals() {
+async fn given_statuses_from_200_to_299_with_an_empty_body_when_run_then_they_are_replies_that_ended_without_a_stop()
+ {
     for status in ["200 OK", "204 No Content", "299 Custom"] {
         let dialect = Arc::new(ScriptedDialect::default());
         let (error, count) = refused(&dialect, status, &[], b"").await;

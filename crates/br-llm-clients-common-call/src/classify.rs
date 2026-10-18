@@ -10,10 +10,6 @@ pub(crate) fn classify_refusal(dialect: &dyn Dialect, info: ErrorInfo) -> Client
     resolve(dialect, &info)
 }
 
-#[allow(
-    dead_code,
-    reason = "the stream reader that calls it is not written yet"
-)]
 pub(crate) fn classify_stream_error(
     dialect: &dyn Dialect,
     secrets: &Secrets,
@@ -22,10 +18,6 @@ pub(crate) fn classify_stream_error(
     resolve(dialect, &prepare_stream_error(secrets, info))
 }
 
-#[allow(
-    dead_code,
-    reason = "the stream reader that calls it is not written yet"
-)]
 fn prepare_stream_error(secrets: &Secrets, info: ErrorInfo) -> ErrorInfo {
     let mut prepared = ErrorInfo::new(secrets.clean(info.text()));
     if let Some(status) = info.status().filter(|status| (400..=599).contains(status)) {

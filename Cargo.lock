@@ -82,6 +82,7 @@ dependencies = [
  "br-llm-clients-common-sse",
  "br-llm-clients-core",
  "br-llm-messages",
+ "serde_json",
  "thiserror",
  "tokio",
 ]

@@ -22,10 +22,6 @@ impl Payload {
         &self.data
     }
 
-    #[allow(
-        dead_code,
-        reason = "the stream reader that calls it is not written yet"
-    )]
     pub(crate) fn from_frame(frame: Frame) -> Self {
         let (event, data) = frame.into_parts();
         Self { event, data }
