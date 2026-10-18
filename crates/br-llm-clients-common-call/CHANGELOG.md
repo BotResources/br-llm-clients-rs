@@ -42,7 +42,9 @@ form to decide whether a version ships.
 - Refusals. A status outside 200 to 299 is a refusal. The body is collected up
   to 64 KiB, read as text (each invalid byte sequence becomes one U+FFFD), and
   every secret of the `CallSpec` is replaced by `[redacted]`, the longest first;
-  `error_code` is given that text. If the body cannot be collected the
+  `error_code` and `refine_error` are given that text uncut (it can be longer
+  than 64 KiB after the replacements; the last cleaning of the error cuts it to
+  64 KiB). If the body cannot be collected the
   `ErrorInfo` holds the status and the delay, no code and an empty text.
 - The Generic table. A failure of `send`: an authorizer with no credential or
   an invalid authorization is `Authentication`; a failure of the authorizer to
@@ -116,7 +118,7 @@ form to decide whether a version ships.
   be copied), and only if that gives a `Step` are those events sent. When it
   fails, nothing more reaches the sink. JSON of a tool call or of a structured
   value is incomplete when it is empty, when the provider did not close its
-  block, or when the parser reports an unexpected end of input (the crate now
+  block, or when the parser reports an unexpected end of input (the crate
   depends on `serde_json` for this); incomplete JSON is judged by the stop
   reason of the `Stop` event (`ContentBlocked` for a content filter or a
   refusal, `ReplyUnusable` for `max_tokens`, `MalformedResponse` otherwise), any
