@@ -21,7 +21,9 @@ form to decide whether a version ships.
   provider code, asked delay, text), `Payload` (event name and data text),
   `PayloadError`, the `PayloadDecoder` trait with its `End` result (`Events` or
   `MarkerMissing`), and `ProviderEvent` with `ProviderBlock`, the vocabulary in
-  which a decoder tells the library what the provider said.
+  which a decoder tells the library what the provider said. `ProviderEvent`,
+  `ProviderBlock` and `End` are `#[non_exhaustive]`: a later minor can add a
+  case without breaking a dialect.
 - `CallSpec`: the dialect (shared trait object), the `Endpoint`, the
   `Authorizer`, the `HttpClient`, the extra headers of the provider, the
   `Secret` values to remove from texts, and the `ModelId`. `Send` and `Sync`.

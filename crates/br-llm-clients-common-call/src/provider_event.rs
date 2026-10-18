@@ -3,6 +3,7 @@ use br_llm_messages::{StopReason, Usage};
 use crate::error_info::ErrorInfo;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ProviderBlock {
     Text,
     Thinking,
@@ -12,6 +13,7 @@ pub enum ProviderBlock {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum ProviderEvent {
     BlockStart { key: String, block: ProviderBlock },
     TextDelta { key: String, text: String },

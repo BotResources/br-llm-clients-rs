@@ -2,6 +2,7 @@ use crate::payload::{Payload, PayloadError};
 use crate::provider_event::ProviderEvent;
 
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum End {
     Events(Vec<ProviderEvent>),
     MarkerMissing,
