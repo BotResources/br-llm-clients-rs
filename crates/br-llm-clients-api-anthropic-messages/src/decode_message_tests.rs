@@ -174,6 +174,38 @@ fn given_data_of_type_error_when_decoded_then_the_code_is_the_error_type_and_the
 }
 
 #[test]
+fn given_data_of_type_error_with_no_event_name_or_another_one_when_decoded_then_it_is_the_error_event()
+ {
+    let data = r#"{"type":"error","error":{"type":"overloaded_error","message":"x"}}"#;
+    let expected = vec![ProviderEvent::Error(
+        ErrorInfo::new(data).with_code("overloaded_error"),
+    )];
+    for event in [
+        None,
+        Some("message_start".to_owned()),
+        Some("ping".to_owned()),
+    ] {
+        let mut decoder = decoder(false);
+        let events = decoder
+            .payload(Payload::new(event.clone(), data))
+            .expect("an error event");
+        assert_eq!(events, expected, "{event:?}");
+    }
+}
+
+#[test]
+fn given_data_of_another_type_with_no_event_name_when_decoded_then_it_is_not_an_error_event() {
+    let mut decoder = decoder(false);
+    let events = decoder
+        .payload(Payload::new(
+            None,
+            r#"{"type":"message_start","message":{"model":"m"}}"#,
+        ))
+        .expect("a message start");
+    assert_eq!(events, vec![ProviderEvent::Model("m".to_owned())]);
+}
+
+#[test]
 fn given_an_error_event_with_no_text_error_type_when_decoded_then_it_has_no_code() {
     for data in [
         r#"{"type":"error"}"#,

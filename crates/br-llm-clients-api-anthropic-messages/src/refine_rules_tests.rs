@@ -147,6 +147,23 @@ fn given_texts_that_only_resemble_a_rule_when_refined_then_nothing_is_decided() 
 }
 
 #[test]
+fn given_a_rule_phrase_inside_a_longer_message_when_refined_then_only_its_start_matches() {
+    let phrases = [
+        "You have reached your specified API usage limits",
+        "You have reached your specified workspace API usage limits",
+        "\"thinking.type.disabled\" is not supported",
+        "To turn thinking off on this model",
+        "adaptive thinking is not supported on this model",
+    ];
+    for phrase in phrases {
+        let at_start = refusal(400, "invalid_request_error", &format!("{phrase}, see docs"));
+        assert!(refined(&at_start).is_some(), "{phrase}");
+        let inside = refusal(400, "invalid_request_error", &format!("Error: {phrase}"));
+        assert_eq!(refined(&inside), None, "{phrase}");
+    }
+}
+
+#[test]
 fn given_a_text_rule_when_the_status_or_the_code_differs_then_it_does_not_apply() {
     let message = "prompt is too long: 9 tokens > 8 maximum";
     assert_eq!(

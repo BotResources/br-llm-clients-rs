@@ -25,8 +25,8 @@ form to decide whether a version ships.
 - Messages: text, base64 image and tool result blocks (tool results first, `content` absent when
   empty, `is_error` only when true, no tool name); a `Relay` joins the `User` message before it or
   becomes a new `User` message; tool calls keep their ids; structured blocks replay as compact JSON
-  text; thinking and redacted thinking blocks are sent only for the turn in progress, in place,
-  with their signature.
+  text; thinking blocks (with their signature) and redacted thinking blocks (with their data) are
+  sent only for the turn in progress, in place.
 - Refusals before sending, as `InvalidMessages`: a last assistant message, a message with no
   block that can be sent, tool call arguments that are not a JSON object, a thinking block of the
   turn in progress without a signature, a block kind this version does not know. Also

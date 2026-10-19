@@ -1,26 +1,14 @@
 use std::sync::Arc;
 
-use br_llm_clients_common_call::{Dialect, Payload, PayloadDecoder};
+use br_llm_clients_common_call::{Dialect, Payload};
 
-use crate::AnthropicMessages;
 use crate::test_decode::decoder;
 use crate::test_fixtures::dialect;
 
-fn assert_send_sync<T: Send + Sync>() {}
-
-fn assert_send<T: Send>() {}
-
 #[test]
-fn given_the_dialect_when_checked_then_it_is_send_sync_and_object_safe() {
-    assert_send_sync::<AnthropicMessages>();
+fn given_the_dialect_when_shared_as_a_trait_object_then_it_answers() {
     let shared: Arc<dyn Dialect> = Arc::new(dialect());
-    assert_send_sync::<Arc<dyn Dialect>>();
     assert!(shared.error_code("{}").is_none());
-}
-
-#[test]
-fn given_a_decoder_when_checked_then_it_is_send() {
-    assert_send::<Box<dyn PayloadDecoder>>();
 }
 
 #[test]

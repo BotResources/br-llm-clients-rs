@@ -84,6 +84,8 @@ mod test_decode;
 #[cfg(test)]
 mod test_fixtures;
 #[cfg(test)]
+mod test_recordings;
+#[cfg(test)]
 mod test_server;
 #[cfg(test)]
 mod test_sink;

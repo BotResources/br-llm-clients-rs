@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use br_llm_clients_core::{CacheRequirement, ClientError, LimitKind, ReasoningLevel};
+use br_llm_messages::StopReason;
 
 use crate::test_call::*;
 use crate::test_fixtures::dialect_with;
@@ -220,6 +221,21 @@ async fn given_the_thinking_phrases_with_a_level_when_run_then_the_error_carries
 async fn given_a_mid_stream_overloaded_error_when_run_then_it_is_unavailable_and_nothing_more_is_read()
  {
     let called = call_stream(&hello(), crate::test_streams::MID_STREAM_ERROR).await;
+    assert_eq!(
+        called.error(),
+        &ClientError::Unavailable { retry_after: None }
+    );
+}
+
+#[tokio::test]
+async fn given_a_stream_with_no_event_names_when_run_then_the_type_of_the_data_decides() {
+    let called = call_stream(&hello(), &without_event_names(crate::test_streams::BASIC)).await;
+    assert_eq!(called.step().stop_reason(), &StopReason::EndTurn);
+    let called = call_stream(
+        &hello(),
+        &without_event_names(crate::test_streams::MID_STREAM_ERROR),
+    )
+    .await;
     assert_eq!(
         called.error(),
         &ClientError::Unavailable { retry_after: None }

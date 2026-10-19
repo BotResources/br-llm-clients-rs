@@ -153,6 +153,19 @@ fn given_a_relay_after_a_user_message_when_encoded_then_its_texts_end_that_messa
 }
 
 #[test]
+fn given_a_relay_text_with_whitespace_when_encoded_then_it_is_sent_as_it_is() {
+    let messages = messages_of(vec![user("go"), relay(&["  first\n", "\n second  "])]);
+    assert_eq!(
+        messages[0]["content"],
+        json!([
+            {"type": "text", "text": "go"},
+            {"type": "text", "text": "  first\n"},
+            {"type": "text", "text": "\n second  "},
+        ])
+    );
+}
+
+#[test]
 fn given_a_relay_after_an_assistant_message_when_encoded_then_it_is_a_new_user_message() {
     let messages = messages_of(vec![user("a"), assistant_text("b"), relay(&["x", "y"])]);
     assert_eq!(

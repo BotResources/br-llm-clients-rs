@@ -2,6 +2,7 @@ use br_llm_clients_common_call::{Payload, PayloadDecoder};
 use serde_json::{Value, json};
 
 use crate::test_decode::*;
+use crate::test_recordings::RECORDINGS;
 use crate::test_streams::*;
 use crate::test_streams_constructed::*;
 
@@ -115,21 +116,7 @@ fn given_a_wrong_nested_value_in_a_block_start_when_decoded_then_it_is_a_payload
 
 #[test]
 fn given_every_documented_stream_when_cut_at_every_frame_boundary_then_the_outcome_is_defined() {
-    let streams = [
-        BASIC,
-        TOOL_USE,
-        THINKING,
-        DOCUMENTED_USAGE,
-        CACHE_COUNTS,
-        MID_STREAM_ERROR,
-        EMPTY_TOOL_CALL,
-        OMITTED_THINKING,
-        REDACTED_THINKING,
-        STRUCTURED_REPLY,
-        REFUSAL,
-        MAX_TOKENS_IN_TOOL_CALL,
-    ];
-    for stream in streams {
+    for (_, stream, _) in RECORDINGS {
         let all = payloads(stream);
         for cut in 0..=all.len() {
             let mut decoder = decoder(false);

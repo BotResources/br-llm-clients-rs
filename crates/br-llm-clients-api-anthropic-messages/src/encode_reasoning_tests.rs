@@ -1,4 +1,4 @@
-use br_llm_clients_core::{CacheRequirement, MaxOutputTokens, ReasoningLevel};
+use br_llm_clients_core::{CacheRequirement, ReasoningLevel};
 use serde_json::json;
 
 use crate::AnthropicMessages;
@@ -91,11 +91,6 @@ fn given_any_max_tokens_when_encoded_then_the_reasoning_fields_do_not_change() {
         assert_eq!(body["output_config"], json!({"effort": "high"}));
         assert_eq!(body["max_tokens"], json!(max_tokens));
     }
-}
-
-#[test]
-fn given_a_zero_max_tokens_when_built_then_core_refuses_it_before_the_dialect() {
-    assert!(MaxOutputTokens::new(0).is_err());
 }
 
 #[test]

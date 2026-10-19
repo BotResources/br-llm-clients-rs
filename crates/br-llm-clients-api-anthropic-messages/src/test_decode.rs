@@ -38,7 +38,8 @@ pub(crate) fn payloads(stream: &str) -> Vec<Payload> {
 pub(crate) fn data(json: &str) -> Payload {
     let kind = serde_json::from_str::<Value>(json)
         .ok()
-        .and_then(|value| value.get("type").and_then(Value::as_str).map(str::to_owned));
+        .and_then(|value| value.get("type").and_then(Value::as_str).map(str::to_owned))
+        .filter(|kind| kind != "error");
     Payload::new(kind, json)
 }
 

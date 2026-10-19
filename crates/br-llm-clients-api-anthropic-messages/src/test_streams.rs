@@ -1,3 +1,5 @@
+pub(crate) const RECORDED_ON: &str = "2026-10-19";
+
 pub(crate) const BASIC: &str = r#"event: message_start
 data: {"type": "message_start", "message": {"id": "msg_1nZdL29xx5MUA1yADyHTEsnR8uuvGzszyY", "type": "message", "role": "assistant", "content": [], "model": "claude-test-model", "stop_reason": null, "stop_sequence": null, "usage": {"input_tokens": 25, "output_tokens": 1}}}
 

@@ -81,6 +81,15 @@ pub(crate) async fn call_stream(request: &ClientRequest, body: &str) -> Called {
     .await
 }
 
+pub(crate) fn without_event_names(stream: &str) -> String {
+    stream
+        .lines()
+        .filter(|line| !line.starts_with("event: "))
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n"
+}
+
 pub(crate) async fn call_refusal(
     status: &str,
     headers: &[(&str, &str)],
