@@ -71,11 +71,7 @@ pub(crate) async fn call_with_wire(
 }
 
 pub(crate) async fn call(request: &ClientRequest, wire: Wire) -> Called {
-    let bytes = wire.bytes;
-    call_with_wire(dialect(ReasoningLevel::Off), request, move |_| Wire {
-        bytes: bytes.clone(),
-    })
-    .await
+    call_with_wire(dialect(ReasoningLevel::Off), request, move |_| wire.clone()).await
 }
 
 pub(crate) async fn call_stream(request: &ClientRequest, events: &[Value]) -> Called {

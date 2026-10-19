@@ -1,9 +1,12 @@
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use br_llm_clients_common_call::Endpoint;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+
+const SPLIT_PAUSE: Duration = Duration::from_millis(2);
 
 #[derive(Debug, Clone)]
 pub(crate) struct Received {
@@ -26,8 +29,18 @@ impl Received {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct Wire {
     pub(crate) bytes: Vec<u8>,
+    head_len: usize,
+    cut: Option<usize>,
+}
+
+impl Wire {
+    pub(crate) fn split_body_at(mut self, offset: usize) -> Self {
+        self.cut = Some(self.head_len.saturating_add(offset));
+        self
+    }
 }
 
 pub(crate) fn http(status: &str, headers: &[(&str, &str)], body: &[u8]) -> Wire {
@@ -42,8 +55,13 @@ pub(crate) fn http(status: &str, headers: &[(&str, &str)], body: &[u8]) -> Wire 
         )
         .as_bytes(),
     );
+    let head_len = bytes.len();
     bytes.extend_from_slice(body);
-    Wire { bytes }
+    Wire {
+        bytes,
+        head_len,
+        cut: None,
+    }
 }
 
 pub(crate) struct TestServer {
@@ -100,7 +118,18 @@ async fn serve(
         log.len().saturating_sub(1)
     };
     let wire = reply(index);
-    let _ = stream.write_all(&wire.bytes).await;
+    match wire.cut {
+        Some(cut) if cut < wire.bytes.len() => {
+            let (first, second) = wire.bytes.split_at(cut);
+            let _ = stream.write_all(first).await;
+            let _ = stream.flush().await;
+            tokio::time::sleep(SPLIT_PAUSE).await;
+            let _ = stream.write_all(second).await;
+        }
+        _ => {
+            let _ = stream.write_all(&wire.bytes).await;
+        }
+    }
     let _ = stream.flush().await;
     let _ = stream.shutdown().await;
 }
