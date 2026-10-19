@@ -106,7 +106,7 @@ fn given_whitespace_text_so_far_when_a_higher_index_comes_then_the_separator_com
 }
 
 #[test]
-fn given_reasoning_text_then_the_first_summary_index_when_decoded_then_the_separator_comes() {
+fn given_reasoning_text_then_the_first_summary_index_when_decoded_then_no_separator_comes() {
     let mut decoder = plain_decoder();
     flat(&mut decoder, &[reasoning_added(0)]);
     feed(&mut decoder, &reasoning_text_delta(0, 0, "x"));
