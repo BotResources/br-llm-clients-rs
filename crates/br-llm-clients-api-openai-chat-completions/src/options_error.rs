@@ -52,7 +52,7 @@ impl fmt::Display for OptionsError {
             OptionsError::BlankReasoningField => f.write_str("the reasoning field name is blank"),
             OptionsError::ReservedReasoningField { field } => write!(
                 f,
-                "the reasoning field name `{field}` is a field that the decoder already reads"
+                "the reasoning field name `{field}` is a field that the decoder reserves"
             ),
             OptionsError::BlankCacheReadField => f.write_str("the cache read field name is blank"),
             OptionsError::ReservedExtraBodyMember { member } => write!(

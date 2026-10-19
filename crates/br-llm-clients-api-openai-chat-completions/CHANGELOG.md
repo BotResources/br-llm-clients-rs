@@ -34,7 +34,7 @@ form to decide whether a version ships.
 - `OptionsError` (`#[non_exhaustive]`, hand-written `Display` and `Error`): a
   table that is not non-decreasing, `Off` mapped above none, `Omit` above `Off`,
   none above `Off`, a blank reasoning field, a reasoning field that the decoder
-  already reads (`content`, `refusal`, `tool_calls`, `role`, `audio`,
+  reserves (`content`, `refusal`, `tool_calls`, `role`, `audio`,
   `function_call`), a blank cache read field, and an `extra_body` member that the
   dialect writes (`model`, `messages`, `stream`, `stream_options`,
   `max_completion_tokens`, `reasoning_effort`, `tools`, `response_format`). Each
@@ -74,8 +74,8 @@ form to decide whether a version ships.
   them). Metadata is ignored; a named field of the wrong type, output the
   library cannot represent (`audio`, `function_call`, a tool call that is not a
   `function`), more than one choice, a second finish reason, output after the
-  finish, a tool call with no name and a number that is not a non-negative
-  integer are a `PayloadError` that names the place.
+  finish, a tool call with no name at a finish other than `error`, and a number
+  that is not a non-negative integer are a `PayloadError` that names the place.
 - Errors. `error_code` reads the `code`, else the `type`, of the `error` object
   of a body; `refine_error` gives `QuotaExceeded` for the code
   `insufficient_quota` with any status and nothing else, so the generic table of

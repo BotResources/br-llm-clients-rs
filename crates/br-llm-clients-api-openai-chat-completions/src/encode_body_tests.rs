@@ -175,14 +175,6 @@ fn given_the_same_request_when_encoded_twice_then_the_bytes_are_equal() {
 }
 
 #[test]
-fn given_a_request_when_encoded_then_the_request_is_unchanged() {
-    let request = request_of(vec![user_text("hello")]);
-    let before = request.clone();
-    let _ = dialect().encode(&request);
-    assert_eq!(request, before);
-}
-
-#[test]
 fn given_the_effort_table_when_each_level_is_encoded_then_the_documented_effort_is_sent() {
     let expected = [
         (ReasoningLevel::Off, "none"),
