@@ -265,3 +265,19 @@ fn given_two_requests_when_encoded_in_turn_then_the_dialect_holds_no_per_call_st
     let _ = dialect.encode(&other).expect("other");
     assert_eq!(dialect.encode(&hello()).expect("again"), first);
 }
+
+#[test]
+fn given_different_token_limits_when_encoded_then_the_reasoning_effort_does_not_change() {
+    for limit in [1, 1024, u32::MAX] {
+        let settings = ClientSettings::new(
+            ModelId::new("gpt-test").expect("model"),
+            ReasoningLevel::High,
+            CacheRequirement::NotRequired,
+            MaxOutputTokens::new(limit).expect("tokens"),
+        );
+        let dialect = ChatCompletionsDialect::new(settings, options()).expect("dialect");
+        let body = encoded_body(&dialect, &hello());
+        assert_eq!(body["reasoning_effort"], json!("high"));
+        assert_eq!(body["max_completion_tokens"], json!(limit));
+    }
+}
