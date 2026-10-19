@@ -24,6 +24,15 @@ impl Received {
 
 pub(crate) struct Wire {
     pub(crate) bytes: Vec<u8>,
+    body_start: usize,
+    split: Option<usize>,
+}
+
+impl Wire {
+    pub(crate) fn split_body_at(mut self, offset: usize) -> Self {
+        self.split = Some(self.body_start.saturating_add(offset));
+        self
+    }
 }
 
 pub(crate) fn http(status: &str, headers: &[(&str, &str)], body: &[u8]) -> Wire {
@@ -49,8 +58,13 @@ pub(crate) fn http_bytes(status: &str, headers: &[(&str, &[u8])], body: &[u8]) -
         )
         .as_bytes(),
     );
+    let body_start = bytes.len();
     bytes.extend_from_slice(body);
-    Wire { bytes }
+    Wire {
+        bytes,
+        body_start,
+        split: None,
+    }
 }
 
 pub(crate) struct TestServer {
@@ -107,7 +121,18 @@ async fn serve(
         log.len().saturating_sub(1)
     };
     let wire = reply(index);
-    let _ = stream.write_all(&wire.bytes).await;
+    match wire.split {
+        Some(at) if at < wire.bytes.len() => {
+            let (first, second) = wire.bytes.split_at(at);
+            let _ = stream.write_all(first).await;
+            let _ = stream.flush().await;
+            tokio::task::yield_now().await;
+            let _ = stream.write_all(second).await;
+        }
+        _ => {
+            let _ = stream.write_all(&wire.bytes).await;
+        }
+    }
     let _ = stream.flush().await;
     let _ = stream.shutdown().await;
 }

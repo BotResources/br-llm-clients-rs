@@ -60,6 +60,8 @@ mod encode_tools_tests;
 #[cfg(test)]
 mod error_code_tests;
 #[cfg(test)]
+mod recorded_redacted_tests;
+#[cfg(test)]
 mod refine_rules_tests;
 #[cfg(test)]
 mod refine_table_tests;
@@ -83,6 +85,8 @@ mod test_call;
 mod test_decode;
 #[cfg(test)]
 mod test_fixtures;
+#[cfg(test)]
+mod test_recorded;
 #[cfg(test)]
 mod test_recordings;
 #[cfg(test)]

@@ -59,5 +59,8 @@ form to decide whether a version ships.
   `rate_limit_error`, `billing_error`, `request_too_large`, `authentication_error`,
   `permission_error`, status 402 and 413 with no code); it sets no delay; `request_id` reads the
   `request-id` header.
-- Known gap: the stream shape of `redacted_thinking` is built from the intent, not from a recorded
-  call; a fixture recorded from a real call is still to be added.
+- Redacted thinking: the stream shape was recorded on 2026-10-19 from a real call to the Anthropic
+  API (thinking enabled, the documented test string that forces redaction). It has 22 consecutive
+  `redacted_thinking` blocks, each with its `data` in the `content_block_start`, no delta and a
+  `content_block_stop`, then a text block; the recording is a test fixture and the decoder reads
+  it as the shape described above, including the padded JSON of the real stream.
