@@ -51,3 +51,22 @@ pub use reasoning_effort::ReasoningEffort;
 pub use reasoning_rule::ReasoningRule;
 pub use reasoning_table::ReasoningTable;
 pub use serde_json::{Map, Value};
+
+#[cfg(test)]
+mod encode_assistant_tests;
+#[cfg(test)]
+mod encode_body_tests;
+#[cfg(test)]
+mod encode_output_tests;
+#[cfg(test)]
+mod encode_refusal_tests;
+#[cfg(test)]
+mod encode_tools_tests;
+#[cfg(test)]
+mod encode_user_tests;
+#[cfg(test)]
+mod options_tests;
+#[cfg(test)]
+mod reasoning_table_tests;
+#[cfg(test)]
+mod test_support;
