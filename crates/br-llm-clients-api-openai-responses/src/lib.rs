@@ -75,6 +75,16 @@ mod encode_user_tests;
 #[cfg(test)]
 mod error_tests;
 #[cfg(test)]
+mod recorded_decode_tests;
+#[cfg(test)]
+mod recorded_error_tests;
+#[cfg(test)]
+mod recorded_registry_tests;
+#[cfg(test)]
+mod recorded_run_tests;
+#[cfg(test)]
+mod recorded_split_tests;
+#[cfg(test)]
 mod run_error_tests;
 #[cfg(test)]
 mod run_request_id_tests;
@@ -94,6 +104,10 @@ mod static_tests;
 mod test_decoder;
 #[cfg(test)]
 mod test_events;
+#[cfg(test)]
+mod test_recorded;
+#[cfg(test)]
+mod test_recordings;
 #[cfg(test)]
 mod test_requests;
 #[cfg(test)]
