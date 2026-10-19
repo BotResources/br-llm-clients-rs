@@ -89,6 +89,16 @@ mod options_tests;
 #[cfg(test)]
 mod reasoning_table_tests;
 #[cfg(test)]
+mod recorded_decode_tests;
+#[cfg(test)]
+mod recorded_error_tests;
+#[cfg(test)]
+mod recorded_fixture_tests;
+#[cfg(test)]
+mod recorded_run_tests;
+#[cfg(test)]
+mod recorded_split_tests;
+#[cfg(test)]
 mod run_failure_tests;
 #[cfg(test)]
 mod run_request_id_tests;
@@ -104,6 +114,8 @@ mod run_tool_tests;
 mod run_truncation_tests;
 #[cfg(test)]
 mod static_tests;
+#[cfg(test)]
+mod test_recordings;
 #[cfg(test)]
 mod test_server;
 #[cfg(test)]
