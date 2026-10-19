@@ -59,7 +59,13 @@ mod decode_error_tests;
 #[cfg(test)]
 mod decode_finish_tests;
 #[cfg(test)]
+mod decode_model_tests;
+#[cfg(test)]
+mod decode_reasoning_tests;
+#[cfg(test)]
 mod decode_shape_tests;
+#[cfg(test)]
+mod decode_tool_fragment_tests;
 #[cfg(test)]
 mod decode_tool_tests;
 #[cfg(test)]

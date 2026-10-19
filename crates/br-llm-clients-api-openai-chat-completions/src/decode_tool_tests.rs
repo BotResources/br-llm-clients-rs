@@ -1,10 +1,10 @@
 use br_llm_clients_common_call::{ProviderBlock, ProviderEvent};
 use br_llm_messages::StopReason;
-use serde_json::{Value, json};
+use serde_json::json;
 
 use crate::test_support::{
-    chunk, content_chunk, end, fails, feed, finish_chunk, plain_decoder, run_chunks, start,
-    text_delta, tool_chunk,
+    chunk, content_chunk, end, feed, finish_chunk, plain_decoder, run_chunks, start, text_delta,
+    tool_chunk,
 };
 
 fn call(name: &str, id: Option<&str>) -> ProviderBlock {
@@ -73,30 +73,6 @@ fn given_a_streamed_tool_call_when_the_finish_arrives_then_the_whole_call_comes_
 }
 
 #[test]
-fn given_two_calls_with_interleaved_fragments_when_finished_then_they_come_in_increasing_index_order()
- {
-    let events = run_chunks(&[
-        first(1, "call_b", "second"),
-        first(0, "call_a", "first"),
-        piece(1, "{\"b\":2}"),
-        piece(0, "{\"a\":1}"),
-        finish_chunk("tool_calls"),
-    ]);
-    assert_eq!(
-        events,
-        [
-            start("0", call("first", Some("call_a"))),
-            arguments("0", "{\"a\":1}"),
-            end("0"),
-            start("1", call("second", Some("call_b"))),
-            arguments("1", "{\"b\":2}"),
-            end("1"),
-            ProviderEvent::Stop(StopReason::AwaitingToolResults),
-        ]
-    );
-}
-
-#[test]
 fn given_two_calls_in_one_chunk_when_finished_then_both_are_held_and_given_in_order() {
     let both = tool_chunk(
         json!([
@@ -131,56 +107,6 @@ fn given_the_name_in_a_later_fragment_when_finished_then_the_call_carries_it() {
     ]);
     assert_eq!(events.first(), Some(&start("0", call("late", Some("c1")))));
     assert_eq!(events.get(1), Some(&arguments("0", "{}")));
-}
-
-#[test]
-fn given_an_empty_id_and_an_empty_name_when_decoded_then_they_are_read_as_absent() {
-    let events = run_chunks(&[
-        tool_chunk(
-            json!([{"index": 0, "id": "", "function": {"name": "", "arguments": ""}}]),
-            None,
-        ),
-        tool_chunk(
-            json!([{"index": 0, "function": {"name": "f", "arguments": "{}"}}]),
-            None,
-        ),
-        finish_chunk("tool_calls"),
-    ]);
-    assert_eq!(events.first(), Some(&start("0", call("f", None))));
-}
-
-#[test]
-fn given_nulls_instead_of_absent_members_when_decoded_then_they_are_read_as_absent() {
-    let events = run_chunks(&[
-        first(0, "c1", "f"),
-        tool_chunk(
-            json!([{"index": 0, "id": null, "type": null, "function": {"name": null, "arguments": "{}"}}]),
-            None,
-        ),
-        finish_chunk("tool_calls"),
-    ]);
-    assert_eq!(events.first(), Some(&start("0", call("f", Some("c1")))));
-}
-
-#[test]
-fn given_the_same_id_and_name_again_when_decoded_then_it_is_accepted() {
-    let events = run_chunks(&[
-        first(0, "c1", "f"),
-        first(0, "c1", "f"),
-        piece(0, "{}"),
-        finish_chunk("tool_calls"),
-    ]);
-    assert_eq!(events.first(), Some(&start("0", call("f", Some("c1")))));
-}
-
-#[test]
-fn given_a_different_id_or_name_for_a_held_index_when_decoded_then_it_is_a_payload_error() {
-    let mut decoder = plain_decoder();
-    feed(decoder.as_mut(), &first(0, "c1", "f")).expect("first");
-    let other_id = feed(decoder.as_mut(), &first(0, "c2", "f")).expect_err("id");
-    assert!(other_id.text().contains("id"));
-    let other_name = feed(decoder.as_mut(), &first(0, "c1", "g")).expect_err("name");
-    assert!(other_name.text().contains("name"));
 }
 
 #[test]
@@ -288,94 +214,6 @@ fn given_text_then_a_tool_call_then_more_text_when_finished_then_all_text_comes_
             ProviderEvent::Stop(StopReason::AwaitingToolResults),
         ]
     );
-}
-
-#[test]
-fn given_an_index_that_is_missing_null_or_not_an_integer_when_decoded_then_it_is_a_payload_error() {
-    let bad: [Value; 7] = [
-        json!(null),
-        json!(-1),
-        json!(1.5),
-        json!("0"),
-        json!(true),
-        json!([0]),
-        json!(1024),
-    ];
-    for index in bad {
-        let data = tool_chunk(json!([{"index": index, "function": {"name": "f"}}]), None);
-        assert!(fails(&data).text().contains("index"), "{index}");
-    }
-    let missing = tool_chunk(json!([{"id": "c", "function": {"name": "f"}}]), None);
-    assert!(fails(&missing).text().contains("index"));
-}
-
-#[test]
-fn given_the_extreme_valid_indexes_when_decoded_then_they_are_accepted() {
-    let mut decoder = plain_decoder();
-    for index in [0, 1023] {
-        let data = tool_chunk(
-            json!([{"index": index, "id": "c", "function": {"name": "f"}}]),
-            None,
-        );
-        assert!(feed(decoder.as_mut(), &data).is_ok());
-    }
-    let events: Vec<ProviderEvent> =
-        feed(decoder.as_mut(), &finish_chunk("tool_calls")).expect("finish");
-    let keys: Vec<&str> = events
-        .iter()
-        .filter_map(|event| match event {
-            ProviderEvent::BlockStart { key, .. } => Some(key.as_str()),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(keys, ["0", "1023"]);
-}
-
-#[test]
-fn given_a_call_of_another_type_when_decoded_then_it_is_a_payload_error() {
-    for kind in [
-        json!("custom"),
-        json!(1),
-        json!(["function"]),
-        json!({"a": 1}),
-    ] {
-        let data = tool_chunk(
-            json!([{"index": 0, "type": kind, "function": {"name": "f"}}]),
-            None,
-        );
-        assert!(fails(&data).text().contains("function"), "{kind}");
-    }
-}
-
-#[test]
-fn given_a_fragment_that_is_not_an_object_when_decoded_then_it_is_a_payload_error() {
-    for fragment in [json!(1), json!("x"), json!(null), json!([])] {
-        assert!(
-            fails(&tool_chunk(json!([fragment]), None))
-                .text()
-                .contains("tool_calls")
-        );
-    }
-}
-
-#[test]
-fn given_a_function_of_the_wrong_type_when_decoded_then_the_field_is_named() {
-    let cases = [
-        (json!({"index": 0, "function": 1}), "function"),
-        (json!({"index": 0, "function": {"name": 1}}), "name"),
-        (
-            json!({"index": 0, "function": {"arguments": {}}}),
-            "arguments",
-        ),
-        (
-            json!({"index": 0, "id": 5, "function": {"name": "f"}}),
-            "id",
-        ),
-    ];
-    for (fragment, field) in cases {
-        let error = fails(&tool_chunk(json!([fragment]), None));
-        assert!(error.text().contains(field), "{error}");
-    }
 }
 
 #[test]
