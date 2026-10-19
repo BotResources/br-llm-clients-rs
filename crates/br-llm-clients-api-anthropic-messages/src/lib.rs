@@ -26,3 +26,20 @@ mod encode_tools;
 mod errors;
 
 pub use dialect::AnthropicMessages;
+
+#[cfg(test)]
+mod encode_envelope_tests;
+#[cfg(test)]
+mod encode_messages_tests;
+#[cfg(test)]
+mod encode_reasoning_tests;
+#[cfg(test)]
+mod encode_refusal_tests;
+#[cfg(test)]
+mod encode_structured_tests;
+#[cfg(test)]
+mod encode_thinking_tests;
+#[cfg(test)]
+mod encode_tools_tests;
+#[cfg(test)]
+mod test_fixtures;
