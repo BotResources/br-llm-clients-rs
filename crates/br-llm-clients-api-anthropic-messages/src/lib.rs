@@ -28,6 +28,20 @@ mod errors;
 pub use dialect::AnthropicMessages;
 
 #[cfg(test)]
+mod decode_blocks_tests;
+#[cfg(test)]
+mod decode_hold_tests;
+#[cfg(test)]
+mod decode_message_tests;
+#[cfg(test)]
+mod decode_shape_tests;
+#[cfg(test)]
+mod decode_stop_tests;
+#[cfg(test)]
+mod decode_stream_tests;
+#[cfg(test)]
+mod decode_usage_tests;
+#[cfg(test)]
 mod encode_envelope_tests;
 #[cfg(test)]
 mod encode_messages_tests;
@@ -42,4 +56,16 @@ mod encode_thinking_tests;
 #[cfg(test)]
 mod encode_tools_tests;
 #[cfg(test)]
+mod error_code_tests;
+#[cfg(test)]
+mod refine_rules_tests;
+#[cfg(test)]
+mod refine_table_tests;
+#[cfg(test)]
+mod test_decode;
+#[cfg(test)]
 mod test_fixtures;
+#[cfg(test)]
+mod test_streams;
+#[cfg(test)]
+mod test_streams_constructed;
