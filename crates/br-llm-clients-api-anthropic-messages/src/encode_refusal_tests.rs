@@ -47,13 +47,14 @@ fn given_an_empty_relay_after_an_assistant_message_when_encoded_then_the_empty_u
 }
 
 #[test]
-fn given_an_empty_user_message_followed_by_a_relay_when_encoded_then_the_relay_fills_it() {
-    let request = request(vec![user_blocks(vec![]), relay(&["x"])]);
-    let body = body_of(&dialect(), &request);
-    assert_eq!(
-        body["messages"],
-        json!([{"role": "user", "content": [{"type": "text", "text": "x"}]}])
-    );
+fn given_an_empty_user_message_followed_by_a_relay_when_encoded_then_it_is_still_refused() {
+    refused(vec![user_blocks(vec![]), relay(&["x"])]);
+    refused(vec![
+        user("a"),
+        assistant_text("b"),
+        user_blocks(vec![]),
+        relay(&["x"]),
+    ]);
 }
 
 #[test]

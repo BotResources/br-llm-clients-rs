@@ -64,6 +64,8 @@ mod refine_rules_tests;
 #[cfg(test)]
 mod refine_table_tests;
 #[cfg(test)]
+mod run_combined_tests;
+#[cfg(test)]
 mod run_malformed_tests;
 #[cfg(test)]
 mod run_refusal_tests;

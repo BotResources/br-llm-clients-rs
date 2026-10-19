@@ -5,7 +5,6 @@ use crate::decode::Decoder;
 use crate::encode::{self, EncodeSettings};
 use crate::errors;
 
-#[derive(Debug, Clone)]
 pub struct AnthropicMessages {
     settings: EncodeSettings,
 }

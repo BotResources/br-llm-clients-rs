@@ -41,7 +41,10 @@ async fn given_the_documented_tool_stream_when_run_then_the_step_holds_text_and_
     let called = call_stream(&hello(), TOOL_USE).await;
     let step = called.step();
     assert_eq!(step.stop_reason(), &StopReason::AwaitingToolResults);
-    assert_eq!(texts(step.content()), ["Okay, let's check the weather"]);
+    assert_eq!(
+        texts(step.content()),
+        ["Okay, let's check the weather for San Francisco, CA:"]
+    );
     let calls: Vec<_> = step.tool_calls().collect();
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].id.as_str(), "toolu_01T1x1fJ34qAmk2tNTrN7Up6");
@@ -57,7 +60,13 @@ async fn given_the_documented_thinking_stream_when_run_then_the_step_holds_signe
     let step = called.step();
     let thinking: Vec<_> = step.thinking().collect();
     assert_eq!(thinking.len(), 1);
-    assert!(thinking[0].text.ends_with("462 = 3 x 147 + 21"));
+    assert!(
+        thinking[0]
+            .text
+            .starts_with("I need to find the GCD of 1071 and 462")
+    );
+    assert!(thinking[0].text.contains("1071 = 2 × 462 + 147"));
+    assert!(thinking[0].text.ends_with("GCD(1071, 462) = 21."));
     assert_eq!(
         thinking[0]
             .signature
@@ -134,8 +143,8 @@ async fn given_a_redacted_thinking_stream_when_run_then_the_step_keeps_the_data_
 }
 
 #[tokio::test]
-async fn given_cumulative_cache_usage_when_run_then_the_last_usage_carries_the_cache_counts() {
-    let called = call_stream(&hello(), CACHED_USAGE).await;
+async fn given_a_constructed_stream_with_cache_counts_when_run_then_the_last_usage_carries_them() {
+    let called = call_stream(&hello(), CACHE_COUNTS).await;
     assert_eq!(
         called.step().usage(),
         Some(&Usage {

@@ -95,3 +95,21 @@ async fn given_a_thinking_stream_cut_before_its_message_delta_when_run_then_it_i
     let called = call_stream(&hello(), &THINKING[..cut]).await;
     assert_eq!(called.error(), &ClientError::StreamTruncated);
 }
+
+#[tokio::test]
+async fn given_the_thinking_stream_cut_at_every_byte_including_inside_a_multibyte_character_when_run_then_it_never_succeeds()
+ {
+    let offsets: Vec<usize> = (0..=THINKING.len()).collect();
+    let results = outcomes_for_every_cut(THINKING, offsets).await;
+    let mid_character: Vec<usize> = (0..THINKING.len())
+        .filter(|offset| !THINKING.is_char_boundary(*offset))
+        .collect();
+    assert!(!mid_character.is_empty());
+    for (offset, error) in results {
+        if offset == THINKING.len() {
+            assert_eq!(error, None);
+        } else {
+            assert_eq!(error, Some(ClientError::StreamTruncated), "cut at {offset}");
+        }
+    }
+}

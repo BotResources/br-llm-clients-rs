@@ -29,10 +29,15 @@ pub(crate) fn encode_messages(messages: &[WireMessage]) -> Result<Vec<Value>, Cl
     let mut drafts: Vec<Draft> = Vec::new();
     for (position, message) in messages.iter().enumerate() {
         match message {
-            WireMessage::User { content } => drafts.push(Draft {
-                role: Role::User,
-                blocks: user_blocks(content)?,
-            }),
+            WireMessage::User { content } => {
+                if content.is_empty() {
+                    return Err(invalid("a user message holds no block"));
+                }
+                drafts.push(Draft {
+                    role: Role::User,
+                    blocks: user_blocks(content)?,
+                });
+            }
             WireMessage::Assistant { content } => {
                 let in_progress = turn_start.is_none_or(|start| position > start);
                 drafts.push(Draft {

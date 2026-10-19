@@ -44,14 +44,3 @@ fn given_one_dialect_when_two_decoders_are_made_then_their_state_is_separate() {
             .is_ok()
     );
 }
-
-#[test]
-fn given_a_dialect_when_cloned_then_both_encode_the_same_bytes() {
-    let original = dialect();
-    let copy = original.clone();
-    let request = crate::test_fixtures::request(vec![crate::test_fixtures::user("hi")]);
-    assert_eq!(
-        original.encode(&request).expect("original"),
-        copy.encode(&request).expect("copy")
-    );
-}

@@ -35,7 +35,18 @@ fn given_the_documented_tool_use_stream_when_decoded_then_the_call_arguments_arr
             ProviderEvent::Usage(usage(472, 2)),
             start("0", ProviderBlock::Text),
             text_delta("0", "Okay"),
-            text_delta("0", ", let's check the weather"),
+            text_delta("0", ","),
+            text_delta("0", " let"),
+            text_delta("0", "'s"),
+            text_delta("0", " check"),
+            text_delta("0", " the"),
+            text_delta("0", " weather"),
+            text_delta("0", " for"),
+            text_delta("0", " San"),
+            text_delta("0", " Francisco"),
+            text_delta("0", ","),
+            text_delta("0", " CA"),
+            text_delta("0", ":"),
             end_of("0"),
             tool_start("1", "get_weather", "toolu_01T1x1fJ34qAmk2tNTrN7Up6"),
             args_delta("1", "{\"location\":"),
@@ -62,9 +73,11 @@ fn given_the_documented_thinking_stream_when_decoded_then_empty_start_fields_giv
             start("0", ProviderBlock::Thinking),
             thinking_delta(
                 "0",
-                "I need to find the GCD of 1071 and 462 using the Euclidean algorithm.\n\n1071 = 2 x 462 + 147"
+                "I need to find the GCD of 1071 and 462 using the Euclidean algorithm.\n\n1071 = 2 × 462 + 147"
             ),
-            thinking_delta("0", "\n462 = 3 x 147 + 21"),
+            thinking_delta("0", "\n462 = 3 × 147 + 21"),
+            thinking_delta("0", "\n147 = 7 × 21 + 0"),
+            thinking_delta("0", "\nThe remainder is 0, so GCD(1071, 462) = 21."),
             signature_delta(
                 "0",
                 "EqQBCgIYAhIM1gbcDa9GJwZA2b3hGgxBdjrkzLoky3dl1pkiMOYds..."
@@ -102,18 +115,37 @@ fn given_the_omitted_thinking_shape_when_decoded_then_the_empty_thinking_gives_o
     );
 }
 
-#[test]
-fn given_cumulative_usage_with_cache_fields_when_decoded_then_the_input_is_the_sum_of_three_fields()
-{
-    let usages: Vec<Usage> = decode_stream(false, CACHED_USAGE)
+fn usages_of(stream: &str) -> Vec<Usage> {
+    decode_stream(false, stream)
         .into_iter()
         .filter_map(|event| match event {
             ProviderEvent::Usage(usage) => Some(usage),
             _ => None,
         })
-        .collect();
+        .collect()
+}
+
+#[test]
+fn given_the_documented_usage_lines_when_decoded_then_zero_cache_counts_are_some_zero_and_cumulative()
+ {
+    let zero = |input, output| Usage {
+        input_tokens: input,
+        output_tokens: output,
+        cache_read_tokens: Some(0),
+        cache_write_tokens: Some(0),
+        thinking_tokens: None,
+    };
     assert_eq!(
-        usages,
+        usages_of(DOCUMENTED_USAGE),
+        vec![zero(2679, 3), zero(10682, 510)]
+    );
+}
+
+#[test]
+fn given_a_constructed_stream_with_cache_counts_when_decoded_then_the_input_is_the_sum_of_three_fields()
+ {
+    assert_eq!(
+        usages_of(crate::test_streams_constructed::CACHE_COUNTS),
         vec![
             Usage {
                 input_tokens: 2679,

@@ -1,7 +1,6 @@
 use br_llm_clients_core::{CacheRequirement, ClientError, ClientSettings, ReasoningLevel};
 use serde_json::{Value, json};
 
-#[derive(Debug, Clone)]
 pub(crate) struct EncodeSettings {
     model: String,
     max_tokens: u32,
