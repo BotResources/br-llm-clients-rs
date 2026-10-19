@@ -46,19 +46,18 @@ pub(super) fn usage_of(event: EventType, response: &Value) -> Result<Option<Usag
     };
     let input = count(event, usage, "input_tokens")?;
     let output = count(event, usage, "output_tokens")?;
+    let cache_read_tokens = detail_count(event, usage, "input_tokens_details", "cached_tokens")?;
+    let cache_write_tokens =
+        detail_count(event, usage, "input_tokens_details", "cache_write_tokens")?;
+    let thinking_tokens = detail_count(event, usage, "output_tokens_details", "reasoning_tokens")?;
     let (Some(input_tokens), Some(output_tokens)) = (input, output) else {
         return Ok(None);
     };
     Ok(Some(Usage {
         input_tokens,
         output_tokens,
-        cache_read_tokens: detail_count(event, usage, "input_tokens_details", "cached_tokens")?,
-        cache_write_tokens: detail_count(
-            event,
-            usage,
-            "input_tokens_details",
-            "cache_write_tokens",
-        )?,
-        thinking_tokens: detail_count(event, usage, "output_tokens_details", "reasoning_tokens")?,
+        cache_read_tokens,
+        cache_write_tokens,
+        thinking_tokens,
     }))
 }

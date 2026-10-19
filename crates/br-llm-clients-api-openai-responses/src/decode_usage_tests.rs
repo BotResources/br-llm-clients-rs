@@ -160,6 +160,21 @@ fn given_counts_that_are_not_whole_numbers_from_zero_when_read_then_it_is_a_payl
 }
 
 #[test]
+fn given_a_bad_detail_count_and_a_missing_main_count_when_read_then_it_is_a_payload_error() {
+    let bad = [
+        json!({ "input_tokens": 1, "input_tokens_details": { "cached_tokens": -5 } }),
+        json!({ "input_tokens": 1, "input_tokens_details": "x" }),
+        json!({ "output_tokens": 1, "output_tokens_details": { "reasoning_tokens": "many" } }),
+        json!({ "output_tokens": 1, "input_tokens_details": { "cache_write_tokens": 1.5 } }),
+    ];
+    for usage in bad {
+        let mut decoder = plain_decoder();
+        let error = feed_err(&mut decoder, &completed("m", usage.clone()));
+        assert!(error.text().starts_with("response.completed"), "{usage}");
+    }
+}
+
+#[test]
 fn given_a_usage_that_is_not_an_object_when_read_then_it_is_a_payload_error() {
     for usage in [json!(5), json!("x"), json!([1, 2])] {
         let mut decoder = plain_decoder();
