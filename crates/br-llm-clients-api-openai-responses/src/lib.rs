@@ -31,9 +31,17 @@ pub use dialect::OpenAiResponses;
 pub use options::{Options, ReasoningParameter, ReasoningSummary};
 
 #[cfg(test)]
+mod decode_call_held_tests;
+#[cfg(test)]
 mod decode_call_tests;
 #[cfg(test)]
-mod decode_reasoning_tests;
+mod decode_error_event_tests;
+#[cfg(test)]
+mod decode_item_state_tests;
+#[cfg(test)]
+mod decode_reasoning_done_tests;
+#[cfg(test)]
+mod decode_reasoning_summary_tests;
 #[cfg(test)]
 mod decode_refusal_tests;
 #[cfg(test)]
@@ -59,6 +67,8 @@ mod encode_reasoning_tests;
 #[cfg(test)]
 mod encode_structured_tests;
 #[cfg(test)]
+mod encode_thinking_tests;
+#[cfg(test)]
 mod encode_tools_tests;
 #[cfg(test)]
 mod encode_user_tests;
@@ -69,7 +79,13 @@ mod run_error_tests;
 #[cfg(test)]
 mod run_request_id_tests;
 #[cfg(test)]
-mod run_stream_tests;
+mod run_stream_error_tests;
+#[cfg(test)]
+mod run_structured_tests;
+#[cfg(test)]
+mod run_text_tests;
+#[cfg(test)]
+mod run_tool_tests;
 #[cfg(test)]
 mod run_truncation_tests;
 #[cfg(test)]
