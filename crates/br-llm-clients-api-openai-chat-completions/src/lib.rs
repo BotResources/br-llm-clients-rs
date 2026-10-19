@@ -53,6 +53,18 @@ pub use reasoning_table::ReasoningTable;
 pub use serde_json::{Map, Value};
 
 #[cfg(test)]
+mod decode_content_tests;
+#[cfg(test)]
+mod decode_error_tests;
+#[cfg(test)]
+mod decode_finish_tests;
+#[cfg(test)]
+mod decode_shape_tests;
+#[cfg(test)]
+mod decode_tool_tests;
+#[cfg(test)]
+mod decode_usage_tests;
+#[cfg(test)]
 mod encode_assistant_tests;
 #[cfg(test)]
 mod encode_body_tests;
@@ -64,6 +76,8 @@ mod encode_refusal_tests;
 mod encode_tools_tests;
 #[cfg(test)]
 mod encode_user_tests;
+#[cfg(test)]
+mod error_code_tests;
 #[cfg(test)]
 mod options_tests;
 #[cfg(test)]

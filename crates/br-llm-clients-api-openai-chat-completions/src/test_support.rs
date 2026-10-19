@@ -206,3 +206,36 @@ pub(crate) fn text_delta(key: &str, value: &str) -> ProviderEvent {
         text: value.to_owned(),
     }
 }
+
+pub(crate) fn without_model(events: Vec<ProviderEvent>) -> Vec<ProviderEvent> {
+    events
+        .into_iter()
+        .filter(|event| !matches!(event, ProviderEvent::Model(_)))
+        .collect()
+}
+
+pub(crate) fn run_chunks(chunks: &[String]) -> Vec<ProviderEvent> {
+    let mut decoder = plain_decoder();
+    without_model(feed_all(decoder.as_mut(), chunks))
+}
+
+pub(crate) fn fails(data: &str) -> PayloadError {
+    let mut decoder = plain_decoder();
+    feed(decoder.as_mut(), data).expect_err("a payload error")
+}
+
+pub(crate) fn usage_chunk(usage: Value) -> String {
+    serde_json::json!({
+        "id": "chatcmpl-123",
+        "object": "chat.completion.chunk",
+        "created": 1694268190,
+        "model": "gpt-4o",
+        "choices": [],
+        "usage": usage
+    })
+    .to_string()
+}
+
+pub(crate) fn tool_chunk(fragments: Value, finish: Option<&str>) -> String {
+    chunk(serde_json::json!({"tool_calls": fragments}), finish)
+}
