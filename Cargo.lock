@@ -75,6 +75,39 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
 
 [[package]]
+name = "br-llm-clients-api-anthropic-messages"
+version = "0.1.0"
+dependencies = [
+ "br-llm-clients-common-call",
+ "br-llm-clients-core",
+ "br-llm-messages",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "br-llm-clients-api-openai-chat-completions"
+version = "0.1.0"
+dependencies = [
+ "br-llm-clients-common-call",
+ "br-llm-clients-core",
+ "br-llm-messages",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "br-llm-clients-api-openai-responses"
+version = "0.1.0"
+dependencies = [
+ "br-llm-clients-common-call",
+ "br-llm-clients-core",
+ "br-llm-messages",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "br-llm-clients-common-call"
 version = "0.1.0"
 dependencies = [

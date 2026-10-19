@@ -6,9 +6,12 @@ Provider clients for LLM calls: send a system prompt, tools and a chat history f
 - `br-llm-clients-core` — the core: provider-neutral request, settings, outcome, error and the `Client` and `StreamSink` traits every client library implements.
 - `br-llm-clients-mock` — a configurable mock `Client` for fast, parallel tests, used as a dev-dependency.
 - `br-llm-clients-common-call` — runs one call of a client: encodes the request through a dialect, sends it, and turns every failure into a `ClientError`, for any provider and any wire dialect; it is meant to be shared by the provider clients (none exists yet).
+- `br-llm-clients-api-anthropic-messages` — the Anthropic Messages wire dialect: encodes a request and decodes the streamed reply and the errors of the Anthropic Messages API for the shared call; it is meant to be used by the provider clients (none exists yet).
+- `br-llm-clients-api-openai-responses` — the OpenAI Responses wire dialect: encodes a request and decodes the streamed reply and the errors of the OpenAI Responses API for the shared call; it is meant to be used by the provider clients (none exists yet).
+- `br-llm-clients-api-openai-chat-completions` — the OpenAI Chat Completions wire dialect: encodes a request and decodes the streamed reply and the errors of the Chat Completions API for the shared call; it is meant to be used by the provider clients (none exists yet).
 - `br-llm-clients-common-sse` — a Server-Sent Events decoder: turns the bytes of a response body into frames, with a size limit and no hidden damage.
 
-**Status:** `br-llm-clients-core` and `br-llm-clients-mock` are at `0.4.0`, and `br-llm-clients-common-sse`, `br-llm-clients-common-http` and `br-llm-clients-common-call` are at `0.1.0`; the other crates are not written yet.
+**Status:** `br-llm-clients-core` and `br-llm-clients-mock` are at `0.4.0`, and `br-llm-clients-common-sse`, `br-llm-clients-common-http`, `br-llm-clients-common-call`, `br-llm-clients-api-anthropic-messages`, `br-llm-clients-api-openai-responses` and `br-llm-clients-api-openai-chat-completions` are at `0.1.0`; the other crates are not written yet.
 
 Not on crates.io; pin the git tag with the matching `version` beside it (a tag-only git dependency carries a `*` version requirement, which `cargo-deny` rejects):
 
@@ -17,6 +20,9 @@ br-llm-clients-core = { git = "https://github.com/BotResources/br-llm-clients-rs
 br-llm-clients-mock = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-mock", tag = "br-llm-clients-mock/v0.4.0", version = "0.4.0" }
 br-llm-clients-common-sse = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-common-sse", tag = "br-llm-clients-common-sse/v0.1.0", version = "0.1.0" }
 br-llm-clients-common-call = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-common-call", tag = "br-llm-clients-common-call/v0.1.0", version = "0.1.0" }
+br-llm-clients-api-anthropic-messages = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-api-anthropic-messages", tag = "br-llm-clients-api-anthropic-messages/v0.1.0", version = "0.1.0" }
+br-llm-clients-api-openai-responses = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-api-openai-responses", tag = "br-llm-clients-api-openai-responses/v0.1.0", version = "0.1.0" }
+br-llm-clients-api-openai-chat-completions = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-api-openai-chat-completions", tag = "br-llm-clients-api-openai-chat-completions/v0.1.0", version = "0.1.0" }
 br-llm-clients-common-http = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-common-http", tag = "br-llm-clients-common-http/v0.1.0", version = "0.1.0" }
 ```
 
