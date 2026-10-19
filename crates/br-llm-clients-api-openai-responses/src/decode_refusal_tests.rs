@@ -1,7 +1,7 @@
 use br_llm_clients_common_call::ProviderEvent;
 use br_llm_messages::StopReason;
 
-use crate::test_decoder::{end, feed, flat, plain_decoder, start_text, stop, text};
+use crate::test_decoder::{end, feed, flat, plain_decoder, start_text, text};
 use crate::test_events::{
     completed, incomplete, message_added, message_done, output_part, part_added, refusal_delta,
     refusal_done_part, refusal_part, text_delta, usage_object,

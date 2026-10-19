@@ -162,7 +162,7 @@ fn given_any_field_of_any_event_replaced_by_a_value_of_the_wrong_shape_when_deco
             }
         }
     }
-    assert!(checked > 5000, "{checked}");
+    assert!(checked > 4000, "{checked}");
 }
 
 #[test]

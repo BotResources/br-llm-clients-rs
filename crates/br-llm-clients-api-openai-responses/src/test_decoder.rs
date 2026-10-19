@@ -96,13 +96,6 @@ pub(crate) fn thinking(key: &str, value: &str) -> ProviderEvent {
     }
 }
 
-pub(crate) fn signature(key: &str, value: &str) -> ProviderEvent {
-    ProviderEvent::SignatureDelta {
-        key: key.to_owned(),
-        signature: value.to_owned(),
-    }
-}
-
 pub(crate) fn structured(key: &str, value: &str) -> ProviderEvent {
     ProviderEvent::StructuredDelta {
         key: key.to_owned(),

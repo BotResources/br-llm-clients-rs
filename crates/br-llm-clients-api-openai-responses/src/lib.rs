@@ -65,6 +65,14 @@ mod encode_user_tests;
 #[cfg(test)]
 mod error_tests;
 #[cfg(test)]
+mod run_error_tests;
+#[cfg(test)]
+mod run_request_id_tests;
+#[cfg(test)]
+mod run_stream_tests;
+#[cfg(test)]
+mod run_truncation_tests;
+#[cfg(test)]
 mod static_tests;
 #[cfg(test)]
 mod test_decoder;
@@ -72,3 +80,7 @@ mod test_decoder;
 mod test_events;
 #[cfg(test)]
 mod test_requests;
+#[cfg(test)]
+mod test_run;
+#[cfg(test)]
+mod test_server;
