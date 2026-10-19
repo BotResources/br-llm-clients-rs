@@ -1,0 +1,23 @@
+HTTP/2 400 
+date: Mon, 19 Oct 2026 13:28:46 GMT
+content-type: application/json
+content-length: 232
+cf-cache-status: DYNAMIC
+server: cloudflare
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+x-content-type-options: nosniff
+access-control-expose-headers: X-Request-ID
+access-control-expose-headers: CF-Ray
+access-control-expose-headers: CF-Ray
+openai-processing-ms: 22
+openai-version: 2020-10-01
+x-openai-proxy-wasm: v0.1
+x-ratelimit-limit-requests: 30000
+x-ratelimit-limit-tokens: 150000000
+x-ratelimit-remaining-requests: 29999
+x-ratelimit-remaining-tokens: 150000000
+x-ratelimit-reset-requests: 2ms
+x-ratelimit-reset-tokens: 0s
+x-request-id: req_5bdaf0a5b52f4a5384f08324af45415c
+alt-svc: h3=":443"; ma=86400
+

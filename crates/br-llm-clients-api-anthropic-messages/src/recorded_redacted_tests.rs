@@ -1,0 +1,179 @@
+use br_llm_clients_common_call::{ProviderBlock, ProviderEvent};
+use br_llm_messages::{AssistantBlock, StopReason, StreamEvent, Usage};
+
+use crate::test_call::*;
+use crate::test_decode::*;
+use crate::test_fixtures::redacted;
+use crate::test_recorded::*;
+
+const RECORDED_MODEL: &str = "claude-sonnet-4-6";
+
+fn index_key(position: usize) -> String {
+    position.to_string()
+}
+
+fn counted(input: u64, output: u64) -> Usage {
+    Usage {
+        cache_read_tokens: Some(0),
+        cache_write_tokens: Some(0),
+        ..usage(input, output)
+    }
+}
+
+fn assert_same_events(actual: &[ProviderEvent], expected: &[ProviderEvent]) {
+    assert_eq!(actual.len(), expected.len(), "event count");
+    for (position, (left, right)) in actual.iter().zip(expected).enumerate() {
+        assert!(left == right, "event {position} differs");
+    }
+}
+
+fn expected_events(stream: &str) -> Vec<ProviderEvent> {
+    let mut events = vec![
+        ProviderEvent::Model(RECORDED_MODEL.to_owned()),
+        ProviderEvent::Usage(counted(93, 4)),
+    ];
+    for (position, data) in recorded_redacted_data(stream).into_iter().enumerate() {
+        let key = index_key(position);
+        events.push(start(&key, ProviderBlock::RedactedThinking));
+        events.push(ProviderEvent::RedactedThinkingData {
+            key: key.clone(),
+            data,
+        });
+        events.push(end_of(&key));
+    }
+    let text_key = index_key(REDACTED_BLOCK_COUNT);
+    events.push(start(&text_key, ProviderBlock::Text));
+    for piece in recorded_text_pieces(stream) {
+        events.push(text_delta(&text_key, &piece));
+    }
+    events.push(end_of(&text_key));
+    events.push(ProviderEvent::Usage(Usage {
+        thinking_tokens: Some(41),
+        ..counted(93, 99)
+    }));
+    events.push(stop(StopReason::EndTurn));
+    events.push(ProviderEvent::Complete);
+    events
+}
+
+fn expected_redacted_blocks(stream: &str) -> Vec<AssistantBlock> {
+    recorded_redacted_data(stream)
+        .iter()
+        .map(|data| redacted(data))
+        .collect()
+}
+
+#[test]
+fn given_the_real_stream_when_read_then_it_holds_the_recorded_shape() {
+    let data = recorded_redacted_data(REDACTED_THINKING_REAL);
+    assert_eq!(data.len(), REDACTED_BLOCK_COUNT);
+    assert!(data.iter().all(|blob| !blob.is_empty()));
+    assert!(
+        recorded_text_pieces(REDACTED_THINKING_REAL)
+            .concat()
+            .starts_with("Hello! It looks like you've sent a system-level trigger string")
+    );
+    assert!(REDACTED_THINKING_REAL.ends_with("}\n\n"));
+    assert!(!REDACTED_THINKING_REAL.contains("HTTP_STATUS"));
+    assert!(REDACTED_THINKING_REAL.contains("\"index\":0    }"));
+    assert!(!REDACTED_THINKING_REAL.contains("\"thinking\":"));
+}
+
+#[test]
+fn given_the_real_stream_when_decoded_then_every_redacted_block_keeps_its_data_and_its_end() {
+    let events = decode_stream(false, REDACTED_THINKING_REAL);
+    assert_same_events(&events, &expected_events(REDACTED_THINKING_REAL));
+}
+
+#[test]
+fn given_the_real_stream_when_fed_frame_by_frame_then_each_frame_gives_what_the_intent_says() {
+    let mut decoder = decoder(false);
+    let mut seen_data = Vec::new();
+    for payload in payloads(REDACTED_THINKING_REAL) {
+        let kind = payload.event().map(str::to_owned);
+        let value: serde_json::Value = serde_json::from_str(payload.data()).expect("json");
+        let events = decoder.payload(payload).expect("a readable payload");
+        match kind.as_deref() {
+            Some("ping") => assert!(events.is_empty()),
+            Some("content_block_start")
+                if value["content_block"]["type"] == "redacted_thinking" =>
+            {
+                let key = value["index"].to_string();
+                assert_eq!(events.len(), 2);
+                assert!(events[0] == start(&key, ProviderBlock::RedactedThinking));
+                match &events[1] {
+                    ProviderEvent::RedactedThinkingData {
+                        key: data_key,
+                        data,
+                    } => {
+                        assert_eq!(data_key, &key);
+                        seen_data.push(data.clone());
+                    }
+                    _ => panic!("not a redacted data event"),
+                }
+            }
+            Some("content_block_stop") => {
+                assert!(events == vec![end_of(&value["index"].to_string())]);
+            }
+            _ => {}
+        }
+    }
+    assert!(seen_data == recorded_redacted_data(REDACTED_THINKING_REAL));
+}
+
+#[tokio::test]
+async fn given_the_real_stream_when_run_then_the_step_holds_the_redacted_blocks_in_order_then_the_text()
+ {
+    let called = call_stream(&hello(), REDACTED_THINKING_REAL).await;
+    let step = called.step();
+    let content = step.content();
+    let expected = expected_redacted_blocks(REDACTED_THINKING_REAL);
+    assert_eq!(content.len(), expected.len() + 1);
+    assert!(content[..expected.len()] == *expected.as_slice());
+    assert_eq!(
+        content[expected.len()].as_text().map(|text| text.as_str()),
+        Some(
+            recorded_text_pieces(REDACTED_THINKING_REAL)
+                .concat()
+                .as_str()
+        )
+    );
+    assert_eq!(step.stop_reason(), &StopReason::EndTurn);
+    assert_eq!(
+        step.model().map(|model| model.as_str()),
+        Some(RECORDED_MODEL)
+    );
+    let usage = step.usage().expect("a usage");
+    assert_eq!((usage.input_tokens, usage.output_tokens), (93, 99));
+    assert_eq!(usage.thinking_tokens, Some(41));
+    assert_eq!(called.outcome.report().usage(), Some(usage));
+    assert!(matches!(
+        called.events.last(),
+        Some(StreamEvent::Finish { .. })
+    ));
+}
+
+#[tokio::test]
+async fn given_the_real_stream_split_in_two_writes_at_every_byte_when_run_then_the_outcome_never_changes()
+ {
+    let whole = call_stream(&hello(), REDACTED_THINKING_REAL).await;
+    let server = crate::test_server::TestServer::start(|index| {
+        crate::test_server::http(
+            "200 OK",
+            &[("content-type", "text/event-stream")],
+            REDACTED_THINKING_REAL.as_bytes(),
+        )
+        .split_body_at(index)
+    })
+    .await;
+    let spec = spec(plain_dialect(), &server);
+    for offset in 0..REDACTED_THINKING_REAL.len() {
+        let mut sink = crate::test_sink::RecordingSink::default();
+        let outcome = br_llm_clients_common_call::run(&spec, &hello(), &mut sink).await;
+        assert!(
+            outcome.result() == whole.outcome.result(),
+            "split at {offset}"
+        );
+        assert!(sink.events == whole.events, "split at {offset}");
+    }
+}
