@@ -95,3 +95,50 @@ form to decide whether a version ships.
   `Debug`, `Clone` and `PartialEq`; `ReasoningRule` and `ReasoningEffort` are
   `Debug`, `Clone`, `Copy` and `PartialEq`. `ChatCompletionsDialect` derives
   nothing and is `Send` and `Sync`.
+
+### Verified against the real API
+
+Eight raw responses of api.openai.com, recorded on 2026-10-19, are kept as test data in
+`src/recordings` (the bodies byte for byte, with the response headers) and served
+unchanged to `run()`: a text reply, a tool call, a reply cut by `length`, a reasoning
+model (`gpt-5.4-mini`, effort `low`, `openai_effort` table), a refusal under a
+`json_schema` output, a 401 (`text/plain`, with an extra top-level `status` member), a
+404 (`model_not_found`) and a 400 (`empty_array`). Each stream is also served cut in two
+at every byte boundary, and each cut gives the same events, step, usage, model and
+request id as the whole stream. What the recordings show:
+
+- The frames are `data:` lines followed by the sentinel `[DONE]`. Every chunk carries
+  `obfuscation`, `service_tier`, `system_fingerprint` (also null) and `usage: null`;
+  the decoder ignores them as metadata. The first delta is
+  `{"role":"assistant","content":"","refusal":null}`, or `"content":null` with
+  `"refusal":""` for a refusal, and gives no event.
+- The finish chunk comes first and the usage chunk, with `choices: []`, after it; the
+  usage holds `prompt_tokens`, `completion_tokens`, `total_tokens`,
+  `prompt_tokens_details.cached_tokens`, `completion_tokens_details.reasoning_tokens`
+  and the audio and prediction counts, which are ignored. A reported zero stays
+  `Some(0)`; `cache_write_tokens` is absent and stays `None`.
+- A tool call streams as one fragment with `index`, `id`, `type` and `name`, then
+  fragments with `index` and `arguments` only; the arguments text is kept as received,
+  `{"city": "Paris"}` with its space.
+- `gpt-5.4-mini` at effort `low` streams no reasoning text on this API: the step holds
+  no thinking and the reasoning tokens (11 of 21) are counted in the usage.
+- A refusal streams as `refusal` deltas and ends with `stop`; the step is a `Refusal`
+  with the refusal text when the output is plain. With the structured output of the
+  recording, common-call judges the reply `ContentBlocked` (its rule for a refusal
+  without a structured value); the sink has still received the refusal text.
+- An error answer is a pretty-printed JSON body with the `error` object (`message`,
+  `type`, `param`, `code`) whatever the content type; `error_code` gives its `code`
+  (`invalid_api_key`, `model_not_found`, `empty_array`) and `refine_error` gives
+  nothing. The 401 is `Authentication` and carries no text; the 404 and the 400 are
+  `ProviderRejected` with the status, the code and the whole body. The header
+  `x-request-id` is on every answer, errors included, and is in the report.
+
+### Known gaps
+
+The following are built from the documented shape only; no recording covers them:
+a non-zero `cached_tokens` and any `cache_write_tokens`; the finish reasons
+`content_filter`, `function_call` and `error`; an `error` frame inside a stream; a 429
+and the code `insufficient_quota`; an over-large `max_completion_tokens`; a reasoning
+text field of another host (`reasoning_field`) and a non-OpenAI host in general; the
+effort values `minimal`, `xhigh` and `max` and the answer of a model to a value it does
+not accept; the request body, which no recording checks against the API.
