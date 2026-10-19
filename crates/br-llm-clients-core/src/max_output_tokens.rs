@@ -1,3 +1,5 @@
+use std::num::NonZeroU32;
+
 use crate::build_error::BuildError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
@@ -14,6 +16,10 @@ impl MaxOutputTokens {
 
     pub fn get(self) -> u32 {
         self.0
+    }
+
+    pub(crate) fn from_non_zero(value: NonZeroU32) -> Self {
+        Self(value.get())
     }
 }
 

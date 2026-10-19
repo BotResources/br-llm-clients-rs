@@ -1,5 +1,11 @@
+mod accepted;
 mod build_error;
 mod cache;
+mod capabilities;
+mod capabilities_check;
+mod capabilities_check_images;
+mod capabilities_error;
+mod capabilities_spec;
 mod call_outcome;
 mod call_report;
 mod client;
@@ -29,8 +35,12 @@ mod message_rules_tests;
 #[cfg(test)]
 mod test_support;
 
+pub use accepted::Accepted;
 pub use build_error::BuildError;
 pub use cache::CacheRequirement;
+pub use capabilities::Capabilities;
+pub use capabilities_error::CapabilitiesError;
+pub use capabilities_spec::CapabilitiesSpec;
 pub use call_outcome::CallOutcome;
 pub use call_report::CallReport;
 pub use client::{BoxFuture, Client};
