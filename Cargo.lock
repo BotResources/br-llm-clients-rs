@@ -102,6 +102,7 @@ name = "br-llm-clients-api-openai-responses"
 version = "0.1.0"
 dependencies = [
  "br-llm-clients-common-call",
+ "br-llm-clients-common-http",
  "br-llm-clients-core",
  "br-llm-messages",
  "serde_json",

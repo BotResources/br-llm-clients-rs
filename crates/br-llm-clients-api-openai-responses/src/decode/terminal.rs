@@ -1,0 +1,123 @@
+use br_llm_clients_common_call::{ErrorInfo, PayloadError, ProviderEvent};
+use br_llm_messages::StopReason;
+use serde_json::Value;
+
+use super::event::EventType;
+use super::items::ItemState;
+use super::usage::usage_of;
+use super::{ResponsesDecoder, call, message, reasoning};
+use crate::error_envelope::error_envelope;
+
+const NO_ERROR_TEXT: &str = "response.failed holds no error";
+const NO_REASON_TEXT: &str = "incomplete";
+
+fn model_event(event: EventType, response: &Value) -> Result<Option<ProviderEvent>, PayloadError> {
+    Ok(event
+        .optional_text(response, "model")?
+        .filter(|model| !model.is_empty())
+        .map(|model| ProviderEvent::Model(model.to_owned())))
+}
+
+pub(super) fn created(data: &Value) -> Result<Vec<ProviderEvent>, PayloadError> {
+    let event = EventType::Created;
+    let response = event.object(data, "response")?;
+    Ok(model_event(event, response)?.into_iter().collect())
+}
+
+fn as_text<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
+    value.get(key).and_then(Value::as_str)
+}
+
+fn error_info(holder: &Value) -> ErrorInfo {
+    let code = as_text(holder, "code");
+    let text = error_envelope(as_text(holder, "message"), as_text(holder, "param"), code);
+    let info = ErrorInfo::new(text);
+    match code {
+        Some(code) => info.with_code(code),
+        None => info,
+    }
+}
+
+pub(super) fn error_event(data: &Value) -> Vec<ProviderEvent> {
+    vec![ProviderEvent::Error(error_info(data))]
+}
+
+pub(super) fn failed(data: &Value) -> Result<Vec<ProviderEvent>, PayloadError> {
+    let event = EventType::Failed;
+    let response = event.object(data, "response")?;
+    let usage = usage_of(event, response)?;
+    let model = model_event(event, response)?;
+    let info = match response.get("error").filter(|error| error.is_object()) {
+        Some(error) => error_info(error),
+        None => ErrorInfo::new(NO_ERROR_TEXT),
+    };
+    let mut events = Vec::new();
+    events.extend(usage.map(ProviderEvent::Usage));
+    events.extend(model);
+    events.push(ProviderEvent::Error(info));
+    Ok(events)
+}
+
+fn incomplete_stop(event: EventType, response: &Value) -> Result<StopReason, PayloadError> {
+    let details = match response.get("incomplete_details") {
+        None | Some(Value::Null) => None,
+        Some(found) if found.is_object() => Some(found),
+        Some(_) => return Err(event.fail("incomplete_details is not an object")),
+    };
+    let reason = match details {
+        Some(details) => event.optional_text(details, "reason")?,
+        None => None,
+    };
+    Ok(match reason {
+        Some("max_output_tokens") => StopReason::MaxTokens,
+        Some("content_filter") => StopReason::ContentFilter,
+        Some(other) => StopReason::Other {
+            reason: other.to_owned(),
+        },
+        None => StopReason::Other {
+            reason: NO_REASON_TEXT.to_owned(),
+        },
+    })
+}
+
+impl ResponsesDecoder {
+    pub(super) fn finish(
+        &mut self,
+        event: EventType,
+        data: &Value,
+    ) -> Result<Vec<ProviderEvent>, PayloadError> {
+        let response = event.object(data, "response")?;
+        let usage = usage_of(event, response)?;
+        let model = model_event(event, response)?;
+        let stop = if event == EventType::Incomplete {
+            incomplete_stop(event, response)?
+        } else if self.refusal_seen {
+            StopReason::Refusal
+        } else {
+            StopReason::EndTurn
+        };
+        let mut events = self.close_undone();
+        events.extend(call::held_events(event, &self.items)?);
+        events.extend(usage.map(ProviderEvent::Usage));
+        events.extend(model);
+        events.push(ProviderEvent::Stop(stop));
+        events.push(ProviderEvent::Complete);
+        Ok(events)
+    }
+
+    fn close_undone(&self) -> Vec<ProviderEvent> {
+        let mut events = Vec::new();
+        for (output_index, slot) in self.items.iter().filter(|(_, slot)| !slot.done) {
+            match &slot.state {
+                ItemState::Message(item) => {
+                    events.extend(message::finish_undone(item, *output_index, self.structured));
+                }
+                ItemState::Reasoning(item) => {
+                    events.extend(reasoning::finish_undone(item, *output_index));
+                }
+                ItemState::Call(_) => {}
+            }
+        }
+        events
+    }
+}
