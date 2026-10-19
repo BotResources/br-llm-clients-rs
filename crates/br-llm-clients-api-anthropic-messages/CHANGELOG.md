@@ -52,7 +52,11 @@ form to decide whether a version ships.
 - Usage: cumulative merge of `message_start` and `message_delta` usage; the input is the sum of
   `input_tokens`, `cache_read_input_tokens` and `cache_creation_input_tokens`; a `Usage` event is
   given only when the record changed and both input and output have been seen; `thinking_tokens`
-  is always `None`.
+  is the `output_tokens_details.thinking_tokens` of the API (given by the real API in the
+  `message_delta` event), with the rules of the cache fields: `None` while no payload carried it,
+  `Some(0)` when it was present with zero, kept by a later payload that does not carry it; a
+  `null` counts as absent; an `output_tokens_details` that is not an object, or a
+  `thinking_tokens` that is not a whole number from 0 up, is a `PayloadError`.
 - Errors: `error_code` reads `error.type`; `refine_error` maps the spend-limit 429
   (`enforced_spend_limit_reached`), the usage-limit 400 prefixes, `prompt is too long` and the
   three documented thinking phrases first, then the table of codes and statuses (`overloaded_error`,

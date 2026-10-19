@@ -141,9 +141,9 @@ fn given_a_message_delta_usage_when_message_start_had_none_then_it_can_complete_
 }
 
 #[test]
-fn given_other_usage_fields_when_decoded_then_they_are_ignored_and_thinking_tokens_stay_none() {
+fn given_other_usage_fields_when_decoded_then_they_are_ignored() {
     let (_, events) = start_with(
-        r#"{"input_tokens":1,"output_tokens":2,"cache_creation":{"ephemeral_5m_input_tokens":0},"service_tier":"standard","server_tool_use":{"web_search_requests":0},"thinking_tokens":9,"output_tokens_details":{"thinking_tokens":5}}"#,
+        r#"{"input_tokens":1,"output_tokens":2,"cache_creation":{"ephemeral_5m_input_tokens":0},"service_tier":"standard","server_tool_use":{"web_search_requests":0},"thinking_tokens":9}"#,
     );
     let usage = only_usage(events);
     assert_eq!(usage.thinking_tokens, None);

@@ -10,6 +10,7 @@ pub(crate) struct UsageRecord {
     cache_read: Option<u64>,
     cache_creation: Option<u64>,
     output: Option<u64>,
+    thinking: Option<u64>,
 }
 
 impl UsageRecord {
@@ -26,7 +27,14 @@ impl UsageRecord {
             fields,
             "cache_creation_input_tokens",
         )?;
-        replace(&mut self.output, fields, "output_tokens")
+        replace(&mut self.output, fields, "output_tokens")?;
+        match fields.get("output_tokens_details") {
+            None | Some(Value::Null) => Ok(()),
+            Some(Value::Object(details)) => replace(&mut self.thinking, details, "thinking_tokens"),
+            Some(_) => Err(malformed(
+                "the usage field output_tokens_details is neither an object nor null",
+            )),
+        }
     }
 
     pub(crate) fn complete(&self) -> Result<Option<Usage>, PayloadError> {
@@ -42,7 +50,7 @@ impl UsageRecord {
             output_tokens: output,
             cache_read_tokens: self.cache_read,
             cache_write_tokens: self.cache_creation,
-            thinking_tokens: None,
+            thinking_tokens: self.thinking,
         }))
     }
 }

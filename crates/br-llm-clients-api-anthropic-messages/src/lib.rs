@@ -44,6 +44,8 @@ mod decode_stream_tests;
 #[cfg(test)]
 mod decode_usage_tests;
 #[cfg(test)]
+mod decode_usage_thinking_tests;
+#[cfg(test)]
 mod encode_envelope_tests;
 #[cfg(test)]
 mod encode_messages_tests;

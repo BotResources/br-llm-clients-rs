@@ -27,19 +27,6 @@ fn assert_same_events(actual: &[ProviderEvent], expected: &[ProviderEvent]) {
     }
 }
 
-fn ignoring_thinking_tokens(events: Vec<ProviderEvent>) -> Vec<ProviderEvent> {
-    events
-        .into_iter()
-        .map(|event| match event {
-            ProviderEvent::Usage(mut recorded) => {
-                recorded.thinking_tokens = None;
-                ProviderEvent::Usage(recorded)
-            }
-            other => other,
-        })
-        .collect()
-}
-
 fn expected_events(stream: &str) -> Vec<ProviderEvent> {
     let mut events = vec![
         ProviderEvent::Model(RECORDED_MODEL.to_owned()),
@@ -60,7 +47,10 @@ fn expected_events(stream: &str) -> Vec<ProviderEvent> {
         events.push(text_delta(&text_key, &piece));
     }
     events.push(end_of(&text_key));
-    events.push(ProviderEvent::Usage(counted(93, 99)));
+    events.push(ProviderEvent::Usage(Usage {
+        thinking_tokens: Some(41),
+        ..counted(93, 99)
+    }));
     events.push(stop(StopReason::EndTurn));
     events.push(ProviderEvent::Complete);
     events
@@ -91,7 +81,7 @@ fn given_the_real_stream_when_read_then_it_holds_the_recorded_shape() {
 
 #[test]
 fn given_the_real_stream_when_decoded_then_every_redacted_block_keeps_its_data_and_its_end() {
-    let events = ignoring_thinking_tokens(decode_stream(false, REDACTED_THINKING_REAL));
+    let events = decode_stream(false, REDACTED_THINKING_REAL);
     assert_same_events(&events, &expected_events(REDACTED_THINKING_REAL));
 }
 
@@ -155,6 +145,8 @@ async fn given_the_real_stream_when_run_then_the_step_holds_the_redacted_blocks_
     );
     let usage = step.usage().expect("a usage");
     assert_eq!((usage.input_tokens, usage.output_tokens), (93, 99));
+    assert_eq!(usage.thinking_tokens, Some(41));
+    assert_eq!(called.outcome.report().usage(), Some(usage));
     assert!(matches!(
         called.events.last(),
         Some(StreamEvent::Finish { .. })
