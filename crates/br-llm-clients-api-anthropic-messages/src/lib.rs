@@ -28,7 +28,9 @@ mod errors;
 pub use dialect::AnthropicMessages;
 
 #[cfg(test)]
-mod decode_blocks_tests;
+mod decode_block_delta_tests;
+#[cfg(test)]
+mod decode_block_start_tests;
 #[cfg(test)]
 mod decode_hold_tests;
 #[cfg(test)]
@@ -62,9 +64,27 @@ mod refine_rules_tests;
 #[cfg(test)]
 mod refine_table_tests;
 #[cfg(test)]
+mod run_malformed_tests;
+#[cfg(test)]
+mod run_refusal_tests;
+#[cfg(test)]
+mod run_request_tests;
+#[cfg(test)]
+mod run_stream_tests;
+#[cfg(test)]
+mod run_truncation_tests;
+#[cfg(test)]
+mod static_tests;
+#[cfg(test)]
+mod test_call;
+#[cfg(test)]
 mod test_decode;
 #[cfg(test)]
 mod test_fixtures;
+#[cfg(test)]
+mod test_server;
+#[cfg(test)]
+mod test_sink;
 #[cfg(test)]
 mod test_streams;
 #[cfg(test)]

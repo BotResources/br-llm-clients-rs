@@ -156,3 +156,15 @@ pub(crate) fn usage(input: u64, output: u64) -> Usage {
 pub(crate) fn stop(reason: StopReason) -> ProviderEvent {
     ProviderEvent::Stop(reason)
 }
+
+pub(crate) fn block_start(index: &str, block: &str) -> String {
+    format!(r#"{{"type":"content_block_start","index":{index},"content_block":{block}}}"#)
+}
+
+pub(crate) fn delta(index: u64, delta: &str) -> String {
+    format!(r#"{{"type":"content_block_delta","index":{index},"delta":{delta}}}"#)
+}
+
+pub(crate) fn stop_of(index: u64) -> String {
+    format!(r#"{{"type":"content_block_stop","index":{index}}}"#)
+}
