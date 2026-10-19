@@ -26,7 +26,9 @@ fn configured_decoder() -> Box<dyn PayloadDecoder> {
     dialect_for(ReasoningLevel::Off, configured).decoder(&OutputMode::Plain)
 }
 
-fn named_places() -> Vec<(&'static str, Box<dyn Fn(Value) -> Value>)> {
+type Place = (&'static str, Box<dyn Fn(Value) -> Value>);
+
+fn named_places() -> Vec<Place> {
     vec![
         ("choices", Box::new(|value| json!({"choices": value}))),
         ("choices[]", Box::new(|value| json!({"choices": [value]}))),
@@ -80,8 +82,8 @@ fn given_every_named_place_with_any_json_value_when_decoded_then_there_is_never_
             let data = build(value.clone()).to_string();
             let mut decoder = configured_decoder();
             let result = decoder.payload(Payload::new(None, data));
-            if result.is_err() {
-                assert!(result.expect_err("err").text().len() > 0, "{place}");
+            if let Err(error) = result {
+                assert!(!error.text().is_empty(), "{place}");
             }
             let _ = decoder.end();
         }

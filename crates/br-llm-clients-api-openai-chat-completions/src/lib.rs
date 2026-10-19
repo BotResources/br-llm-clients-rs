@@ -83,4 +83,24 @@ mod options_tests;
 #[cfg(test)]
 mod reasoning_table_tests;
 #[cfg(test)]
+mod run_failure_tests;
+#[cfg(test)]
+mod run_request_id_tests;
+#[cfg(test)]
+mod run_support;
+#[cfg(test)]
+mod run_text_tests;
+#[cfg(test)]
+mod run_timing_tests;
+#[cfg(test)]
+mod run_tool_tests;
+#[cfg(test)]
+mod run_truncation_tests;
+#[cfg(test)]
+mod static_tests;
+#[cfg(test)]
+mod test_server;
+#[cfg(test)]
+mod test_sink;
+#[cfg(test)]
 mod test_support;
