@@ -8,7 +8,6 @@ use crate::options::ChatCompletionsOptions;
 use crate::options_error::OptionsError;
 use crate::request_id::request_id;
 
-#[derive(Debug, Clone)]
 pub struct ChatCompletionsDialect {
     settings: ClientSettings,
     options: ChatCompletionsOptions,

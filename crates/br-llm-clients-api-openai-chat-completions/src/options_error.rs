@@ -4,7 +4,7 @@ use br_llm_clients_core::ReasoningLevel;
 
 use crate::reasoning_effort::ReasoningEffort;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum OptionsError {
     ReasoningTableDecreasing {

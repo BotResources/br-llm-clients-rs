@@ -83,7 +83,15 @@ form to decide whether a version ships.
   and `OutputShapeRejected` are never given from a provider answer.
   `request_id` is the first `x-request-id` header, in any case, when it is
   non-empty text.
-- Re-exports of the types that the public signatures name from
-  `br-llm-clients-common-call`, `br-llm-clients-core` and `br-llm-messages`, and
-  of `serde_json::{Map, Value}` for the extra body, so that a provider library
-  needs no other import for the dialect.
+- Re-exports, so that a provider library needs no other import for the dialect:
+  from `br-llm-clients-common-call` `Dialect`, `EncodedRequest`, `End`,
+  `ErrorInfo`, `Headers`, `Payload`, `PayloadDecoder`, `PayloadError`,
+  `ProviderBlock` and `ProviderEvent`; from `br-llm-clients-core`
+  `CacheRequirement`, `ClientError`, `ClientRequest`, `ClientSettings`,
+  `MaxOutputTokens`, `OutputMode` and `ReasoningLevel`; from `br-llm-messages`
+  `ModelId`, `StopReason` and `Usage`; from `serde_json` `Map` and `Value`, the
+  types of the extra body.
+- Derives. `ReasoningTable`, `ChatCompletionsOptions` and `OptionsError` are
+  `Debug`, `Clone` and `PartialEq`; `ReasoningRule` and `ReasoningEffort` are
+  `Debug`, `Clone`, `Copy` and `PartialEq`. `ChatCompletionsDialect` derives
+  nothing and is `Send` and `Sync`.

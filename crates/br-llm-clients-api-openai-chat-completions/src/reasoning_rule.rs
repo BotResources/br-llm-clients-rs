@@ -1,6 +1,6 @@
 use crate::reasoning_effort::ReasoningEffort;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ReasoningRule {
     Send(ReasoningEffort),
     Omit,

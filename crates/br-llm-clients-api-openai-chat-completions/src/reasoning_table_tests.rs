@@ -30,14 +30,6 @@ fn given_the_two_named_tables_when_the_dialect_is_built_then_it_is_accepted() {
 }
 
 #[test]
-fn given_the_efforts_when_compared_then_they_rise_as_the_reference_lists_them() {
-    let ascending = [NONE, Minimal, Low, Medium, High, Xhigh, Max];
-    for pair in ascending.windows(2) {
-        assert!(pair[0] < pair[1]);
-    }
-}
-
-#[test]
 fn given_the_named_tables_when_compared_with_the_hand_built_rows_then_they_are_equal() {
     assert_eq!(
         ReasoningTable::openai_effort(),
@@ -263,4 +255,23 @@ fn given_the_default_options_helper_when_built_then_it_uses_the_effort_table() {
         options(),
         ChatCompletionsOptions::new(ReasoningTable::openai_effort())
     );
+}
+
+#[test]
+fn given_every_pair_of_adjacent_efforts_when_placed_on_two_levels_then_only_the_rising_order_is_accepted()
+ {
+    let ascending = [Minimal, Low, Medium, High, Xhigh, Max];
+    for pair in ascending.windows(2) {
+        let (lower, higher) = (pair[0], pair[1]);
+        let rising = table([Refuse, Send(lower), Send(higher), Refuse, Refuse, Refuse]);
+        assert!(build(rising).is_ok(), "{lower:?} then {higher:?}");
+        let falling = table([Refuse, Send(higher), Send(lower), Refuse, Refuse, Refuse]);
+        assert!(
+            matches!(
+                build(falling).err(),
+                Some(OptionsError::ReasoningTableDecreasing { .. })
+            ),
+            "{higher:?} then {lower:?}"
+        );
+    }
 }

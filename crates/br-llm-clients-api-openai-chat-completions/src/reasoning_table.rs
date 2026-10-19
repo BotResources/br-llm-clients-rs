@@ -4,7 +4,7 @@ use crate::options_error::OptionsError;
 use crate::reasoning_effort::ReasoningEffort;
 use crate::reasoning_rule::ReasoningRule;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ReasoningTable {
     off: ReasoningRule,
     low: ReasoningRule,
@@ -84,11 +84,11 @@ impl ReasoningTable {
             check_rule(level, rule)?;
             if let ReasoningRule::Send(effort) = rule {
                 if let Some((earlier, top)) = highest
-                    && effort < top
+                    && effort.rank() < top.rank()
                 {
                     return Err(OptionsError::ReasoningTableDecreasing { level, earlier });
                 }
-                if highest.is_none_or(|(_, top)| effort > top) {
+                if highest.is_none_or(|(_, top)| effort.rank() > top.rank()) {
                     highest = Some((level, effort));
                 }
             }

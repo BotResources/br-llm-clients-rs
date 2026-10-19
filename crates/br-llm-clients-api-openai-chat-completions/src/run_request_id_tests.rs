@@ -15,6 +15,7 @@ async fn request_id_with_headers(header_lines: &[u8]) -> Option<String> {
     );
     bytes.extend_from_slice(&body);
     let called = call_with(dialect(), &hello(), move |_| raw(bytes.clone())).await;
+    assert!(called.outcome.result().is_ok());
     called.outcome.report().request_id().map(str::to_owned)
 }
 
