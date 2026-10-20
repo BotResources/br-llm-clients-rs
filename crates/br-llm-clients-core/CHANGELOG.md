@@ -13,7 +13,7 @@ form to decide whether a version ships.
 
 ### Added
 
-- The capabilities contract of the sealed intent of core 0.4, as corrected on
+- The capabilities contract of the intent of core 0.4 as corrected on
   2026-10-19. The public items, all at the root of the crate, are `Accepted`
   (`Any` or `Only` with a list, no public operation), `CapabilitiesSpec` (a
   struct of eight public fields, with `everything`, `nothing` and
@@ -28,16 +28,20 @@ form to decide whether a version ships.
   does not check the messages and never gives `InvalidMessages`.
 - The new capability modules deny `clippy::unwrap_used`,
   `clippy::expect_used`, `clippy::indexing_slicing`,
-  `clippy::arithmetic_side_effects` and `clippy::panic`; the module of the
-  check also denies `clippy::wildcard_enum_match_arm`. No other module of the
+  `clippy::arithmetic_side_effects` and `clippy::panic`; the two modules of the
+  check also deny `clippy::wildcard_enum_match_arm`. No other module of the
   crate carries this lint.
 
 ### Notes
 
 - Additive: no released item, signature or behaviour changes. The mock 0.4.0
-  holds the same shapes of `Capabilities`, `CapabilitiesSpec`, `Accepted` and
-  `CapabilitiesError` in its own crate and keeps compiling unchanged; the types
-  of this crate are new types, not those of the mock.
+  keeps compiling unchanged. It holds its own `Accepted` and its own
+  `CapabilitiesError`, the same as those of this crate, and a
+  `CapabilitiesSpec` with the same eight fields. Its `Capabilities` has no
+  public `nothing`, `normalized` or `check` and none of the accessors of this
+  crate, and its `CapabilitiesSpec` has no `nothing` and no
+  `max_output_tokens_of`. The types of this crate are new types, not those of
+  the mock.
 - `CapabilitiesSpec` and `CapabilitiesError` are not `#[non_exhaustive]`: a new
   field or case is a breaking change of this crate.
 - `Accepted`, `CapabilitiesSpec`, `Capabilities` and `CapabilitiesError` are not

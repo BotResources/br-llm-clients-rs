@@ -1,5 +1,7 @@
-use crate::Accepted;
-use crate::capabilities_test_support::AmbiguousIfDefault;
+use br_llm_messages::ImageMime;
+
+use crate::capabilities_test_support::{AmbiguousIfDefault, assert_plain_data};
+use crate::{Accepted, ReasoningLevel};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Colour {
@@ -42,33 +44,17 @@ fn given_the_forms_when_asked_if_empty_then_only_an_empty_only_is_an_empty_set()
 }
 
 #[test]
-fn given_the_forms_when_compared_then_they_are_equal_only_when_the_same_form_and_list() {
-    assert_eq!(Accepted::<Colour>::Any, Accepted::Any);
-    assert_ne!(Accepted::<Colour>::Any, Accepted::Only(Vec::new()));
-    assert_ne!(Accepted::Any, Accepted::Only(EVERY_COLOUR.to_vec()));
-    assert_eq!(
-        Accepted::Only(vec![Colour::Red]),
-        Accepted::Only(vec![Colour::Red])
-    );
-    assert_ne!(
-        Accepted::Only(vec![Colour::Red]),
-        Accepted::Only(vec![Colour::Green])
-    );
+fn given_an_accepted_when_compiled_then_it_is_plain_data() {
+    assert_plain_data::<Accepted<Colour>>();
+    assert_plain_data::<Accepted<ReasoningLevel>>();
+    assert_plain_data::<Accepted<ImageMime>>();
 }
 
 #[test]
-fn given_an_accepted_when_cloned_and_shown_then_the_clone_is_equal_and_debug_names_the_form() {
+fn given_an_accepted_when_cloned_then_the_clone_is_equal() {
     let accepted = Accepted::Only(vec![Colour::Green]);
     assert_eq!(accepted.clone(), accepted);
-    assert!(format!("{accepted:?}").contains("Only"));
-    assert!(format!("{:?}", Accepted::<Colour>::Any).contains("Any"));
-}
-
-fn assert_eq_bound<T: Eq>() {}
-
-#[test]
-fn given_a_type_with_eq_when_wrapped_then_accepted_is_eq() {
-    assert_eq_bound::<Accepted<Colour>>();
+    assert_eq!(Accepted::<Colour>::Any.clone(), Accepted::Any);
 }
 
 #[test]

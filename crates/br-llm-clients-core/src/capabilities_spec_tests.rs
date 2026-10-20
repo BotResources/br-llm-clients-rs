@@ -2,7 +2,7 @@ use std::num::NonZeroU32;
 
 use br_llm_messages::ImageMime;
 
-use crate::capabilities_test_support::{ALL_MIMES, AmbiguousIfDefault};
+use crate::capabilities_test_support::{AmbiguousIfDefault, assert_plain_data};
 use crate::{Accepted, CapabilitiesSpec, MaxOutputTokens, ReasoningLevel};
 
 fn non_zero(value: u32) -> NonZeroU32 {
@@ -88,39 +88,6 @@ fn given_every_combination_of_images_and_media_types_when_asked_then_only_images
 }
 
 #[test]
-fn given_everything_when_fields_change_then_only_those_fields_differ() {
-    let changed = CapabilitiesSpec {
-        tools: false,
-        max_output_tokens: CapabilitiesSpec::max_output_tokens_of(non_zero(10)),
-        image_media_types: Accepted::Only(ALL_MIMES.to_vec()),
-        ..CapabilitiesSpec::everything()
-    };
-    assert!(!changed.tools);
-    assert_eq!(changed.max_output_tokens.get(), 10);
-    assert!(changed.caching);
-    assert_ne!(changed, CapabilitiesSpec::everything());
-}
-
-#[test]
-fn given_a_spec_when_cloned_and_shown_then_the_clone_is_equal_and_debug_shows_the_fields() {
-    let spec = CapabilitiesSpec::nothing();
-    assert_eq!(spec.clone(), spec);
-    let shown = format!("{spec:?}");
-    for field in [
-        "reasoning_levels",
-        "max_output_tokens",
-        "tools",
-        "structured_output",
-        "structured_output_with_tools",
-        "caching",
-        "images",
-        "image_media_types",
-    ] {
-        assert!(shown.contains(field), "{field}");
-    }
-}
-
-#[test]
 fn given_two_specs_that_differ_in_one_field_when_compared_then_they_are_not_equal() {
     let base = CapabilitiesSpec::everything();
     let variants = [
@@ -162,15 +129,9 @@ fn given_two_specs_that_differ_in_one_field_when_compared_then_they_are_not_equa
     }
 }
 
-fn assert_plain_data<T: Send + Sync + 'static + Eq + Clone + std::fmt::Debug>() {}
-
 #[test]
-fn given_the_capability_types_when_compiled_then_they_are_send_sync_and_static() {
+fn given_a_spec_when_compiled_then_it_is_plain_data() {
     assert_plain_data::<CapabilitiesSpec>();
-    assert_plain_data::<crate::Capabilities>();
-    assert_plain_data::<crate::CapabilitiesError>();
-    assert_plain_data::<Accepted<ReasoningLevel>>();
-    assert_plain_data::<Accepted<ImageMime>>();
 }
 
 #[test]

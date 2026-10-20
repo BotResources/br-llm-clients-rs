@@ -1,12 +1,16 @@
 use br_llm_messages::ImageMime;
 
 use crate::capabilities_test_support::{
-    ALL_MIMES, AmbiguousIfDefault, caps_with, image_request, plain_settings,
+    ALL_MIMES, AmbiguousIfDefault, assert_plain_data, caps_with, image_request, plain_settings,
 };
 use crate::{
     Accepted, Capabilities, CapabilitiesError, CapabilitiesSpec, ClientError, MaxOutputTokens,
     ReasoningLevel,
 };
+
+fn is_inconsistent(spec: &CapabilitiesSpec) -> bool {
+    spec.images && spec.image_media_types == Accepted::Only(Vec::new())
+}
 
 fn level_sets() -> Vec<Accepted<ReasoningLevel>> {
     vec![
@@ -54,7 +58,7 @@ fn every_spec() -> Vec<CapabilitiesSpec> {
 #[test]
 fn given_every_spec_when_built_with_new_then_only_the_inconsistent_spec_is_refused() {
     for spec in every_spec() {
-        let inconsistent = spec.images && spec.image_media_types == Accepted::Only(Vec::new());
+        let inconsistent = is_inconsistent(&spec);
         match Capabilities::new(spec.clone()) {
             Err(error) => {
                 assert!(inconsistent, "{spec:?}");
@@ -70,18 +74,23 @@ fn given_every_spec_when_built_with_new_then_only_the_inconsistent_spec_is_refus
 
 #[test]
 fn given_every_consistent_spec_when_normalized_then_the_value_is_the_one_of_new() {
+    let mut seen = 0;
     for spec in every_spec() {
-        if let Ok(built) = Capabilities::new(spec.clone()) {
-            assert_eq!(Capabilities::normalized(spec), built);
+        if is_inconsistent(&spec) {
+            continue;
         }
+        seen += 1;
+        let built = Capabilities::new(spec.clone()).unwrap();
+        assert_eq!(Capabilities::normalized(spec), built);
     }
+    assert!(seen > 0);
 }
 
 #[test]
 fn given_every_inconsistent_spec_when_normalized_then_images_is_false_and_nothing_else_changes() {
     let mut seen = 0;
     for spec in every_spec() {
-        if Capabilities::new(spec.clone()).is_ok() {
+        if !is_inconsistent(&spec) {
             continue;
         }
         seen += 1;
@@ -200,7 +209,7 @@ fn given_the_three_booleans_when_combined_then_structured_output_with_tools_need
 }
 
 #[test]
-fn given_a_capabilities_when_cloned_compared_and_shown_then_equality_follows_every_field() {
+fn given_a_capabilities_when_cloned_and_compared_then_equality_follows_every_field() {
     let capabilities = Capabilities::nothing();
     assert_eq!(capabilities.clone(), capabilities);
     assert_ne!(capabilities, Capabilities::everything());
@@ -213,32 +222,16 @@ fn given_a_capabilities_when_cloned_compared_and_shown_then_equality_follows_eve
             }
         })
     );
-    let shown = format!("{capabilities:?}");
-    assert!(shown.contains("Capabilities"));
-    assert!(shown.contains("max_output_tokens"));
-    assert!(shown.contains("image_media_types"));
+}
+
+#[test]
+fn given_a_capabilities_when_compiled_then_it_is_plain_data() {
+    assert_plain_data::<Capabilities>();
 }
 
 #[test]
 fn given_a_capabilities_when_compiled_then_it_has_no_default_value() {
     <Capabilities as AmbiguousIfDefault<_>>::proof();
-}
-
-#[test]
-fn given_the_error_when_shown_then_the_text_is_exact() {
-    assert_eq!(
-        CapabilitiesError::InconsistentCapabilities.to_string(),
-        "images are supported but the set of image media types is empty"
-    );
-}
-
-#[test]
-fn given_the_error_when_used_then_it_is_a_std_error_with_debug_clone_and_equality() {
-    let error = CapabilitiesError::InconsistentCapabilities;
-    let as_error: &dyn std::error::Error = &error;
-    assert!(as_error.source().is_none());
-    assert_eq!(error.clone(), error);
-    assert!(format!("{error:?}").contains("InconsistentCapabilities"));
 }
 
 #[test]

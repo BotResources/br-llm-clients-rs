@@ -5,7 +5,7 @@ use br_llm_messages::{
 
 use crate::test_support::{text, tool};
 use crate::{
-    CacheRequirement, Capabilities, CapabilitiesSpec, ClientRequest, ClientSettings,
+    CacheRequirement, Capabilities, CapabilitiesSpec, ClientError, ClientRequest, ClientSettings,
     MaxOutputTokens, OutputMode, Parameters, ReasoningLevel, StructuredShape, ToolSpec,
 };
 
@@ -17,6 +17,24 @@ pub(crate) const ALL_LEVELS: [ReasoningLevel; 6] = [
     ReasoningLevel::Extra,
     ReasoningLevel::Max,
 ];
+
+fn position_of(level: ReasoningLevel) -> usize {
+    match level {
+        ReasoningLevel::Off => 0,
+        ReasoningLevel::Low => 1,
+        ReasoningLevel::Medium => 2,
+        ReasoningLevel::High => 3,
+        ReasoningLevel::Extra => 4,
+        ReasoningLevel::Max => 5,
+    }
+}
+
+#[test]
+fn given_every_reasoning_level_when_listed_then_all_levels_holds_it_at_its_position() {
+    for (index, level) in ALL_LEVELS.iter().enumerate() {
+        assert_eq!(position_of(*level), index);
+    }
+}
 
 pub(crate) const ALL_MIMES: [ImageMime; 4] = [
     ImageMime::Jpeg,
@@ -115,3 +133,85 @@ pub(crate) trait AmbiguousIfDefault<Marker> {
 }
 impl<T: ?Sized> AmbiguousIfDefault<()> for T {}
 impl<T: Default> AmbiguousIfDefault<u8> for T {}
+
+pub(crate) fn assert_plain_data<T: Send + Sync + 'static + Eq + Clone + std::fmt::Debug>() {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum Step {
+    Reasoning,
+    Cache,
+    Tokens,
+    Tools,
+    Structured,
+    StructuredWithTools,
+    Image,
+    MediaType,
+}
+
+pub(crate) const STEPS: [Step; 8] = [
+    Step::Reasoning,
+    Step::Cache,
+    Step::Tokens,
+    Step::Tools,
+    Step::Structured,
+    Step::StructuredWithTools,
+    Step::Image,
+    Step::MediaType,
+];
+
+impl Step {
+    pub(crate) fn of(error: &ClientError) -> Self {
+        match error {
+            ClientError::ReasoningNotSupported { .. } => Self::Reasoning,
+            ClientError::CacheNotSupported => Self::Cache,
+            ClientError::MaxOutputTokensTooLarge { .. } => Self::Tokens,
+            ClientError::ToolsNotSupported => Self::Tools,
+            ClientError::StructuredOutputNotSupported => Self::Structured,
+            ClientError::StructuredOutputWithToolsNotSupported => Self::StructuredWithTools,
+            ClientError::ImageNotSupported => Self::Image,
+            ClientError::ImageMediaTypeNotSupported { .. } => Self::MediaType,
+            other => panic!("a case outside the check: {other:?}"),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct CallShape {
+    pub(crate) level: ReasoningLevel,
+    pub(crate) cache: CacheRequirement,
+    pub(crate) tokens: u32,
+    pub(crate) tools: bool,
+    pub(crate) structured: bool,
+    pub(crate) image: Option<ImageMime>,
+}
+
+impl CallShape {
+    pub(crate) fn plain(tokens: u32) -> Self {
+        Self {
+            level: ReasoningLevel::Off,
+            cache: CacheRequirement::NotRequired,
+            tokens,
+            tools: false,
+            structured: false,
+            image: None,
+        }
+    }
+
+    pub(crate) fn settings(&self) -> ClientSettings {
+        settings(self.level, self.cache, self.tokens)
+    }
+
+    pub(crate) fn request(&self) -> ClientRequest {
+        let output = if self.structured {
+            shape()
+        } else {
+            OutputMode::Plain
+        };
+        let tools = if self.tools { one_tool() } else { vec![] };
+        let messages = match self.image {
+            Some(mime) => vec![user_text("see"), user_images(&[mime])],
+            None => vec![user_text("hello")],
+        };
+        request_of(messages, tools, output)
+    }
+}

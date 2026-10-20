@@ -1,7 +1,7 @@
 [package]
 name = "br-llm-clients-core"
 version = "0.4.1"
-description = "Contract shared by all LLM client libraries: call settings, request, tool and output vocabulary, errors, the Client and StreamSink traits"
+description = "Contract shared by all LLM client libraries: call settings, request, tool and output vocabulary, errors, the capabilities declaration with its ordered check, the Client and StreamSink traits"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

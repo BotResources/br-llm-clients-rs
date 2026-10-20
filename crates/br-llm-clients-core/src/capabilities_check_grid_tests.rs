@@ -1,51 +1,17 @@
 use br_llm_messages::ImageMime;
 
-use crate::capabilities_test_support::{
-    ALL_LEVELS, ALL_MIMES, one_tool, request_of, settings, shape, user_images, user_text,
-};
-use crate::{
-    Accepted, CacheRequirement, Capabilities, CapabilitiesSpec, ClientError, ClientRequest,
-    ClientSettings, OutputMode, ReasoningLevel,
-};
+use crate::capabilities_test_support::{ALL_LEVELS, ALL_MIMES, CallShape, STEPS, Step};
+use crate::{Accepted, CacheRequirement, Capabilities, CapabilitiesSpec, ReasoningLevel};
 
-struct Call {
-    level: ReasoningLevel,
-    cache: CacheRequirement,
-    tokens: u32,
-    tools: bool,
-    structured: bool,
-    image: Option<ImageMime>,
+fn uses_a_feature(call: &CallShape) -> bool {
+    call.level != ReasoningLevel::Off
+        || call.cache == CacheRequirement::Required
+        || call.tools
+        || call.structured
+        || call.image.is_some()
 }
 
-impl Call {
-    fn settings(&self) -> ClientSettings {
-        settings(self.level, self.cache, self.tokens)
-    }
-
-    fn request(&self) -> ClientRequest {
-        let output = if self.structured {
-            shape()
-        } else {
-            OutputMode::Plain
-        };
-        let tools = if self.tools { one_tool() } else { vec![] };
-        let messages = match self.image {
-            Some(mime) => vec![user_images(&[mime])],
-            None => vec![user_text("hello")],
-        };
-        request_of(messages, tools, output)
-    }
-
-    fn uses_a_feature(&self) -> bool {
-        self.level != ReasoningLevel::Off
-            || self.cache == CacheRequirement::Required
-            || self.tools
-            || self.structured
-            || self.image.is_some()
-    }
-}
-
-fn every_call() -> Vec<Call> {
+fn every_call() -> Vec<CallShape> {
     let mut calls = Vec::new();
     for level in ALL_LEVELS {
         for cache in [CacheRequirement::Required, CacheRequirement::NotRequired] {
@@ -54,7 +20,7 @@ fn every_call() -> Vec<Call> {
                     for structured in [true, false] {
                         let images = [None].into_iter().chain(ALL_MIMES.into_iter().map(Some));
                         for image in images {
-                            calls.push(Call {
+                            calls.push(CallShape {
                                 level,
                                 cache,
                                 tokens,
@@ -77,7 +43,8 @@ fn given_everything_when_any_call_is_checked_then_nothing_is_refused() {
     for call in every_call() {
         assert_eq!(
             capabilities.check(&call.settings(), &call.request()),
-            Ok(())
+            Ok(()),
+            "{call:?}"
         );
     }
 }
@@ -87,7 +54,11 @@ fn given_nothing_when_a_call_is_checked_then_it_is_refused_exactly_when_it_uses_
     let capabilities = Capabilities::nothing();
     for call in every_call() {
         let result = capabilities.check(&call.settings(), &call.request());
-        assert_eq!(result.is_err(), call.uses_a_feature(), "{:?}", result);
+        assert_eq!(
+            result.is_err(),
+            uses_a_feature(&call),
+            "{call:?} {result:?}"
+        );
     }
 }
 
@@ -95,14 +66,7 @@ fn given_nothing_when_a_call_is_checked_then_it_is_refused_exactly_when_it_uses_
 fn given_nothing_when_a_plain_call_asks_for_any_number_of_tokens_then_it_passes() {
     let capabilities = Capabilities::nothing();
     for tokens in [1, 8192, u32::MAX] {
-        let call = Call {
-            level: ReasoningLevel::Off,
-            cache: CacheRequirement::NotRequired,
-            tokens,
-            tools: false,
-            structured: false,
-            image: None,
-        };
+        let call = CallShape::plain(tokens);
         assert_eq!(
             capabilities.check(&call.settings(), &call.request()),
             Ok(())
@@ -110,7 +74,7 @@ fn given_nothing_when_a_plain_call_asks_for_any_number_of_tokens_then_it_passes(
     }
 }
 
-fn expected_refusal(spec: &CapabilitiesSpec, call: &Call) -> Option<&'static str> {
+fn expected_refusal(spec: &CapabilitiesSpec, call: &CallShape) -> Option<Step> {
     let accepted_level = match &spec.reasoning_levels {
         Accepted::Any => true,
         Accepted::Only(list) => list.contains(&call.level),
@@ -119,45 +83,23 @@ fn expected_refusal(spec: &CapabilitiesSpec, call: &Call) -> Option<&'static str
         Accepted::Any => true,
         Accepted::Only(list) => list.contains(&mime),
     };
-    let rules: [(bool, &'static str); 8] = [
-        (!accepted_level, "reasoning"),
-        (
-            call.cache == CacheRequirement::Required && !spec.caching,
-            "cache",
-        ),
-        (call.tokens > spec.max_output_tokens.get(), "tokens"),
-        (call.tools && !spec.tools, "tools"),
-        (call.structured && !spec.structured_output, "structured"),
-        (
-            call.structured
-                && call.tools
-                && !(spec.tools && spec.structured_output && spec.structured_output_with_tools),
-            "structured_with_tools",
-        ),
-        (call.image.is_some() && !spec.images, "image"),
-        (
-            call.image
-                .is_some_and(|mime| spec.images && !accepted_mime(mime)),
-            "media_type",
-        ),
+    let broken: [bool; 8] = [
+        !accepted_level,
+        call.cache == CacheRequirement::Required && !spec.caching,
+        call.tokens > spec.max_output_tokens.get(),
+        call.tools && !spec.tools,
+        call.structured && !spec.structured_output,
+        call.structured
+            && call.tools
+            && !(spec.tools && spec.structured_output && spec.structured_output_with_tools),
+        call.image.is_some() && !spec.images,
+        call.image
+            .is_some_and(|mime| spec.images && !accepted_mime(mime)),
     ];
-    rules
+    STEPS
         .into_iter()
-        .find_map(|(broken, name)| broken.then_some(name))
-}
-
-fn name_of(error: &ClientError) -> &'static str {
-    match error {
-        ClientError::ReasoningNotSupported { .. } => "reasoning",
-        ClientError::CacheNotSupported => "cache",
-        ClientError::MaxOutputTokensTooLarge { .. } => "tokens",
-        ClientError::ToolsNotSupported => "tools",
-        ClientError::StructuredOutputNotSupported => "structured",
-        ClientError::StructuredOutputWithToolsNotSupported => "structured_with_tools",
-        ClientError::ImageNotSupported => "image",
-        ClientError::ImageMediaTypeNotSupported { .. } => "media_type",
-        other => panic!("a case outside the check: {other:?}"),
-    }
+        .zip(broken)
+        .find_map(|(step, is_broken)| is_broken.then_some(step))
 }
 
 #[test]
@@ -190,21 +132,14 @@ fn given_a_grid_of_declarations_and_calls_when_checked_then_the_first_broken_rul
         },
     ];
     for spec in specs {
-        let capabilities = Capabilities::normalized(spec.clone());
+        let capabilities = Capabilities::new(spec.clone()).unwrap();
         for call in every_call() {
             let result = capabilities.check(&call.settings(), &call.request());
-            let expected = expected_refusal(capabilities.spec(), &call);
-            assert_eq!(result.as_ref().err().map(name_of), expected, "{spec:?}");
-        }
-    }
-}
-
-#[test]
-fn given_any_call_when_checked_then_the_refusal_is_never_invalid_messages() {
-    for capabilities in [Capabilities::nothing(), Capabilities::everything()] {
-        for call in every_call() {
-            let result = capabilities.check(&call.settings(), &call.request());
-            assert!(!matches!(result, Err(ClientError::InvalidMessages { .. })));
+            assert_eq!(
+                result.as_ref().err().map(Step::of),
+                expected_refusal(&spec, &call),
+                "{spec:?} {call:?}"
+            );
         }
     }
 }

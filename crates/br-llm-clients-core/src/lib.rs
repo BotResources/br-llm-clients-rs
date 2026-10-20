@@ -27,11 +27,13 @@ mod call_outcome_tests;
 #[cfg(test)]
 mod capabilities_check_grid_tests;
 #[cfg(test)]
-mod capabilities_check_image_tests;
+mod capabilities_check_images_tests;
 #[cfg(test)]
 mod capabilities_check_order_tests;
 #[cfg(test)]
 mod capabilities_check_tests;
+#[cfg(test)]
+mod capabilities_error_tests;
 #[cfg(test)]
 mod capabilities_spec_tests;
 #[cfg(test)]

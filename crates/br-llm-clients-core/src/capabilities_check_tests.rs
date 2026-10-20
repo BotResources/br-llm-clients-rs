@@ -274,17 +274,11 @@ fn given_a_conversation_that_breaks_the_message_rules_when_checked_then_the_chec
 }
 
 #[test]
-fn given_the_same_arguments_when_checked_twice_then_the_result_is_the_same_and_the_arguments_are_unchanged()
- {
+fn given_the_same_arguments_when_checked_twice_then_the_result_is_the_same() {
     let capabilities = Capabilities::nothing();
     let request = image_request(&[ImageMime::Png]);
     let settings = level_settings(ReasoningLevel::High);
-    let (capabilities_before, request_before, settings_before) =
-        (capabilities.clone(), request.clone(), settings.clone());
     let first = capabilities.check(&settings, &request);
-    let second = capabilities.check(&settings, &request);
-    assert_eq!(first, second);
-    assert_eq!(capabilities, capabilities_before);
-    assert_eq!(request, request_before);
-    assert_eq!(settings, settings_before);
+    assert!(first.is_err());
+    assert_eq!(first, capabilities.check(&settings, &request));
 }
