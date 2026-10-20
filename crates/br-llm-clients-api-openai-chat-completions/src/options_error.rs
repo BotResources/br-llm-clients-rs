@@ -69,7 +69,7 @@ impl fmt::Display for OptionsError {
             }
             OptionsError::ReservedCarryBackField { field } => write!(
                 f,
-                "the reasoning carry-back field name `{field}` is a member that the dialect writes"
+                "the reasoning carry-back field name `{field}` is a name that the dialect reserves"
             ),
             OptionsError::BlankEmptyToolResultText => {
                 f.write_str("the text for an empty tool result is blank")
