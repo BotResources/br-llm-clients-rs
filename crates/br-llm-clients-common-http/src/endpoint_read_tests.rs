@@ -16,6 +16,10 @@ fn given_a_host_when_read_then_it_keeps_its_letter_case_and_the_ipv6_brackets() 
         https("https://[2001:db8::1]:8443/x").host(),
         "[2001:db8::1]"
     );
+    assert_eq!(
+        https("https://[2001:DB8:0:0::1]/x").host(),
+        "[2001:DB8:0:0::1]"
+    );
     assert_eq!(plain("http://LocalHost:80/x").host(), "LocalHost");
     assert_eq!(https("https://example.com./x").host(), "example.com.");
 }
@@ -145,26 +149,19 @@ fn given_the_constructor_when_asked_if_https_then_only_the_secure_constructor_sa
 }
 
 #[test]
-fn given_an_endpoint_when_built_on_then_the_original_reads_the_same() {
+fn given_an_endpoint_when_built_on_then_only_the_added_part_differs() {
     let base = https("https://H:8443/v1?a=b");
-    let before = (
-        base.host().to_owned(),
-        base.port(),
-        base.path().to_owned(),
-        base.query().map(str::to_owned),
-        base.is_https(),
-    );
-    let _ = base.join_segment("m").unwrap();
-    let _ = base.with_query_pair("c", "d").unwrap();
-    let after = (
-        base.host().to_owned(),
-        base.port(),
-        base.path().to_owned(),
-        base.query().map(str::to_owned),
-        base.is_https(),
-    );
-    assert_eq!(before, after);
-    assert_eq!(base.clone().query(), base.query());
+    let joined = base.join_segment("m").unwrap();
+    let queried = base.with_query_pair("c", "d").unwrap();
+    assert_eq!(joined.path(), "/v1/m");
+    assert_eq!(joined.query(), base.query());
+    assert_eq!(queried.path(), base.path());
+    assert_eq!(queried.query(), Some("a=b&c=d"));
+    for built in [&joined, &queried] {
+        assert_eq!(built.host(), "H");
+        assert_eq!(built.port(), 8443);
+        assert!(built.is_https());
+    }
 }
 
 #[test]

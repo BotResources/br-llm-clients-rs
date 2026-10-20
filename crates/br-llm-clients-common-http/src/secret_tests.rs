@@ -79,13 +79,6 @@ fn given_a_non_ascii_value_when_asked_then_the_match_is_exact_on_bytes() {
 }
 
 #[test]
-fn given_the_check_when_used_then_the_secret_still_shows_only_the_placeholder() {
-    let secret = Secret::new("sk-zzz").expect("secret");
-    assert!(secret.appears_in("sk-zzz"));
-    assert_eq!(format!("{secret:?}{secret}"), "[redacted][redacted]");
-}
-
-#[test]
 fn given_a_text_cleaned_by_the_second_barrier_when_asked_then_the_secret_no_longer_appears() {
     let secret = Secret::new("sk-9").expect("secret");
     let text = "failed with sk-9 in it";

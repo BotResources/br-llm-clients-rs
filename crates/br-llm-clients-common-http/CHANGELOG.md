@@ -11,7 +11,7 @@ form to decide whether a version ships.
 
 ## 0.2.0
 
-No change breaks 0.1.0. Seven operations are added and nothing else changes.
+No change breaks 0.1.0. Seven operations are added and nothing else changes, except that the default `User-Agent`, used when no `user_agent` is configured, now names `0.2.0`.
 
 ### Added
 
@@ -30,7 +30,7 @@ No change breaks 0.1.0. Seven operations are added and nothing else changes.
   value.
 - `Response::retry_after_ms` reads the `retry-after-ms` header (first value) and
   gives a duration: decimal digits, with or without a space or a tab around
-  them, are milliseconds and a number too large saturates at the largest
+  them, are milliseconds and a number too large for a `Duration` saturates at the largest
   duration. A date, a fraction or a sign gives nothing. It does not read
   `Retry-After`, and `retry_after` does not read `retry-after-ms` and is
   unchanged.
