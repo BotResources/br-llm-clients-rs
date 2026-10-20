@@ -1,4 +1,4 @@
-use br_llm_clients_common_http::{Endpoint, Secret};
+use br_llm_clients_common_call::{Endpoint, Secret};
 
 #[derive(Debug, Clone)]
 pub struct AnthropicConfig {

@@ -4,7 +4,7 @@ use br_llm_clients_core::{Accepted, Capabilities, CapabilitiesSpec, ReasoningLev
 
 const OUTPUT_CEILING: NonZeroU32 = match NonZeroU32::new(128_000) {
     Some(ceiling) => ceiling,
-    None => NonZeroU32::MIN,
+    None => panic!("the output ceiling must not be zero"),
 };
 
 const WITHOUT_OFF: [ReasoningLevel; 5] = [

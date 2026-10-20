@@ -41,7 +41,7 @@ fn parse_line(line: &str) -> Option<(String, String)> {
     }
     let (name, value) = line.split_once('=')?;
     let value = value.trim().trim_matches('"').trim_matches('\'');
-    Some((name.trim().to_owned(), value.to_owned()))
+    (!value.is_empty()).then(|| (name.trim().to_owned(), value.to_owned()))
 }
 
 fn load_env_files() -> HashMap<String, String> {
@@ -61,8 +61,8 @@ fn load_env_files() -> HashMap<String, String> {
 fn lookup(file: &HashMap<String, String>, name: &str) -> Option<String> {
     std::env::var(name)
         .ok()
-        .or_else(|| file.get(name).cloned())
         .filter(|value| !value.is_empty())
+        .or_else(|| file.get(name).cloned())
 }
 
 fn user(blocks: Vec<WireUserBlock>) -> WireMessage {
