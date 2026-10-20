@@ -11,6 +11,7 @@ Provider clients for LLM calls: send a system prompt, tools and a chat history f
 - `br-llm-clients-api-openai-chat-completions` — the OpenAI Chat Completions wire dialect: encodes a request and decodes the streamed reply and the errors of the Chat Completions API for the shared call; it is meant to be used by the provider clients (none exists yet).
 - `br-llm-clients-kimi` — the client of the Kimi models of Moonshot AI: a `Client` of `br-llm-clients-core` over the Chat Completions API of a Moonshot host, with the way each Kimi model takes thinking.
 - `br-llm-clients-common-sse` — a Server-Sent Events decoder: turns the bytes of a response body into frames, with a size limit and no hidden damage.
+- `br-llm-clients-litellm` — the `Client` for a LiteLLM proxy: sends a call to the proxy in the chat completions, responses or messages dialect, with a virtual key and the capabilities the operator declares for a name.
 
 **Status:** `br-llm-clients-core` is at `0.4.1`, `br-llm-clients-mock` is at `0.5.0`, and `br-llm-clients-common-sse`, `br-llm-clients-common-http`, `br-llm-clients-common-call`, `br-llm-clients-api-anthropic-messages`, `br-llm-clients-api-openai-responses` and `br-llm-clients-api-openai-chat-completions` and `br-llm-clients-kimi` are at `0.1.0`; the other crates are not written yet.
 
@@ -26,6 +27,7 @@ br-llm-clients-api-openai-responses = { git = "https://github.com/BotResources/b
 br-llm-clients-api-openai-chat-completions = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-api-openai-chat-completions", tag = "br-llm-clients-api-openai-chat-completions/v0.1.0", version = "0.1.0" }
 br-llm-clients-common-http = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-common-http", tag = "br-llm-clients-common-http/v0.1.0", version = "0.1.0" }
 br-llm-clients-kimi = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-kimi", tag = "br-llm-clients-kimi/v0.1.0", version = "0.1.0" }
+br-llm-clients-litellm = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-litellm", tag = "br-llm-clients-litellm/v0.1.0", version = "0.1.0" }
 ```
 
 ## Provider keys for real calls

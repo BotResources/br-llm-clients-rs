@@ -172,6 +172,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "br-llm-clients-litellm"
+version = "0.1.0"
+dependencies = [
+ "br-llm-clients-api-anthropic-messages",
+ "br-llm-clients-api-openai-chat-completions",
+ "br-llm-clients-api-openai-responses",
+ "br-llm-clients-common-call",
+ "br-llm-clients-common-http",
+ "br-llm-clients-core",
+ "br-llm-messages",
+ "serde_json",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "br-llm-clients-mock"
 version = "0.5.0"
 dependencies = [
