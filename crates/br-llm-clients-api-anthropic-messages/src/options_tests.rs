@@ -160,15 +160,12 @@ fn given_an_extra_body_when_debug_is_shown_then_the_names_appear_and_no_value_do
 }
 
 #[test]
-fn given_the_default_options_when_debug_is_shown_then_no_member_name_appears() {
+fn given_the_default_options_when_debug_is_shown_then_the_member_list_is_empty() {
     let text = format!("{:?}", MessagesOptions::new());
-    for name in RESERVED.iter().chain(&["metadata", "temperature"]) {
-        assert!(
-            !text.contains(&format!("\"{name}\"")),
-            "{name} appeared in {text}"
-        );
+    assert!(text.contains("extra_body_members: []"), "{text}");
+    for name in ["metadata", "temperature", "user_id"] {
+        assert!(!text.contains(name), "{name} appeared in {text}");
     }
-    assert!(!text.contains("2023"));
 }
 
 #[test]
