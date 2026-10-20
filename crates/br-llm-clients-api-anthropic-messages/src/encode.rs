@@ -6,7 +6,7 @@ use crate::encode_messages::encode_messages;
 pub(crate) use crate::encode_settings::EncodeSettings;
 use crate::encode_settings::{cache_control, thinking};
 use crate::encode_tools::{structured_format, tool_values};
-use crate::options::{ModelPlacement, VersionPlacement};
+use crate::options::VersionPlacement;
 
 const API_VERSION: &str = "2023-06-01";
 
@@ -25,7 +25,7 @@ pub(crate) fn encode(
 
     let options = settings.options();
     let mut body = Map::new();
-    if matches!(options.model(), ModelPlacement::Body) {
+    if options.model().writes_model() {
         body.insert("model".to_owned(), json!(settings.model()));
     }
     body.insert("max_tokens".to_owned(), json!(settings.max_tokens()));

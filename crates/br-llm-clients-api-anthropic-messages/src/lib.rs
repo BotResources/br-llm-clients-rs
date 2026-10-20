@@ -71,6 +71,8 @@ mod options_default_tests;
 #[cfg(test)]
 mod options_equivalence_tests;
 #[cfg(test)]
+mod options_reserved_tests;
+#[cfg(test)]
 mod options_tests;
 #[cfg(test)]
 mod recorded_redacted_tests;

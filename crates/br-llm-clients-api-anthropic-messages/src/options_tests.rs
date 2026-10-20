@@ -6,7 +6,7 @@ use crate::test_fixtures::*;
 use crate::test_shapes::every_request_shape;
 use crate::{AnthropicMessages, MessagesOptions, ModelPlacement, OptionsError, VersionPlacement};
 
-const RESERVED: [&str; 10] = [
+pub(crate) const RESERVED: [&str; 10] = [
     "model",
     "max_tokens",
     "stream",
@@ -179,7 +179,6 @@ fn given_each_reserved_name_when_set_as_extra_body_then_it_is_refused_with_that_
             .with_model_placement(ModelPlacement::Omitted)
             .with_version_placement(vertex()),
     ];
-    assert_eq!(RESERVED.len(), 10);
     for name in RESERVED {
         for options in &placements {
             let mut members = Map::new();
@@ -190,7 +189,9 @@ fn given_each_reserved_name_when_set_as_extra_body_then_it_is_refused_with_that_
                 .expect_err("refused");
             assert_eq!(
                 error,
-                OptionsError::ReservedExtraBodyMember(name.to_owned())
+                OptionsError::ReservedExtraBodyMember {
+                    member: name.to_owned()
+                }
             );
             let text = error.to_string();
             assert!(text.contains(name));
@@ -204,18 +205,15 @@ fn given_several_reserved_names_when_set_then_one_of_them_is_named() {
     let error = MessagesOptions::new()
         .with_extra_body(object(json!({"system": 1, "tools": 2, "metadata": 3})))
         .expect_err("refused");
-    let OptionsError::ReservedExtraBodyMember(name) = error;
-    assert!(["system", "tools"].contains(&name.as_str()));
+    let OptionsError::ReservedExtraBodyMember { member } = error;
+    assert!(["system", "tools"].contains(&member.as_str()));
 }
 
+fn assert_error<T: std::error::Error + Clone + PartialEq>() {}
+
 #[test]
-fn given_a_refused_extra_body_when_set_then_the_error_is_a_std_error_and_clones_equal() {
-    let error = MessagesOptions::new()
-        .with_extra_body(object(json!({"model": "x"})))
-        .expect_err("refused");
-    let boxed: Box<dyn std::error::Error> = Box::new(error.clone());
-    assert!(boxed.to_string().contains("model"));
-    assert_eq!(error.clone(), error);
+fn given_the_options_error_when_used_as_an_error_then_it_is_clone_and_partial_eq() {
+    assert_error::<OptionsError>();
 }
 
 #[test]
@@ -247,5 +245,29 @@ fn given_a_serde_json_map_when_passed_to_with_extra_body_then_it_needs_no_conver
             .with_extra_body(reexported)
             .and_then(|options| options.with_extra_body(again))
             .is_ok()
+    );
+}
+
+#[test]
+fn given_the_vertex_options_when_encoded_then_the_model_is_absent_the_version_is_in_the_body_and_the_rest_is_default()
+ {
+    let options = extra(json!({"metadata": {"user_id": "u1"}}))
+        .with_model_placement(ModelPlacement::Omitted)
+        .with_version_placement(vertex());
+    let encoded = dialect_options(options)
+        .encode(&request(vec![user("hello")]))
+        .expect("encoded");
+    let body: Value = serde_json::from_slice(encoded.body()).expect("json");
+    assert!(body.get("model").is_none());
+    assert_eq!(body["anthropic_version"], json!("vertex-2023-10-16"));
+    assert_eq!(body["metadata"], json!({"user_id": "u1"}));
+    let rest = without(
+        without(without(body, "anthropic_version"), "metadata"),
+        "model",
+    );
+    assert_eq!(rest, without(default_body(), "model"));
+    assert_eq!(
+        encoded.headers(),
+        &[("content-type".to_owned(), "application/json".to_owned())]
     );
 }

@@ -34,7 +34,7 @@ and an importer must use `br-llm-clients-common-call` 0.2 to give it to a `CallS
   dialect writes or may write (`model`, `max_tokens`, `stream`, `messages`, `system`, `tools`,
   `thinking`, `output_config`, `cache_control`, `anthropic_version`) are refused for every
   placement.
-- `OptionsError` with the case `ReservedExtraBodyMember(name)`; its text names the member and shows
+- `OptionsError` with the case `ReservedExtraBodyMember { member }`; its text names the member and shows
   no value. `#[non_exhaustive]`.
 - `AnthropicMessages::with_options(&ClientSettings, MessagesOptions)`: infallible; `new` gives the
   same dialect as `with_options` with the default options.

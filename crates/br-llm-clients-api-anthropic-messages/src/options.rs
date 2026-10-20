@@ -24,6 +24,15 @@ pub enum ModelPlacement {
     Omitted,
 }
 
+impl ModelPlacement {
+    pub(crate) fn writes_model(&self) -> bool {
+        match self {
+            ModelPlacement::Body => true,
+            ModelPlacement::Omitted => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum VersionPlacement {
@@ -62,7 +71,9 @@ impl MessagesOptions {
             .iter()
             .find(|member| extra_body.contains_key(**member))
         {
-            return Err(OptionsError::ReservedExtraBodyMember((*member).to_owned()));
+            return Err(OptionsError::ReservedExtraBodyMember {
+                member: (*member).to_owned(),
+            });
         }
         self.extra_body = extra_body;
         Ok(self)

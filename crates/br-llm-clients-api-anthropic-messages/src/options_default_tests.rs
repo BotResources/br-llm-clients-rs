@@ -82,6 +82,13 @@ fn given_the_default_options_when_encoded_then_with_options_gives_the_bytes_and_
             .encode(shape)
             .expect("options");
         assert_eq!(by_new.body(), by_options.body());
+        assert_eq!(
+            by_options.headers(),
+            &[
+                ("content-type".to_owned(), "application/json".to_owned()),
+                ("anthropic-version".to_owned(), "2023-06-01".to_owned()),
+            ]
+        );
         assert_eq!(by_new.headers(), by_options.headers());
         let body: Value = serde_json::from_slice(by_options.body()).expect("json");
         assert_eq!(body, expected);
@@ -91,5 +98,4 @@ fn given_the_default_options_when_encoded_then_with_options_gives_the_bytes_and_
 #[test]
 fn given_the_default_options_when_compared_then_new_and_default_are_equal() {
     assert_eq!(MessagesOptions::new(), MessagesOptions::default());
-    assert_eq!(MessagesOptions::new().clone(), MessagesOptions::new());
 }
