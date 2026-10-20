@@ -133,3 +133,24 @@ async fn given_a_secret_in_neither_list_nor_log_when_it_crosses_the_cut_then_its
     let seen = refused(&[], &[], crossing(SECRET, 5, CAP + 500)).await;
     assert!(seen.dialect_text.ends_with("QZXVs"));
 }
+
+#[tokio::test]
+async fn given_a_secret_whose_start_repeats_when_it_crosses_the_cut_then_no_part_of_it_stays() {
+    let secret = "QZQZsecret99";
+    let seen = refused(&[secret], &[], crossing(secret, 4, CAP + 500)).await;
+    assert_eq!(seen.error_body, "a".repeat(CAP - 4));
+    assert_eq!(seen.dialect_text, "a".repeat(CAP - 4));
+}
+
+#[tokio::test]
+async fn given_two_secrets_when_the_longest_start_is_the_longer_ones_then_no_part_of_either_stays()
+{
+    let longer = "ABCDEFGHIJKL";
+    let shorter = "EFGHXXXX";
+    let mut body = filler(CAP - 6);
+    body.extend_from_slice(longer.as_bytes());
+    body.resize(CAP + 500, b'a');
+    let seen = refused(&[shorter, longer], &[], body).await;
+    assert_eq!(seen.dialect_text, "a".repeat(CAP - 6));
+    assert_eq!(seen.error_body, "a".repeat(CAP - 6));
+}

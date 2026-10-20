@@ -32,7 +32,7 @@ fn stream(status: Option<u16>) -> ErrorInfo {
 }
 
 fn classify_stream(dialect: &ScriptedDialect, info: ErrorInfo) -> ClientError {
-    classify_stream_error(dialect, &Secrets::default(), info)
+    classify_stream_error(dialect, &Secrets::new(Vec::new()), info)
 }
 
 #[test]

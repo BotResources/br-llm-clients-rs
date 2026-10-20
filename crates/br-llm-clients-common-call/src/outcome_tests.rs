@@ -44,7 +44,7 @@ async fn given_a_step_when_the_outcome_is_built_then_the_report_holds_the_usage_
         ..record()
     };
     advance(Duration::from_secs(4)).await;
-    let outcome = outcome(&Secrets::default(), record, Ok(step(Some(usage(7)))));
+    let outcome = outcome(&Secrets::new(Vec::new()), record, Ok(step(Some(usage(7)))));
     let (report, result) = outcome.into_parts();
     assert_eq!(result, Ok(step(Some(usage(7)))));
     assert_eq!(report.usage(), Some(&usage(7)));
@@ -63,7 +63,7 @@ async fn given_a_step_without_usage_when_the_outcome_is_built_then_the_report_ho
         usage: Some(usage(99)),
         ..record()
     };
-    let (report, result) = outcome(&Secrets::default(), record, Ok(step(None))).into_parts();
+    let (report, result) = outcome(&Secrets::new(Vec::new()), record, Ok(step(None))).into_parts();
     assert!(result.is_ok());
     assert_eq!(report.usage(), None);
 }
@@ -77,7 +77,7 @@ async fn given_a_failure_when_the_outcome_is_built_then_the_report_holds_the_las
     };
     advance(Duration::from_secs(3)).await;
     let (report, result) = outcome(
-        &Secrets::default(),
+        &Secrets::new(Vec::new()),
         record,
         Err(ClientError::StreamTruncated),
     )
@@ -96,7 +96,7 @@ async fn given_a_failure_when_the_outcome_is_built_then_the_report_holds_the_las
 #[tokio::test(start_paused = true)]
 async fn given_a_failure_without_usage_when_the_outcome_is_built_then_the_report_holds_none() {
     let (report, _) = outcome(
-        &Secrets::default(),
+        &Secrets::new(Vec::new()),
         record(),
         Err(ClientError::StreamTruncated),
     )

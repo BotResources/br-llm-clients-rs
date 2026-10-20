@@ -150,3 +150,68 @@ async fn given_a_secret_in_a_text_made_by_the_dialect_when_only_the_log_holds_it
         })
     );
 }
+
+struct RecordingSink {
+    log: SecretLog,
+    token: &'static str,
+}
+
+impl br_llm_clients_core::StreamSink for RecordingSink {
+    fn send<'a>(
+        &'a mut self,
+        _event: br_llm_messages::StreamEvent,
+    ) -> br_llm_clients_core::BoxFuture<'a, ()> {
+        Box::pin(async move {
+            self.log.record(&Secret::new(self.token).expect("token"));
+        })
+    }
+}
+
+#[tokio::test]
+async fn given_a_secret_recorded_after_the_headers_when_the_outcome_is_ready_then_every_text_and_the_request_id_are_cleaned()
+ {
+    const LATE: &str = "tok-recorded-mid-stream";
+    let dialect = dialect_ending(EndScript::Events(Vec::new()));
+    let line = format!("error 400 {LATE} - bad {LATE}");
+    let id = format!("req-{LATE}");
+    let server = TestServer::start(move |_| {
+        let lines = ["start a text", "text a hi", line.as_str()];
+        http("200 OK", &[("x-request-id", id.as_str())], &body(&[&lines]))
+    })
+    .await;
+    let log = SecretLog::new();
+    let spec = spec_for(&dialect, server.endpoint("/v1/test")).with_secret_log(log.clone());
+    let mut sink = RecordingSink { log, token: LATE };
+    let outcome = crate::run::run(&spec, &user_request(), &mut sink).await;
+    let (report, result) = outcome.into_parts();
+    assert_eq!(report.request_id(), None);
+    assert_eq!(
+        result,
+        Err(ClientError::ProviderRejected {
+            status: Some(400),
+            code: Some("[redacted]".to_owned()),
+            body: "bad [redacted]".to_owned()
+        })
+    );
+    let info = &dialect.seen_infos()[0];
+    assert_eq!(
+        (info.code(), info.text()),
+        (Some("[redacted]"), "bad [redacted]")
+    );
+}
+
+#[tokio::test]
+async fn given_a_logged_secret_across_the_cut_of_an_error_event_text_when_run_then_the_replacement_comes_before_the_cut()
+ {
+    let dialect = dialect_ending(EndScript::Events(Vec::new()));
+    let text = format!("{}{TOKEN}", "a".repeat(65_531));
+    let line = format!("error 400 - - {text}");
+    let server = TestServer::start(move |_| http("200 OK", &[], &body(&[&[line.as_str()]]))).await;
+    let log = SecretLog::new();
+    log.record(&Secret::new(TOKEN).expect("token"));
+    let spec = spec_for(&dialect, server.endpoint("/v1/test")).with_secret_log(log);
+    let (_, text) = rejected(run_call(&spec, &user_request()).await);
+    let expected = format!("{}[reda", "a".repeat(65_531));
+    assert_eq!(text, expected);
+    assert_eq!(dialect.seen_infos()[0].text(), expected);
+}

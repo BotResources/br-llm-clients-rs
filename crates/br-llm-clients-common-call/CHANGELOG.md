@@ -57,7 +57,14 @@ this crate re-exports. A dialect that compiles against 0.1.0 compiles against
   now the types of `common-http` 0.2 and not the types of `common-http` 0.1:
   cargo keeps two copies and a value of one is not accepted as a value of the
   other. Every library that imports this crate in its line 0.2 and names one of
-  these types must import `common-http` in its line 0.2 in the same release.
+  these types must import `common-http` in its line 0.2 in the same release:
+  today `br-llm-clients-api-anthropic-messages`,
+  `br-llm-clients-api-openai-chat-completions` and
+  `br-llm-clients-api-openai-responses`, which name `common-http` for their
+  tests. Every crate of the repository that pins `common-call` or `common-http`
+  in its line 0.1 moves in the same change; a library released on a tag of line
+  0.1 stays valid on that tag and is not changed. No `Debug` text of a type of
+  0.1 changes.
 - A refusal body longer than 64 KiB is trimmed at its end before the secrets are
   replaced: the longest suffix of the collected bytes that equals the start of a
   secret in effect (at least one byte, fewer than the whole secret) is removed.

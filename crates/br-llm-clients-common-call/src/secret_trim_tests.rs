@@ -74,3 +74,21 @@ fn given_a_cut_inside_a_multibyte_secret_when_trimmed_then_the_partial_character
     let bytes = [b"aaaa".as_slice(), &secret.as_bytes()[..5]].concat();
     assert_eq!(trimmed(&[secret], &bytes), b"aaaa");
 }
+
+#[test]
+fn given_a_start_that_repeats_inside_itself_when_trimmed_then_the_longest_start_is_removed() {
+    assert_eq!(trimmed(&["QZQZsecret"], b"aaaaQZQZ"), b"aaaa");
+    assert_eq!(trimmed(&["QZQZsecret"], b"aaaaQZQ"), b"aaaa");
+}
+
+#[test]
+fn given_two_secrets_when_the_longest_start_is_the_longer_ones_then_it_is_removed() {
+    assert_eq!(
+        trimmed(&["ABCDEFGHIJKL", "EFGHXXXX"], b"aaaaABCDEF"),
+        b"aaaa"
+    );
+    assert_eq!(
+        trimmed(&["EFGHXXXX", "ABCDEFGHIJKL"], b"aaaaABCDEF"),
+        b"aaaa"
+    );
+}

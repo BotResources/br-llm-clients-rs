@@ -32,7 +32,7 @@ fn given_a_secret_that_holds_another_when_replaced_then_the_longest_goes_first()
 
 #[test]
 fn given_no_secret_when_replaced_then_the_text_is_unchanged() {
-    assert_eq!(Secrets::default().replace("plain text"), "plain text");
+    assert_eq!(Secrets::new(Vec::new()).replace("plain text"), "plain text");
 }
 
 #[test]

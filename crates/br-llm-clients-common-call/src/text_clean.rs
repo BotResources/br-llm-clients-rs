@@ -4,7 +4,6 @@ pub(crate) const TEXT_CAP: usize = 65_536;
 
 const PLACEHOLDER: &str = "[redacted]";
 
-#[derive(Clone, Default)]
 pub(crate) struct Secrets {
     longest_first: Vec<Secret>,
 }
@@ -21,7 +20,11 @@ impl Secrets {
         self.longest_first
             .iter()
             .fold(text.to_owned(), |cleaned, secret| {
-                cleaned.replace(secret.expose(), PLACEHOLDER)
+                if secret.appears_in(&cleaned) {
+                    cleaned.replace(secret.expose(), PLACEHOLDER)
+                } else {
+                    cleaned
+                }
             })
     }
 
