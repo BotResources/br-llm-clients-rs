@@ -9,6 +9,44 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.4.1
+
+### Added
+
+- The capabilities contract of the intent of core 0.4 as corrected on
+  2026-10-19. The public items, all at the root of the crate, are `Accepted`
+  (`Any` or `Only` with a list, no public operation), `CapabilitiesSpec` (a
+  struct of eight public fields, with `everything`, `nothing` and
+  `max_output_tokens_of`), `Capabilities` (`new`, `normalized`, `everything`,
+  `nothing`, `check`, `spec` and the accessors, including
+  `accepts_structured_output_with_tools`) and `CapabilitiesError` (one case,
+  `InconsistentCapabilities`).
+- `Capabilities::check` takes a `ClientSettings` and a `ClientRequest` and runs
+  eight steps in a fixed order: reasoning level, cache, output tokens, tools,
+  structured output, structured output with tools, image, image media type.
+  The first failure is returned, with the `ClientError` case of its step. It
+  does not check the messages and never gives `InvalidMessages`.
+- The new capability modules deny `clippy::unwrap_used`,
+  `clippy::expect_used`, `clippy::indexing_slicing`,
+  `clippy::arithmetic_side_effects` and `clippy::panic`; the two modules of the
+  check also deny `clippy::wildcard_enum_match_arm`. No other module of the
+  crate carries this lint.
+
+### Notes
+
+- Additive: no released item, signature or behaviour changes. The mock 0.4.0
+  keeps compiling unchanged. It holds its own `Accepted` and its own
+  `CapabilitiesError`, the same as those of this crate, and a
+  `CapabilitiesSpec` with the same eight fields. Its `Capabilities` has no
+  public `nothing`, `normalized` or `check` and none of the accessors of this
+  crate, and its `CapabilitiesSpec` has no `nothing` and no
+  `max_output_tokens_of`. The types of this crate are new types, not those of
+  the mock.
+- `CapabilitiesSpec` and `CapabilitiesError` are not `#[non_exhaustive]`: a new
+  field or case is a breaking change of this crate.
+- `Accepted`, `CapabilitiesSpec`, `Capabilities` and `CapabilitiesError` are not
+  stored data: they are not saved or loaded and carry no schema.
+
 ## 0.4.0
 
 ### Changed
