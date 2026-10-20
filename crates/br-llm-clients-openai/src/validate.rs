@@ -2,8 +2,15 @@ use br_llm_clients_common_call::Secret;
 
 use crate::build_error::OpenAiBuildError;
 
+const HEADER_VALUE_REASON: &str =
+    "the value is empty or holds a character outside the range from `!` to `~`";
+
 fn is_visible_ascii(text: &str) -> bool {
     text.bytes().all(|byte| (b'!'..=b'~').contains(&byte))
+}
+
+fn is_header_text(value: &str) -> bool {
+    !value.is_empty() && is_visible_ascii(value)
 }
 
 pub(crate) fn credential(key: &Secret) -> Result<(), OpenAiBuildError> {
@@ -16,21 +23,19 @@ pub(crate) fn credential(key: &Secret) -> Result<(), OpenAiBuildError> {
 }
 
 pub(crate) fn organization(value: &str) -> Result<(), OpenAiBuildError> {
-    if !value.is_empty() && is_visible_ascii(value) {
+    if is_header_text(value) {
         return Ok(());
     }
     Err(OpenAiBuildError::InvalidOrganization {
-        reason: "the value is empty or holds a character outside the range from `!` to `~`"
-            .to_owned(),
+        reason: HEADER_VALUE_REASON.to_owned(),
     })
 }
 
 pub(crate) fn project(value: &str) -> Result<(), OpenAiBuildError> {
-    if !value.is_empty() && is_visible_ascii(value) {
+    if is_header_text(value) {
         return Ok(());
     }
     Err(OpenAiBuildError::InvalidProject {
-        reason: "the value is empty or holds a character outside the range from `!` to `~`"
-            .to_owned(),
+        reason: HEADER_VALUE_REASON.to_owned(),
     })
 }

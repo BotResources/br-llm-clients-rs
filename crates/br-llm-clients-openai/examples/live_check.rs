@@ -72,6 +72,9 @@ async fn main() -> ExitCode {
         }
     };
     println!("model: {model}");
+    if model != DEFAULT_MODEL {
+        println!("note: the preset gpt_5_4_mini still applies to the model {model}");
+    }
     println!("(a) simple conversation");
     let a = verdict("a", scenarios::simple(&client).await);
     println!("(b) weather tool called twice");

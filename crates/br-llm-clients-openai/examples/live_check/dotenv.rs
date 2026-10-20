@@ -12,7 +12,7 @@ impl Settings {
         let mut file_values = HashMap::new();
         for path in [".env", REPO_ROOT_ENV] {
             if let Ok(text) = fs::read_to_string(path) {
-                for (name, value) in parse(&text) {
+                for (name, value) in parse(&text).filter(|(_, value)| !value.is_empty()) {
                     file_values.entry(name).or_insert(value);
                 }
             }
@@ -29,8 +29,8 @@ impl Settings {
     }
 }
 
-fn parse(text: &str) -> Vec<(String, String)> {
-    text.lines().filter_map(parse_line).collect()
+fn parse(text: &str) -> impl Iterator<Item = (String, String)> + '_ {
+    text.lines().filter_map(parse_line)
 }
 
 fn parse_line(line: &str) -> Option<(String, String)> {
