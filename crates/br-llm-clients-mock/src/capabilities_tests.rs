@@ -1,10 +1,23 @@
-use br_llm_clients_core::{MaxOutputTokens, ReasoningLevel};
+use br_llm_clients_core::{CacheRequirement, ClientError, MaxOutputTokens, ReasoningLevel};
 use br_llm_messages::ImageMime;
 
-use crate::accepted::Accepted;
-use crate::capabilities::{Capabilities, CapabilitiesSpec};
-use crate::capabilities_error::CapabilitiesError;
-use crate::test_support::everything_caps;
+use crate::strictness::check;
+use crate::test_support::*;
+use crate::{Accepted, Capabilities, CapabilitiesError, CapabilitiesSpec};
+
+fn level_check(capabilities: &Capabilities, level: ReasoningLevel) -> Result<(), ClientError> {
+    let settings_value = settings_with(level, CacheRequirement::NotRequired, 10);
+    check(capabilities, &settings_value, &request())
+}
+
+fn image_check(capabilities: &Capabilities, mime: ImageMime) -> Result<(), ClientError> {
+    let with_image = request_of(
+        vec![user_image(mime)],
+        vec![],
+        br_llm_clients_core::OutputMode::Plain,
+    );
+    check(capabilities, &settings(), &with_image)
+}
 
 #[test]
 fn given_everything_when_built_then_it_accepts_any_level_the_largest_tokens_and_every_feature() {
@@ -21,14 +34,6 @@ fn given_everything_when_built_then_it_accepts_any_level_the_largest_tokens_and_
 }
 
 #[test]
-fn given_the_everything_spec_when_built_then_it_equals_the_everything_capabilities() {
-    assert_eq!(
-        Capabilities::new(CapabilitiesSpec::everything()).unwrap(),
-        everything_caps()
-    );
-}
-
-#[test]
 fn given_everything_with_changed_fields_when_built_then_only_those_fields_differ() {
     let spec = CapabilitiesSpec {
         tools: false,
@@ -39,6 +44,9 @@ fn given_everything_with_changed_fields_when_built_then_only_those_fields_differ
     assert!(!capabilities.tools());
     assert_eq!(capabilities.max_output_tokens().get(), 10);
     assert!(capabilities.caching());
+    assert!(capabilities.structured_output());
+    assert!(capabilities.images());
+    assert_eq!(capabilities.reasoning_levels(), &Accepted::Any);
 }
 
 #[test]
@@ -61,7 +69,11 @@ fn given_no_images_with_an_empty_set_of_media_types_when_built_then_the_set_is_i
         image_media_types: Accepted::Only(vec![]),
         ..CapabilitiesSpec::everything()
     };
-    assert!(Capabilities::new(spec).is_ok());
+    let capabilities = Capabilities::new(spec).unwrap();
+    assert_eq!(
+        image_check(&capabilities, ImageMime::Png),
+        Err(ClientError::ImageNotSupported)
+    );
 }
 
 #[test]
@@ -74,16 +86,30 @@ fn given_an_empty_set_of_levels_when_built_then_it_is_legal() {
 }
 
 #[test]
-fn given_a_set_holding_off_when_asked_then_off_is_a_member_like_any_other() {
-    let only_off = Accepted::Only(vec![ReasoningLevel::Off]);
-    assert!(only_off.accepts(&ReasoningLevel::Off));
-    assert!(!only_off.accepts(&ReasoningLevel::Low));
-    let without_off = Accepted::Only(vec![ReasoningLevel::Low]);
-    assert!(!without_off.accepts(&ReasoningLevel::Off));
+fn given_a_set_holding_off_when_a_call_is_checked_then_off_is_a_member_like_any_other() {
+    let only_off = caps(|spec| spec.reasoning_levels = Accepted::Only(vec![ReasoningLevel::Off]));
+    assert_eq!(level_check(&only_off, ReasoningLevel::Off), Ok(()));
+    assert!(matches!(
+        level_check(&only_off, ReasoningLevel::Low),
+        Err(ClientError::ReasoningNotSupported {
+            level: ReasoningLevel::Low,
+            ..
+        })
+    ));
+    let without_off =
+        caps(|spec| spec.reasoning_levels = Accepted::Only(vec![ReasoningLevel::Low]));
+    assert!(matches!(
+        level_check(&without_off, ReasoningLevel::Off),
+        Err(ClientError::ReasoningNotSupported {
+            level: ReasoningLevel::Off,
+            ..
+        })
+    ));
 }
 
 #[test]
-fn given_any_when_asked_then_every_value_is_accepted() {
+fn given_any_when_a_call_is_checked_then_every_level_and_media_type_is_accepted() {
+    let capabilities = everything_caps();
     for level in [
         ReasoningLevel::Off,
         ReasoningLevel::Low,
@@ -92,16 +118,23 @@ fn given_any_when_asked_then_every_value_is_accepted() {
         ReasoningLevel::Extra,
         ReasoningLevel::Max,
     ] {
-        assert!(Accepted::Any.accepts(&level));
+        assert_eq!(level_check(&capabilities, level), Ok(()));
     }
-    assert!(Accepted::<ImageMime>::Any.accepts(&ImageMime::Webp));
+    assert_eq!(image_check(&capabilities, ImageMime::Webp), Ok(()));
 }
 
 #[test]
-fn given_a_set_of_media_types_when_asked_then_only_its_members_are_accepted() {
-    let set = Accepted::Only(vec![ImageMime::Png, ImageMime::Jpeg]);
-    assert!(set.accepts(&ImageMime::Png));
-    assert!(!set.accepts(&ImageMime::Gif));
+fn given_a_set_of_media_types_when_a_call_is_checked_then_only_its_members_are_accepted() {
+    let capabilities = caps(|spec| {
+        spec.image_media_types = Accepted::Only(vec![ImageMime::Png, ImageMime::Jpeg]);
+    });
+    assert_eq!(image_check(&capabilities, ImageMime::Png), Ok(()));
+    assert_eq!(
+        image_check(&capabilities, ImageMime::Gif),
+        Err(ClientError::ImageMediaTypeNotSupported {
+            media_type: ImageMime::Gif
+        })
+    );
 }
 
 #[test]

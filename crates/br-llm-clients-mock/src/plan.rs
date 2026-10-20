@@ -9,7 +9,6 @@ use crate::outcomes;
 use crate::reply::{Reply, Shape};
 use crate::report_values::ReportValues;
 use crate::step_check;
-use crate::strictness::classify_mode;
 use crate::tool_call_id::rename_tool_calls;
 
 pub(crate) enum Ending {
@@ -152,10 +151,5 @@ fn success_plan(
 }
 
 fn check_against_request(call: &CallContext<'_>, step: &Step) -> Result<(), ClientError> {
-    step_check::check(
-        call.tracker.shared().capabilities(),
-        call.request,
-        classify_mode(call.request.output()),
-        step,
-    )
+    step_check::check(call.tracker.shared().capabilities(), call.request, step)
 }

@@ -1,6 +1,5 @@
-use br_llm_clients_core::ClientSettings;
+use br_llm_clients_core::{Capabilities, ClientSettings};
 
-use crate::capabilities::Capabilities;
 use crate::mock_client::MockClient;
 use crate::reply_source::ReplySource;
 use crate::rule::Rule;

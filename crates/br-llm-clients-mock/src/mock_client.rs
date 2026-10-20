@@ -2,12 +2,11 @@ use std::fmt;
 use std::sync::Arc;
 
 use br_llm_clients_core::{
-    BoxFuture, CallOutcome, Client, ClientRequest, ClientSettings, StreamSink,
+    BoxFuture, CallOutcome, Capabilities, Client, ClientRequest, ClientSettings, StreamSink,
 };
 
 use crate::call::drive;
 use crate::call_log::{LoggedCall, StateKind};
-use crate::capabilities::Capabilities;
 use crate::log_disabled::LogDisabled;
 use crate::mock_builder::MockBuilder;
 use crate::mock_waits::{WaitForCalls, WaitForState};

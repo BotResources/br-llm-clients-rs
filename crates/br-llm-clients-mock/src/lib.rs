@@ -8,14 +8,11 @@
     )
 )]
 
-mod accepted;
 mod build_error;
 mod call;
 mod call_context;
 mod call_log;
 mod call_view;
-mod capabilities;
-mod capabilities_error;
 mod chunking;
 mod claim;
 mod codes;
@@ -93,6 +90,8 @@ mod send_sync_tests;
 #[cfg(test)]
 mod step_check_tests;
 #[cfg(test)]
+mod strictness_order_tests;
+#[cfg(test)]
 mod strictness_request_tests;
 #[cfg(test)]
 mod strictness_settings_tests;
@@ -111,14 +110,12 @@ mod waker_replace_tests;
 #[cfg(test)]
 mod waker_support;
 
-pub use accepted::Accepted;
+pub use br_llm_clients_core::{Accepted, Capabilities, CapabilitiesError, CapabilitiesSpec};
 pub use build_error::MockBuildError;
 pub use call_log::{CallState, LoggedCall, Served, StateKind};
 pub use call_view::{MatchContext, ReplyContext};
-pub use capabilities::{Capabilities, CapabilitiesSpec};
-pub use capabilities_error::CapabilitiesError;
 pub use chunking::Chunking;
-pub use codes::{CODE_INVALID_REPLY, CODE_SCRIPT_EXHAUSTED, CODE_UNKNOWN_VALUE};
+pub use codes::{CODE_INVALID_REPLY, CODE_SCRIPT_EXHAUSTED};
 pub use derive_events::{DerivedEvents, derive_events};
 pub use fold_error::FoldError;
 pub use gate::{Gate, WaitForWaiting};

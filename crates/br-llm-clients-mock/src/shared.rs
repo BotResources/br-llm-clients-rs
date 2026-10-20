@@ -1,8 +1,7 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use br_llm_clients_core::{ClientRequest, ClientSettings};
+use br_llm_clients_core::{Capabilities, ClientRequest, ClientSettings};
 
-use crate::capabilities::Capabilities;
 use crate::log::LogState;
 use crate::script::ScriptState;
 use crate::sync::{lock, wake_all};

@@ -9,6 +9,72 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.5.0
+
+### Changed
+
+- Breaking: the order of the refusals. The check of the messages moves to the
+  first place. In 0.4 the order was: level, cache, tokens, messages, tools,
+  structured output, structured output with tools, images, image media types.
+  In 0.5 it is: messages, level, cache, tokens, tools, structured output,
+  structured output with tools, images, image media types. A request whose
+  list of messages is not valid and that also breaks the rule of the level, of
+  the cache or of the tokens gave that refusal in 0.4 and gives
+  `InvalidMessages` now. Every other pair of broken rules gives the answer it
+  gave.
+- Breaking: a mock with an empty set of levels refused every call with
+  `ReasoningNotSupported` in 0.4. It now refuses every call whose messages pass
+  the check of the messages; a call with a list that does not pass gives
+  `InvalidMessages`.
+- Breaking: the `reason` of `ReasoningNotSupported` is the text of
+  `br-llm-clients-core` 0.4.1, which names the model id of the settings. It
+  named the mock in 0.4. The case and the level are the same.
+- Breaking: the dependency on core. The mock needs `br-llm-clients-core` 0.4.1
+  or later on the line 0.4, pinned by path and version `0.4.1`. An importer that
+  names `br-llm-clients-core` itself by a git tag moves it to the tag of 0.4.1
+  together with the mock.
+- Not a promise: the `Debug` text of `Capabilities`, `CapabilitiesSpec`,
+  `Accepted` and `CapabilitiesError` is the one that core gives now.
+- Not breaking: `Capabilities`, `CapabilitiesSpec`, `Accepted` and
+  `CapabilitiesError` are the types of `br-llm-clients-core`, re-exported by
+  the mock at the same paths, not copies. The mock calls
+  `ClientRequest::check_messages` of core first, then `Capabilities::check` of
+  core. The statement of 0.4 that
+  `CapabilitiesSpec::everything` is the only way to build capabilities without
+  writing every field is withdrawn.
+- Not breaking: code written for 0.4 compiles unchanged when it uses only these
+  items, which are facts of core 0.4.1. `Accepted` is an enum with the variants
+  `Any` and `Only(Vec<T>)`, not marked non-exhaustive. `CapabilitiesSpec` is a
+  struct with the same eight public fields and types as in 0.4, not marked
+  non-exhaustive, so the struct syntax with or without
+  `..CapabilitiesSpec::everything()` compiles; `everything()` has the same
+  signature. `Capabilities::new` takes a `CapabilitiesSpec` by value and gives
+  `Result<Capabilities, CapabilitiesError>`. `CapabilitiesError` has one case,
+  `InconsistentCapabilities`, with no field, and the `Display` text `images are
+  supported but the set of image media types is empty`. The four types have
+  `Debug`, `Clone`, `PartialEq` and `Eq`; `CapabilitiesError` also has `Display`
+  and `Error`.
+
+### Added
+
+- The operations that core 0.4.1 adds are available through the re-export:
+  `CapabilitiesSpec::nothing`, `CapabilitiesSpec::max_output_tokens_of`,
+  `Capabilities::normalized`, `Capabilities::everything`,
+  `Capabilities::nothing`, `Capabilities::check`, and the accessors of
+  `Capabilities` (`spec`, `reasoning_levels`, `image_media_types`,
+  `max_output_tokens`, `tools`, `structured_output`,
+  `structured_output_with_tools`, `caching`, `images`,
+  `accepts_structured_output_with_tools`). `structured_output_with_tools` is
+  new; the other accessors were private in 0.4.
+
+### Removed
+
+- Breaking: the rule `mock.unknown_value`, the constant `CODE_UNKNOWN_VALUE`
+  and the refusal of a `CacheRequirement` or an `OutputMode` that the mock does
+  not know. The mock has no rule for a value that it does not know; core 0.4
+  defines no value that could trigger the rule, so only a `use` of the constant
+  stops compiling.
+
 ## 0.4.0
 
 ### Changed

@@ -1,10 +1,7 @@
 use std::collections::HashSet;
 
-use br_llm_clients_core::{ClientError, ClientRequest};
+use br_llm_clients_core::{Capabilities, ClientError, ClientRequest, OutputMode};
 use br_llm_messages::{AssistantBlock, Step, StopReason, ToolCallId, WireMessage};
-
-use crate::capabilities::Capabilities;
-use crate::strictness::ModeClass;
 
 struct Counts {
     text: usize,
@@ -32,10 +29,6 @@ fn count(step: &Step) -> Counts {
             }
             AssistantBlock::ToolCall(_) => counts.tool_calls = counts.tool_calls.saturating_add(1),
             AssistantBlock::Thinking(_) | AssistantBlock::RedactedThinking(_) => {}
-            // `AssistantBlock` grows only by an intent change of br-llm-messages: a new
-            // minor, so a new 0.x line (0.6) outside the `^0.5.0` requirement. No lawful
-            // 0.5.x adds a block, so the five above are every block a `Step` holds here.
-            // A block is never left uncounted.
             _ => unreachable!("br-llm-messages 0.5 has no other assistant block"),
         }
     }
@@ -49,7 +42,6 @@ fn blocked(stop_reason: &StopReason) -> bool {
 pub(crate) fn check(
     capabilities: &Capabilities,
     request: &ClientRequest,
-    mode: ModeClass,
     step: &Step,
 ) -> Result<(), ClientError> {
     let counts = count(step);
@@ -63,7 +55,10 @@ pub(crate) fn check(
             }
         });
     }
-    let structured = mode == ModeClass::Structured;
+    let structured = match request.output() {
+        OutputMode::Structured(_) => true,
+        OutputMode::Plain => false,
+    };
     if structured
         && counts.structured.saturating_add(counts.tool_calls) == 0
         && blocked(stop_reason)
@@ -72,7 +67,7 @@ pub(crate) fn check(
     }
     if structured {
         check_structured_shape(capabilities, request, &counts)?;
-    } else if counts.structured > 0 && mode == ModeClass::Plain {
+    } else if counts.structured > 0 {
         return Err(malformed(
             "a structured block in a reply to a plain request".to_owned(),
         ));

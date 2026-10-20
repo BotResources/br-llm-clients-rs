@@ -5,16 +5,15 @@ use std::task::{Context, Poll, Wake, Waker};
 use std::thread::Thread;
 
 use br_llm_clients_core::{
-    CacheRequirement, CallOutcome, Client, ClientError, ClientRequest, ClientSettings,
-    MaxOutputTokens, OutputMode, ReasoningLevel, StructuredShape,
+    CacheRequirement, CallOutcome, Capabilities, CapabilitiesSpec, Client, ClientError,
+    ClientRequest, ClientSettings, MaxOutputTokens, OutputMode, Parameters, ReasoningLevel,
+    StructuredShape, ToolSpec,
 };
-use br_llm_clients_core::{Parameters, ToolSpec};
 use br_llm_messages::{
     AssistantBlock, Base64Data, Image, ImageMime, ModelId, Step, StopReason, StreamEvent, Text,
     ToolCall, ToolCallId, ToolName, ToolResult, ToolResultBlock, Usage, WireMessage, WireUserBlock,
 };
 
-use crate::capabilities::{Capabilities, CapabilitiesSpec};
 use crate::mock_client::MockClient;
 use crate::recording_sink::RecordingSink;
 use crate::reply_source::ReplySource;
@@ -238,11 +237,6 @@ pub(crate) fn caps(change: impl FnOnce(&mut CapabilitiesSpec)) -> Capabilities {
     let mut spec = CapabilitiesSpec::everything();
     change(&mut spec);
     Capabilities::new(spec).unwrap()
-}
-
-pub(crate) fn is_unknown_value(error: &ClientError, type_name: &str) -> bool {
-    matches!(error, ClientError::ProviderRejected { status: None, code: Some(code), body }
-        if code == crate::codes::CODE_UNKNOWN_VALUE && body.contains(type_name))
 }
 
 pub(crate) fn finish_event() -> StreamEvent {
