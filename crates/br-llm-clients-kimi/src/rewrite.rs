@@ -14,7 +14,7 @@ pub(crate) fn rewrite(
 ) -> Result<EncodedRequest, ClientError> {
     let mut body: Value = serde_json::from_slice(encoded.body()).map_err(|_| unreadable())?;
     let members = body.as_object_mut().ok_or_else(unreadable)?;
-    if !matches!(kind, KimiThinking::EffortScale) {
+    if !sends_effort(kind) {
         members.remove("reasoning_effort");
     }
     let messages = members
@@ -33,6 +33,13 @@ pub(crate) fn rewrite(
         rewritten = rewritten.with_header(name.clone(), value.clone());
     }
     Ok(rewritten)
+}
+
+fn sends_effort(kind: &KimiThinking) -> bool {
+    match kind {
+        KimiThinking::EffortScale => true,
+        KimiThinking::ThinkingSwitch | KimiThinking::AlwaysThinking => false,
+    }
 }
 
 fn thinking_is_on(kind: &KimiThinking, level: ReasoningLevel) -> bool {

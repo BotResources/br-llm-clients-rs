@@ -1,7 +1,8 @@
 use std::process::ExitCode;
 use std::time::Duration;
 
-use br_llm_clients_common_http::{HttpClient, HttpConfig, Secret};
+use br_llm_clients_common_call::{HttpClient, Secret};
+use br_llm_clients_common_http::HttpConfig;
 use br_llm_clients_core::{
     BoxFuture, CacheRequirement, CallReport, Client, ClientError, ClientRequest, ClientSettings,
     MaxOutputTokens, OutputMode, Parameter, ParameterKind, Parameters, ReasoningLevel, StreamSink,
@@ -23,7 +24,8 @@ const DEFAULT_MODEL: &str = "kimi-k2.6";
 const MAX_ROUNDS: usize = 6;
 
 fn main() -> ExitCode {
-    env_file::load();
+    // SAFETY: first statement of main, no thread exists yet; the runtime starts after it.
+    unsafe { env_file::load() };
     let runtime = match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -46,8 +48,13 @@ fn main() -> ExitCode {
 
 async fn run_checks() -> Result<bool, Failure> {
     let key = std::env::var("MOONSHOT_API_KEY")
-        .map_err(|_| "MOONSHOT_API_KEY is not set in the environment or in a .env file")?;
-    let model = std::env::var("MOONSHOT_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_owned());
+        .ok()
+        .filter(|value| !value.is_empty())
+        .ok_or("MOONSHOT_API_KEY is not set in the environment or in a .env file")?;
+    let model = std::env::var("MOONSHOT_MODEL")
+        .ok()
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| DEFAULT_MODEL.to_owned());
     let settings = ClientSettings::new(
         ModelId::new(model.clone())?,
         ReasoningLevel::Low,

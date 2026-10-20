@@ -1,4 +1,5 @@
-use br_llm_clients_common_http::Endpoint;
+use br_llm_clients_common_call::Endpoint;
+use br_llm_clients_common_http::ConfigError;
 
 use crate::build_error::KimiBuildError;
 
@@ -15,8 +16,10 @@ pub(crate) fn chat_route(base: Option<&Endpoint>) -> Result<Endpoint, KimiBuildE
         .map_err(invalid)
 }
 
-fn invalid(error: br_llm_clients_common_http::ConfigError) -> KimiBuildError {
-    KimiBuildError::InvalidEndpoint {
-        reason: error.to_string(),
-    }
+fn invalid(error: ConfigError) -> KimiBuildError {
+    let reason = match error {
+        ConfigError::InvalidEndpoint { text } => text,
+        other => other.to_string(),
+    };
+    KimiBuildError::InvalidEndpoint { reason }
 }

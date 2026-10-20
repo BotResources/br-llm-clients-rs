@@ -2,8 +2,8 @@ use std::fmt;
 use std::sync::Arc;
 
 use br_llm_clients_api_openai_chat_completions::ChatCompletionsDialect;
-use br_llm_clients_common_call::{CallSpec, run};
-use br_llm_clients_common_http::{BearerAuthorizer, HttpClient};
+use br_llm_clients_common_call::{CallSpec, HttpClient, run};
+use br_llm_clients_common_http::BearerAuthorizer;
 use br_llm_clients_core::{
     BoxFuture, CallOutcome, Client, ClientRequest, ClientSettings, StreamSink,
 };

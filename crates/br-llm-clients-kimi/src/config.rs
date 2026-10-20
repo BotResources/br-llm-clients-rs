@@ -1,6 +1,6 @@
 use std::fmt;
 
-use br_llm_clients_common_http::{Endpoint, Secret};
+use br_llm_clients_common_call::{Endpoint, Secret};
 
 use crate::kimi_thinking::KimiThinking;
 use crate::route::DEFAULT_BASE;

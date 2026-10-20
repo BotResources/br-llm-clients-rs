@@ -17,7 +17,9 @@ pub(crate) fn send_back_reasoning(
                 in_progress_from.is_some_and(|from| index >= from),
                 joined_thinking(content),
             )),
-            _ => None,
+            WireMessage::Assistant { .. }
+            | WireMessage::User { .. }
+            | WireMessage::Relay { .. } => None,
         })
         .collect();
     let targets: Vec<&mut Map<String, Value>> = messages
@@ -51,10 +53,11 @@ fn turn_in_progress_from(messages: &[WireMessage]) -> Option<usize> {
 
 fn is_plain_user_message(message: &WireMessage) -> bool {
     match message {
-        WireMessage::User { content } => !content
-            .iter()
-            .any(|block| matches!(block, WireUserBlock::ToolResult(_))),
-        _ => false,
+        WireMessage::User { content } => content.iter().all(|block| match block {
+            WireUserBlock::Text { .. } | WireUserBlock::Image(_) => true,
+            WireUserBlock::ToolResult(_) => false,
+        }),
+        WireMessage::Assistant { .. } | WireMessage::Relay { .. } => false,
     }
 }
 

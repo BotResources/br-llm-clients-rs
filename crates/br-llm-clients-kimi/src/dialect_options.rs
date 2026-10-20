@@ -1,7 +1,8 @@
 use br_llm_clients_api_openai_chat_completions::{
-    ChatCompletionsOptions, Map, ReasoningEffort, ReasoningRule, ReasoningTable, Value,
+    ChatCompletionsOptions, ReasoningEffort, ReasoningRule, ReasoningTable,
 };
 use br_llm_clients_core::ReasoningLevel;
+use serde_json::{Map, Value};
 
 use crate::kimi_thinking::KimiThinking;
 

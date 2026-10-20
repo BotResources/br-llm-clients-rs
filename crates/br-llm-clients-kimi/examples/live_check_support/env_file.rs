@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-pub fn load() {
+pub unsafe fn load() {
     let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let candidates = [PathBuf::from(".env"), repo_root.join(".env")];
     let Some(text) = candidates
@@ -19,10 +19,15 @@ pub fn load() {
             continue;
         };
         let (name, value) = (name.trim(), unquote(value.trim()));
-        if name.is_empty() || value.is_empty() || std::env::var_os(name).is_some() {
+        if name.is_empty()
+            || value.is_empty()
+            || name.contains('\0')
+            || value.contains('\0')
+            || std::env::var_os(name).is_some_and(|set| !set.is_empty())
+        {
             continue;
         }
-        // SAFETY: called first in main, before any thread exists.
+        // SAFETY: the caller of `load` guarantees that no other thread reads or writes the environment.
         unsafe { std::env::set_var(name, value) };
     }
 }

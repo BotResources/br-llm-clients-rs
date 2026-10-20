@@ -1,4 +1,4 @@
-use br_llm_clients_common_http::Secret;
+use br_llm_clients_common_call::Secret;
 
 use crate::build_error::KimiBuildError;
 
