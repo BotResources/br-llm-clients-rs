@@ -112,6 +112,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "br-llm-clients-common-auth"
+version = "0.1.0"
+dependencies = [
+ "br-llm-clients-common-http",
+ "serde_json",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "br-llm-clients-common-call"
 version = "0.2.0"
 dependencies = [

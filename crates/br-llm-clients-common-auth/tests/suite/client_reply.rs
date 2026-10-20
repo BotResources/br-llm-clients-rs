@@ -1,0 +1,144 @@
+use std::time::Duration;
+
+use br_llm_clients_common_auth::{FormTokenClient, TokenForm};
+use br_llm_clients_common_http::{AuthorizerError, Secret};
+use tokio::net::TcpListener;
+
+use crate::support::server::{Answer, Server, http_client, json, short_body};
+
+const LIMIT: usize = 64 * 1024;
+
+fn form() -> TokenForm {
+    TokenForm::refresh_token(Secret::new("rt-in").expect("secret"))
+}
+
+fn client(server: &Server) -> FormTokenClient {
+    FormTokenClient::new(
+        http_client(Duration::from_secs(5)),
+        server.endpoint("/token"),
+    )
+}
+
+fn padded(total: usize) -> String {
+    let head = r#"{"access_token":"at","pad":""#;
+    let tail = r#""}"#;
+    let fill = total - head.len() - tail.len();
+    format!("{head}{}{tail}", "x".repeat(fill))
+}
+
+#[tokio::test]
+async fn given_a_full_reply_when_fetched_then_the_parts_are_read_and_other_members_ignored() {
+    let body = r#"{"access_token":"at-1","token_type":"bEaReR","expires_in":3599,"refresh_token":"rt-1","scope":"a b","ext":{"k":[1]}}"#;
+    let server = Server::start(vec![json(200, body)]).await;
+    let reply = client(&server).fetch(&form()).await.expect("reply");
+    assert_eq!(reply.access_token.secret().expose(), "at-1");
+    assert_eq!(
+        reply.access_token.valid_for(),
+        Some(Duration::from_secs(3599))
+    );
+    assert_eq!(reply.refresh_token.expect("refresh").expose(), "rt-1");
+}
+
+#[tokio::test]
+async fn given_a_reply_with_only_a_token_when_fetched_then_there_is_no_validity_and_no_refresh_token()
+ {
+    let server = Server::start(vec![json(201, r#"{"access_token":"at"}"#)]).await;
+    let reply = client(&server).fetch(&form()).await.expect("reply");
+    assert_eq!(reply.access_token.valid_for(), None);
+    assert!(reply.refresh_token.is_none());
+}
+
+#[tokio::test]
+async fn given_expires_in_as_digits_in_a_text_then_it_is_the_validity() {
+    let server = Server::start(vec![json(
+        200,
+        r#"{"access_token":"at","expires_in":"3600"}"#,
+    )])
+    .await;
+    let reply = client(&server).fetch(&form()).await.expect("reply");
+    assert_eq!(
+        reply.access_token.valid_for(),
+        Some(Duration::from_secs(3600))
+    );
+}
+
+#[tokio::test]
+async fn given_a_malformed_success_then_it_is_a_fetch_failure_with_a_fixed_text() {
+    let server = Server::start(vec![json(200, r#"{"access_token":"","expires_in":1}"#)]).await;
+    let error = client(&server).fetch(&form()).await.expect_err("malformed");
+    assert_eq!(
+        error,
+        AuthorizerError::fetch_failed(
+            "the token endpoint answered 200 with an access_token that is missing or empty"
+        )
+    );
+}
+
+#[tokio::test]
+async fn given_a_body_of_exactly_64_kib_then_it_is_read_and_one_byte_more_is_a_fetch_failure() {
+    let exact = Server::start(vec![json(200, &padded(LIMIT))]).await;
+    let reply = client(&exact).fetch(&form()).await.expect("reply");
+    assert_eq!(reply.access_token.secret().expose(), "at");
+    let over = Server::start(vec![json(200, &padded(LIMIT + 1))]).await;
+    let error = client(&over).fetch(&form()).await.expect_err("too long");
+    assert_eq!(
+        error,
+        AuthorizerError::fetch_failed(
+            "the token endpoint answered 200 with a body of more than 64 KiB"
+        )
+    );
+}
+
+#[tokio::test]
+async fn given_a_body_that_ends_early_then_it_is_a_fetch_failure_that_names_the_stage() {
+    let server = Server::start(vec![short_body(200, 100, br#"{"access_to"#)]).await;
+    let error = client(&server)
+        .fetch(&form())
+        .await
+        .expect_err("interrupted");
+    assert_eq!(
+        error,
+        AuthorizerError::fetch_failed("the token answer could not be read")
+    );
+}
+
+#[tokio::test]
+async fn given_a_server_that_closes_without_an_answer_then_it_is_a_fetch_failure_that_names_the_stage()
+ {
+    let server = Server::start(vec![Answer::Close]).await;
+    let error = client(&server).fetch(&form()).await.expect_err("closed");
+    assert_eq!(
+        error,
+        AuthorizerError::fetch_failed("the token request could not be sent")
+    );
+}
+
+#[tokio::test]
+async fn given_a_port_with_no_server_then_it_is_a_fetch_failure_that_names_the_stage() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    drop(listener);
+    let endpoint =
+        br_llm_clients_common_http::Endpoint::plain_http(&format!("http://127.0.0.1:{port}/token"))
+            .expect("endpoint");
+    let client = FormTokenClient::new(http_client(Duration::from_secs(5)), endpoint);
+    let error = client.fetch(&form()).await.expect_err("refused");
+    assert_eq!(
+        error,
+        AuthorizerError::fetch_failed("the token request could not be sent")
+    );
+}
+
+#[tokio::test]
+async fn given_a_server_that_never_answers_then_the_http_timeout_is_a_fetch_failure() {
+    let server = Server::start(vec![Answer::Hang]).await;
+    let client = FormTokenClient::new(
+        http_client(Duration::from_millis(150)),
+        server.endpoint("/token"),
+    );
+    let error = client.fetch(&form()).await.expect_err("timeout");
+    assert_eq!(
+        error,
+        AuthorizerError::fetch_failed("the token request could not be sent")
+    );
+}

@@ -1,0 +1,17 @@
+[package]
+name = "br-llm-clients-common-auth"
+version = "0.1.0"
+description = "Gives a bearer credential to a request: a token source, a cache that fetches before the token ends, an authorizer for the shared HTTP client and a client for the form-encoded token request of OAuth 2.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+br-llm-clients-common-http = { path = "../br-llm-clients-common-http", version = "0.2.0" }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", default-features = false, features = ["sync", "time"] }
+
+[dev-dependencies]
+tokio = { version = "1", default-features = false, features = ["rt", "macros", "net", "io-util", "test-util"] }
