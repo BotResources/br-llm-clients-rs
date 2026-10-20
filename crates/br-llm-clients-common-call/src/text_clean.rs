@@ -28,6 +28,29 @@ impl Secrets {
     pub(crate) fn clean(&self, text: &str) -> String {
         cut(self.replace(text))
     }
+
+    pub(crate) fn appears_in(&self, text: &str) -> bool {
+        self.longest_first
+            .iter()
+            .any(|secret| secret.appears_in(text))
+    }
+
+    pub(crate) fn trim_cut(&self, bytes: &mut Vec<u8>) {
+        let room = bytes.len().saturating_add(1);
+        let trimmed = self
+            .longest_first
+            .iter()
+            .filter_map(|secret| {
+                let secret = secret.expose().as_bytes();
+                (1..secret.len().min(room))
+                    .rev()
+                    .find(|&start| secret.get(..start).is_some_and(|s| bytes.ends_with(s)))
+            })
+            .max();
+        if let Some(trimmed) = trimmed {
+            bytes.truncate(bytes.len().saturating_sub(trimmed));
+        }
+    }
 }
 
 pub(crate) fn cut(mut text: String) -> String {

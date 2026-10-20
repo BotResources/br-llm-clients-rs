@@ -11,6 +11,7 @@ use crate::payload_decoder::PayloadDecoder;
 use crate::test_decoder::{DecoderLog, EndScript, ScriptDecoder};
 
 pub(crate) type Refine = Box<dyn Fn(&ErrorInfo) -> Option<ClientError> + Send + Sync>;
+pub(crate) type Answer = Box<dyn Fn(&Headers) -> Option<String> + Send + Sync>;
 
 pub(crate) struct ScriptedDialect {
     pub(crate) body: Vec<u8>,
@@ -18,6 +19,7 @@ pub(crate) struct ScriptedDialect {
     pub(crate) encode_error: Option<ClientError>,
     pub(crate) refine: Refine,
     pub(crate) request_id_header: &'static str,
+    pub(crate) answered: Answer,
     pub(crate) encode_calls: AtomicUsize,
     pub(crate) seen_bodies: Mutex<Vec<String>>,
     pub(crate) seen_infos: Mutex<Vec<ErrorInfo>>,
@@ -34,6 +36,7 @@ impl Default for ScriptedDialect {
             encode_error: None,
             refine: Box::new(|_| None),
             request_id_header: "x-request-id",
+            answered: Box::new(|_| None),
             encode_calls: AtomicUsize::new(0),
             seen_bodies: Mutex::new(Vec::new()),
             seen_infos: Mutex::new(Vec::new()),
@@ -100,5 +103,9 @@ impl Dialect for ScriptedDialect {
 
     fn request_id(&self, headers: &Headers) -> Option<String> {
         headers.get_text(self.request_id_header).map(str::to_owned)
+    }
+
+    fn answered_model(&self, headers: &Headers) -> Option<String> {
+        (self.answered)(headers)
     }
 }

@@ -15,4 +15,8 @@ pub trait Dialect: Send + Sync {
     fn refine_error(&self, info: &ErrorInfo) -> Option<ClientError>;
 
     fn request_id(&self, headers: &Headers) -> Option<String>;
+
+    fn answered_model(&self, _headers: &Headers) -> Option<String> {
+        None
+    }
 }

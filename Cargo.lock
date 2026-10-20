@@ -113,7 +113,7 @@ dependencies = [
 
 [[package]]
 name = "br-llm-clients-common-call"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "br-llm-clients-common-http",
  "br-llm-clients-common-sse",

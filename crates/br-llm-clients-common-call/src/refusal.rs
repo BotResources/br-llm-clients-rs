@@ -9,12 +9,14 @@ pub(crate) const REFUSAL_BODY_CAP: usize = 65_536;
 
 pub(crate) async fn refuse(spec: &CallSpec, mut response: Response) -> ClientError {
     let status = response.status();
-    let delay = response.retry_after();
+    let delay = response.retry_after_ms().or_else(|| response.retry_after());
     let info = match response.body_mut().collect(REFUSAL_BODY_CAP).await {
-        Ok(collected) => {
-            let text = spec
-                .secrets
-                .replace(&String::from_utf8_lossy(&collected.bytes));
+        Ok(mut collected) => {
+            let secrets = spec.secrets_in_effect();
+            if collected.cut {
+                secrets.trim_cut(&mut collected.bytes);
+            }
+            let text = secrets.replace(&String::from_utf8_lossy(&collected.bytes));
             let info = ErrorInfo::new(text.as_str()).with_status(status);
             match spec.dialect.error_code(&text) {
                 Some(code) => info.with_code(code),

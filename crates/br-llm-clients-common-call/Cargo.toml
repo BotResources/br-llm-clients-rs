@@ -1,6 +1,6 @@
 [package]
 name = "br-llm-clients-common-call"
-version = "0.1.0"
+version = "0.2.0"
 description = "Runs one call of an LLM client: encodes the request, sends it, applies the shared rules of the family and gives back the outcome, for any provider and any wire dialect"
 edition.workspace = true
 rust-version.workspace = true

@@ -71,7 +71,10 @@ impl<'a> Reader<'a> {
             &mut self.normalizer,
             self.emitter.log(),
             self.request,
-            &self.spec.model,
+            self.record
+                .answered_model
+                .as_ref()
+                .unwrap_or(&self.spec.model),
         )?;
         for event in conclusion.tail {
             self.emitter.emit(event, self.record).await?;
@@ -120,7 +123,7 @@ impl<'a> Reader<'a> {
     }
 
     fn classify(&self, info: ErrorInfo) -> ClientError {
-        classify_stream_error(&*self.spec.dialect, &self.spec.secrets, info)
+        classify_stream_error(&*self.spec.dialect, &self.spec.secrets_in_effect(), info)
     }
 
     async fn apply(&mut self, event: ProviderEvent) -> Result<(), ClientError> {

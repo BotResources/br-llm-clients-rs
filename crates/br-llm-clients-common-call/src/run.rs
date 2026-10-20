@@ -1,6 +1,7 @@
 use br_llm_clients_core::{CallOutcome, ClientError, ClientRequest, StreamSink};
 use br_llm_messages::Step;
 
+use crate::answered_model::answered_model;
 use crate::call_record::CallRecord;
 use crate::call_spec::CallSpec;
 use crate::failure_map::send_failure;
@@ -16,7 +17,7 @@ pub async fn run(
 ) -> CallOutcome {
     let mut record = CallRecord::start();
     let result = exchange(spec, request, sink, &mut record).await;
-    outcome(&spec.secrets, record, result)
+    outcome(&spec.secrets_in_effect(), record, result)
 }
 
 async fn exchange(
@@ -34,6 +35,7 @@ async fn exchange(
         .await
         .map_err(|error| send_failure(&error))?;
     record.request_id = spec.dialect.request_id(response.headers());
+    record.answered_model = answered_model(spec, response.headers());
     if (200..300).contains(&response.status()) {
         read_reply(spec, request, response, sink, record).await
     } else {

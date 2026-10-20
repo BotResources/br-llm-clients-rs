@@ -8,6 +8,7 @@ pub(crate) struct CallRecord {
     pub(crate) request_id: Option<String>,
     pub(crate) usage: Option<Usage>,
     pub(crate) model: Option<ModelId>,
+    pub(crate) answered_model: Option<ModelId>,
     pub(crate) time_to_first_event: Option<Duration>,
 }
 
@@ -18,6 +19,7 @@ impl CallRecord {
             request_id: None,
             usage: None,
             model: None,
+            answered_model: None,
             time_to_first_event: None,
         }
     }
