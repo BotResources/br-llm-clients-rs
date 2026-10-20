@@ -9,7 +9,7 @@ use br_llm_messages::{
 };
 use serde_json::{Value, json};
 
-use crate::AnthropicMessages;
+use crate::{AnthropicMessages, MessagesOptions};
 
 pub(crate) const MODEL: &str = "claude-test-model";
 
@@ -32,6 +32,13 @@ pub(crate) fn dialect() -> AnthropicMessages {
 
 pub(crate) fn dialect_with(level: ReasoningLevel, cache: CacheRequirement) -> AnthropicMessages {
     AnthropicMessages::new(&settings(level, cache, 1024))
+}
+
+pub(crate) fn dialect_options(options: MessagesOptions) -> AnthropicMessages {
+    AnthropicMessages::with_options(
+        &settings(ReasoningLevel::Off, CacheRequirement::NotRequired, 1024),
+        options,
+    )
 }
 
 pub(crate) fn text(value: &str) -> Text {

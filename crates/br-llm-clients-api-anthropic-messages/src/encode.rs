@@ -6,6 +6,7 @@ use crate::encode_messages::encode_messages;
 pub(crate) use crate::encode_settings::EncodeSettings;
 use crate::encode_settings::{cache_control, thinking};
 use crate::encode_tools::{structured_format, tool_values};
+use crate::options::{ModelPlacement, VersionPlacement};
 
 const API_VERSION: &str = "2023-06-01";
 
@@ -22,8 +23,11 @@ pub(crate) fn encode(
     let tools = tool_values(request.tools())?;
     let format = structured_format(request.output())?;
 
+    let options = settings.options();
     let mut body = Map::new();
-    body.insert("model".to_owned(), json!(settings.model()));
+    if matches!(options.model(), ModelPlacement::Body) {
+        body.insert("model".to_owned(), json!(settings.model()));
+    }
     body.insert("max_tokens".to_owned(), json!(settings.max_tokens()));
     body.insert("stream".to_owned(), Value::Bool(true));
     body.insert("messages".to_owned(), Value::Array(messages));
@@ -47,9 +51,16 @@ pub(crate) fn encode(
     if let Some(cache) = cache {
         body.insert("cache_control".to_owned(), cache);
     }
-    Ok(
-        EncodedRequest::new(Value::Object(body).to_string().into_bytes())
-            .with_header("content-type", "application/json")
-            .with_header("anthropic-version", API_VERSION),
-    )
+    if let VersionPlacement::Body(version) = options.version() {
+        body.insert("anthropic_version".to_owned(), json!(version));
+    }
+    for (member, value) in options.extra_body() {
+        body.insert(member.clone(), value.clone());
+    }
+    let encoded = EncodedRequest::new(Value::Object(body).to_string().into_bytes())
+        .with_header("content-type", "application/json");
+    Ok(match options.version() {
+        VersionPlacement::Header => encoded.with_header("anthropic-version", API_VERSION),
+        VersionPlacement::Body(_) => encoded,
+    })
 }

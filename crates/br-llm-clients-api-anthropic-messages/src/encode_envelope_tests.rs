@@ -1,11 +1,9 @@
 use br_llm_clients_common_call::Dialect;
-use br_llm_clients_core::{
-    CacheRequirement, ClientRequest, OutputMode, ParameterKind, ReasoningLevel,
-};
-use br_llm_messages::ImageMime;
+use br_llm_clients_core::{CacheRequirement, OutputMode, ReasoningLevel};
 use serde_json::{Value, json};
 
 use crate::test_fixtures::*;
+use crate::test_shapes::every_request_shape;
 
 const ALLOWED_FIELDS: [&str; 9] = [
     "model",
@@ -31,52 +29,6 @@ const NEVER_SENT: [&str; 10] = [
     "service_tier",
     "betas",
 ];
-
-fn every_request_shape() -> Vec<ClientRequest> {
-    let weather = tool(
-        "weather",
-        "the weather",
-        vec![param("city", "", true, ParameterKind::String)],
-    );
-    vec![
-        request(vec![user("hello")]),
-        request_with(
-            Some("be brief"),
-            vec![user("hello")],
-            vec![],
-            OutputMode::Plain,
-        ),
-        request_with(
-            None,
-            vec![user("hello")],
-            vec![weather.clone()],
-            OutputMode::Plain,
-        ),
-        request_with(
-            None,
-            vec![user("hello")],
-            vec![],
-            structured(
-                Some("an answer"),
-                vec![param("v", "", true, ParameterKind::String)],
-            ),
-        ),
-        request(vec![
-            user("hello"),
-            assistant(vec![
-                thinking("hm", Some("sig")),
-                redacted("abc"),
-                tool_call("t1", "weather", json!({"city": "Paris"})),
-            ]),
-            user_blocks(vec![tool_result("t1", "weather", &["sunny"], false)]),
-        ]),
-        request(vec![
-            user_blocks(vec![image(ImageMime::Png, "AAAA"), user_text_block("look")]),
-            assistant_text("seen"),
-            relay(&["more"]),
-        ]),
-    ]
-}
 
 #[test]
 fn given_every_request_shape_when_encoded_then_the_body_holds_only_the_closed_field_list() {

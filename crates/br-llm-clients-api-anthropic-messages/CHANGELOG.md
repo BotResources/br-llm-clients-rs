@@ -9,6 +9,46 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.2.0
+
+With the default options, `encode` gives the same body bytes and the same headers as 0.1.0,
+and the decoder and the errors are unchanged. The line of `br-llm-clients-common-call` that
+this crate imports moves from 0.1 to 0.2: the `Dialect` of that line has one more operation,
+`answered_model`, with a default, so the dialect of this crate is a `Dialect` of line 0.2 only,
+and an importer must use `br-llm-clients-common-call` 0.2 to give it to a `CallSpec`.
+
+### Added
+
+- `MessagesOptions`: what can differ from host to host, as typed values. `new` and `Default`
+  give the default options (the model in the body, the version in the header, no extra member).
+  `with_model_placement`, `with_version_placement` and `with_extra_body` take the options and give
+  the options (`with_extra_body` gives the options or an `OptionsError`). It has `Debug`,
+  `Clone` and `PartialEq`; its `Debug` shows the names of the members of the extra body, never a
+  value.
+- `ModelPlacement` (`Body`, the default, and `Omitted`: no `model` member in the body) and
+  `VersionPlacement` (`Header`, the default, and `Body(text)`: the member `anthropic_version`
+  holds the text as it is, blank included, and `encode` returns no `anthropic-version` header).
+  Both are `#[non_exhaustive]`.
+- The extra body: a `serde_json::Map` whose members are added, each with its whole value, to the
+  top level of every body. A second `with_extra_body` replaces the object. The ten names that the
+  dialect writes or may write (`model`, `max_tokens`, `stream`, `messages`, `system`, `tools`,
+  `thinking`, `output_config`, `cache_control`, `anthropic_version`) are refused for every
+  placement.
+- `OptionsError` with the case `ReservedExtraBodyMember(name)`; its text names the member and shows
+  no value. `#[non_exhaustive]`.
+- `AnthropicMessages::with_options(&ClientSettings, MessagesOptions)`: infallible; `new` gives the
+  same dialect as `with_options` with the default options.
+- `Map` and `Value` of `serde_json`, re-exported.
+
+### Changed
+
+- `br-llm-clients-common-call` is pinned by path and version 0.2.0. For its tests only, the crate
+  also depends on `br-llm-clients-common-http` 0.2.0.
+- The closed list of body fields and the list of fields that are never sent hold with the default
+  options only: with an extra body a caller can send a top-level member of the never-sent list, and
+  the placements change the `model` member and the version header as described above.
+- The dialect does not write `answered_model`: it gives the default of the trait, which is nothing.
+
 ## 0.1.0
 
 ### Added

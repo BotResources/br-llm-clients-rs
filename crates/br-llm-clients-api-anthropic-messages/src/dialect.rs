@@ -4,6 +4,7 @@ use br_llm_clients_core::{ClientError, ClientRequest, ClientSettings, OutputMode
 use crate::decode::Decoder;
 use crate::encode::{self, EncodeSettings};
 use crate::errors;
+use crate::options::MessagesOptions;
 
 pub struct AnthropicMessages {
     settings: EncodeSettings,
@@ -11,8 +12,12 @@ pub struct AnthropicMessages {
 
 impl AnthropicMessages {
     pub fn new(settings: &ClientSettings) -> Self {
+        Self::with_options(settings, MessagesOptions::new())
+    }
+
+    pub fn with_options(settings: &ClientSettings, options: MessagesOptions) -> Self {
         Self {
-            settings: EncodeSettings::from_settings(settings),
+            settings: EncodeSettings::from_settings(settings, options),
         }
     }
 }

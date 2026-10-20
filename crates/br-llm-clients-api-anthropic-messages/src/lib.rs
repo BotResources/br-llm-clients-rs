@@ -24,8 +24,13 @@ mod encode_schema;
 mod encode_settings;
 mod encode_tools;
 mod errors;
+mod options;
+mod options_error;
 
 pub use dialect::AnthropicMessages;
+pub use options::{MessagesOptions, ModelPlacement, VersionPlacement};
+pub use options_error::OptionsError;
+pub use serde_json::{Map, Value};
 
 #[cfg(test)]
 mod decode_block_delta_tests;
@@ -62,6 +67,12 @@ mod encode_tools_tests;
 #[cfg(test)]
 mod error_code_tests;
 #[cfg(test)]
+mod options_default_tests;
+#[cfg(test)]
+mod options_equivalence_tests;
+#[cfg(test)]
+mod options_tests;
+#[cfg(test)]
 mod recorded_redacted_tests;
 #[cfg(test)]
 mod refine_rules_tests;
@@ -93,6 +104,8 @@ mod test_recorded;
 mod test_recordings;
 #[cfg(test)]
 mod test_server;
+#[cfg(test)]
+mod test_shapes;
 #[cfg(test)]
 mod test_sink;
 #[cfg(test)]
