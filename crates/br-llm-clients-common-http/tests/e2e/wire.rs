@@ -90,7 +90,8 @@ async fn given_no_user_agent_when_sent_then_a_fixed_value_names_the_library_and_
     let agent = seen.lock().expect("lock")[0]
         .header("user-agent")
         .map(str::to_owned);
-    assert_eq!(agent.as_deref(), Some("br-llm-clients-common-http/0.1.0"));
+    let expected = format!("br-llm-clients-common-http/{}", env!("CARGO_PKG_VERSION"));
+    assert_eq!(agent.as_deref(), Some(expected.as_str()));
 }
 
 #[tokio::test]

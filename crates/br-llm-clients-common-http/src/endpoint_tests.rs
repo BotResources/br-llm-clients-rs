@@ -17,7 +17,7 @@ fn given_an_https_text_when_built_by_https_then_it_is_accepted() {
     let endpoint = https("https://api.example.com/v1/messages");
     assert!(endpoint.is_https());
     assert_eq!(endpoint.host(), "api.example.com");
-    assert_eq!(endpoint.port(), None);
+    assert_eq!(endpoint.port(), 443);
     assert_eq!(endpoint.path(), "/v1/messages");
 }
 
@@ -36,7 +36,7 @@ fn given_an_https_text_when_built_by_plain_http_then_the_scheme_is_refused() {
 fn given_an_http_text_when_built_by_plain_http_then_it_is_accepted_and_not_https() {
     let endpoint = Endpoint::plain_http("http://localhost:8080/x").expect("endpoint");
     assert!(!endpoint.is_https());
-    assert_eq!(endpoint.port(), Some(8080));
+    assert_eq!(endpoint.port(), 8080);
 }
 
 #[test]

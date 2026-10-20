@@ -25,6 +25,10 @@ impl Secret {
     pub fn expose(&self) -> &str {
         &self.0
     }
+
+    pub fn appears_in(&self, text: &str) -> bool {
+        text.contains(self.0.as_str())
+    }
 }
 
 impl fmt::Debug for Secret {

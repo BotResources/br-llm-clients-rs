@@ -1,6 +1,6 @@
 [package]
 name = "br-llm-clients-common-http"
-version = "0.1.0"
+version = "0.2.0"
 description = "Sends one HTTP POST and gives back the status, the headers and a stream of byte chunks, with every failure told apart"
 edition.workspace = true
 rust-version.workspace = true

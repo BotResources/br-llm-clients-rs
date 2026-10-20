@@ -46,7 +46,7 @@ impl Target {
         Self {
             https: endpoint.is_https(),
             name: endpoint.dns_name().to_owned(),
-            port: endpoint.effective_port(),
+            port: endpoint.port(),
         }
     }
 }

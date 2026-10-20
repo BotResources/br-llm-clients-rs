@@ -12,7 +12,19 @@ pub(crate) fn parse(value: &[u8], now: SystemTime) -> Option<Duration> {
     Some(date.duration_since(now).unwrap_or(Duration::ZERO))
 }
 
+pub(crate) fn parse_millis(value: &[u8]) -> Option<Duration> {
+    let text = std::str::from_utf8(value).ok()?.trim_matches([' ', '\t']);
+    if text.is_empty() || !text.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    Some(from_digits(text, Duration::from_millis))
+}
+
 fn seconds(digits: &str) -> Duration {
+    from_digits(digits, Duration::from_secs)
+}
+
+fn from_digits(digits: &str, unit: fn(u64) -> Duration) -> Duration {
     let mut total: u64 = 0;
     for byte in digits.bytes() {
         let digit = u64::from(byte.saturating_sub(b'0'));
@@ -21,5 +33,5 @@ fn seconds(digits: &str) -> Duration {
             None => return Duration::MAX,
         }
     }
-    Duration::from_secs(total)
+    unit(total)
 }
