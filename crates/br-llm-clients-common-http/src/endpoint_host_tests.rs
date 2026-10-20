@@ -14,8 +14,10 @@ fn refused_https(text: &str) -> String {
 
 #[test]
 fn given_ports_when_built_then_only_a_number_in_range_is_accepted() {
-    assert_eq!(https("https://h:8443/").port(), Some(8443));
-    assert_eq!(https("https://h:/").port(), None);
+    assert_eq!(https("https://h:8443/").port(), 8443);
+    assert_eq!(https("https://h:/").port(), 443);
+    assert_eq!(https("https://h:65535/").port(), 65535);
+    assert_eq!(https("https://h:1/").port(), 1);
     for text in [
         "https://h:0/",
         "https://h:65536/",

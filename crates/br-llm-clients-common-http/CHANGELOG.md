@@ -9,6 +9,32 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.2.0
+
+No change breaks 0.1.0. Seven operations are added and nothing else changes.
+
+### Added
+
+- `Endpoint::host`, `Endpoint::port`, `Endpoint::path`, `Endpoint::query` and
+  `Endpoint::is_https` give the parts of an endpoint. `host` keeps the letter
+  case of the text and the square brackets of an IPv6 address. `port` gives the
+  port of the text, or 443 for `https` and 80 for `http`; it is the port the
+  client connects to and is never 0. `path` gives the path as it is sent,
+  percent-encoded and starting with `/`. `query` gives the query as it is sent,
+  without the `?`, or nothing; a text that ends with `?` has the query `""`.
+  `is_https` is true for an endpoint built by `Endpoint::https`. The `Display`
+  and `Debug` of an endpoint still never show the query.
+- `Secret::appears_in(&str)` says whether the exact value of the secret is
+  contained in a text, byte by byte and with case. A part of the value or a
+  re-encoded value is not found. An empty text gives false. It never shows the
+  value.
+- `Response::retry_after_ms` reads the `retry-after-ms` header (first value) and
+  gives a duration: decimal digits, with or without a space or a tab around
+  them, are milliseconds and a number too large saturates at the largest
+  duration. A date, a fraction or a sign gives nothing. It does not read
+  `Retry-After`, and `retry_after` does not read `retry-after-ms` and is
+  unchanged.
+
 ## 0.1.0
 
 ### Added

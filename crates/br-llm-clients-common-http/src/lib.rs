@@ -119,6 +119,8 @@ mod endpoint_build_tests;
 #[cfg(test)]
 mod endpoint_host_tests;
 #[cfg(test)]
+mod endpoint_read_tests;
+#[cfg(test)]
 mod endpoint_tests;
 #[cfg(test)]
 mod exchange_tests;

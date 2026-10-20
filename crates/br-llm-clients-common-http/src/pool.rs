@@ -27,7 +27,7 @@ impl PoolKey {
         Self {
             https: endpoint.is_https(),
             host: endpoint.dns_name().to_ascii_lowercase(),
-            port: endpoint.effective_port(),
+            port: endpoint.port(),
         }
     }
 }
