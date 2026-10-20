@@ -3,7 +3,30 @@ use std::fmt;
 use serde_json::{Map, Value};
 
 use crate::option_values::{PromptCacheMode, ServiceTier};
-use crate::options_error::{OptionsError, reserved_member};
+use crate::options_error::OptionsError;
+
+const RESERVED_MEMBERS: [&str; 13] = [
+    "model",
+    "stream",
+    "store",
+    "instructions",
+    "input",
+    "max_output_tokens",
+    "tools",
+    "text",
+    "reasoning",
+    "include",
+    "prompt_cache_key",
+    "service_tier",
+    "prompt_cache_options",
+];
+
+fn reserved_member(extra_body: &Map<String, Value>) -> Option<String> {
+    RESERVED_MEMBERS
+        .iter()
+        .find(|member| extra_body.contains_key(**member))
+        .map(|member| (*member).to_owned())
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
@@ -35,7 +58,7 @@ pub struct Options {
 impl Options {
     pub fn with_extra_body(mut self, extra_body: Map<String, Value>) -> Result<Self, OptionsError> {
         if let Some(member) = reserved_member(&extra_body) {
-            return Err(OptionsError::ReservedExtraBodyMember(member));
+            return Err(OptionsError::ReservedExtraBodyMember { member });
         }
         self.extra_body = extra_body;
         Ok(self)

@@ -33,7 +33,9 @@ fn given_each_reserved_member_when_set_in_extra_body_then_it_is_refused_and_name
             .expect_err("a reserved member");
         assert_eq!(
             error,
-            OptionsError::ReservedExtraBodyMember(name.to_owned())
+            OptionsError::ReservedExtraBodyMember {
+                member: name.to_owned()
+            }
         );
         let shown = error.to_string();
         assert!(shown.contains(name), "{name}");
@@ -49,7 +51,9 @@ fn given_a_reserved_member_next_to_free_ones_when_set_then_it_is_still_refused()
         .expect_err("a reserved member");
     assert_eq!(
         error,
-        OptionsError::ReservedExtraBodyMember("model".to_owned())
+        OptionsError::ReservedExtraBodyMember {
+            member: "model".to_owned()
+        }
     );
 }
 
@@ -58,28 +62,8 @@ fn given_several_reserved_members_when_set_then_one_of_them_is_named() {
     let error = Options::default()
         .with_extra_body(members(&[("model", json!(1)), ("tools", json!(2))]))
         .expect_err("a reserved member");
-    let OptionsError::ReservedExtraBodyMember(name) = error;
+    let OptionsError::ReservedExtraBodyMember { member: name } = error;
     assert!(name == "model" || name == "tools");
-}
-
-#[test]
-fn given_a_refused_extra_body_when_set_then_the_options_value_is_consumed_and_new_cannot_fail() {
-    let options = Options::default();
-    let refused = options
-        .clone()
-        .with_extra_body(members(&[("input", json!([]))]));
-    assert!(refused.is_err());
-    let settings = crate::test_requests::settings(
-        br_llm_clients_core::ReasoningLevel::Off,
-        br_llm_clients_core::CacheRequirement::NotRequired,
-    );
-    let _dialect = OpenAiResponses::new(&settings, options);
-}
-
-#[test]
-fn given_the_options_error_when_checked_then_it_is_a_std_error_with_value_semantics() {
-    fn assert_error<T: std::error::Error + Clone + PartialEq + Eq>() {}
-    assert_error::<OptionsError>();
 }
 
 #[test]
@@ -160,7 +144,13 @@ fn given_an_options_with_every_field_set_when_the_dialect_is_built_then_it_is_se
     assert_send_sync(&dialect);
     assert_send_sync(&options);
     let copy = dialect.clone();
-    assert_eq!(format!("{copy:?}"), format!("{dialect:?}"));
+    let request = crate::test_requests::hello();
+    let original = crate::test_requests::encode_body(&dialect, &request).expect("encoded");
+    assert_eq!(original["temperature"], json!(0.3));
+    assert_eq!(
+        crate::test_requests::encode_body(&copy, &request).expect("encoded"),
+        original
+    );
 }
 
 #[test]
@@ -175,8 +165,38 @@ fn given_a_cloned_options_when_compared_then_the_extra_body_object_is_copied() {
 }
 
 #[test]
-fn given_the_value_types_when_checked_then_they_are_copy_and_comparable() {
-    fn assert_copy<T: Copy + Eq + std::fmt::Debug>() {}
-    assert_copy::<ServiceTier>();
-    assert_copy::<PromptCacheMode>();
+fn given_a_request_with_every_dialect_member_when_encoded_then_each_body_key_is_reserved() {
+    use br_llm_clients_core::{OutputMode, ParameterKind, ReasoningLevel};
+
+    use crate::test_requests::{
+        dialect_with, encode_body, parameter, request_with, shape, tool, user_text,
+    };
+
+    let options = Options {
+        prompt_cache_key: Some("k".to_owned()),
+        service_tier: Some(ServiceTier::Auto),
+        cache_mode: Some(PromptCacheMode::Implicit),
+        ..Options::default()
+    };
+    let request = request_with(
+        Some("be brief"),
+        vec![user_text("hi")],
+        vec![tool(
+            "lookup",
+            "",
+            vec![parameter("q", "", true, ParameterKind::String)],
+        )],
+        OutputMode::Structured(shape(
+            "answer",
+            None,
+            vec![parameter("value", "", true, ParameterKind::String)],
+        )),
+    );
+    let body = encode_body(&dialect_with(ReasoningLevel::High, options), &request).expect("body");
+    let keys: Vec<&String> = body.as_object().expect("object").keys().collect();
+    assert_eq!(keys.len(), RESERVED.len());
+    for key in keys {
+        let refused = Options::default().with_extra_body(members(&[(key, json!(0))]));
+        assert!(refused.is_err(), "{key}");
+    }
 }

@@ -47,5 +47,6 @@ fn given_the_files_that_are_not_tests_when_read_then_none_names_the_cache_requir
         let text = std::fs::read_to_string(path).expect("source");
         assert!(!text.contains("CacheRequirement"), "{path:?}");
         assert!(!text.contains("CacheNotSupported"), "{path:?}");
+        assert!(!text.contains(".cache()"), "{path:?}");
     }
 }
