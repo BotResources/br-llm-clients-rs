@@ -211,6 +211,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "br-llm-clients-openai"
+version = "0.1.0"
+dependencies = [
+ "br-llm-clients-api-openai-responses",
+ "br-llm-clients-common-call",
+ "br-llm-clients-common-http",
+ "br-llm-clients-core",
+ "br-llm-messages",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "br-llm-messages"
 version = "0.5.0"
 source = "git+https://github.com/BotResources/br-llm-messages-rs?tag=br-llm-messages%2Fv0.5.0#9f0a052beda362b9f9145b1a5482c4c24fbe4135"
