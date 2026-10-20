@@ -7,13 +7,13 @@ use br_llm_clients_core::{
 
 use crate::call::drive;
 use crate::call_log::{LoggedCall, StateKind};
-use crate::capabilities::Capabilities;
 use crate::log_disabled::LogDisabled;
 use crate::mock_builder::MockBuilder;
 use crate::mock_waits::{WaitForCalls, WaitForState};
 use crate::reply_source::ReplySource;
 use crate::rule::Rule;
 use crate::shared::Shared;
+use br_llm_clients_core::Capabilities;
 
 #[derive(Clone)]
 pub struct MockClient {

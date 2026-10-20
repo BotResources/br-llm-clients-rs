@@ -3,10 +3,9 @@ use br_llm_clients_core::{
     ReasoningLevel,
 };
 
-use crate::accepted::Accepted;
-use crate::capabilities::Capabilities;
-use crate::strictness::{CacheClass, check, check_settings, classify_cache};
+use crate::strictness::check;
 use crate::test_support::*;
+use crate::{Accepted, Capabilities};
 
 fn refusal(
     capabilities: &Capabilities,
@@ -32,7 +31,7 @@ fn given_a_level_outside_the_set_when_checked_then_reasoning_not_supported_names
 }
 
 #[test]
-fn given_an_empty_set_of_levels_when_checked_then_every_level_is_refused_even_off() {
+fn given_an_empty_set_of_levels_when_the_messages_pass_then_every_level_is_refused_even_off() {
     let capabilities = caps(|spec| spec.reasoning_levels = Accepted::Only(vec![]));
     for level in [ReasoningLevel::Off, ReasoningLevel::Max] {
         let error = refusal(
@@ -95,7 +94,7 @@ fn given_several_failing_settings_when_checked_then_the_first_in_the_listed_orde
     });
     let settings = settings_with(ReasoningLevel::Low, CacheRequirement::Required, 5);
     assert!(matches!(
-        check_settings(&capabilities, &settings, CacheClass::Required),
+        check(&capabilities, &settings, &request()),
         Err(ClientError::ReasoningNotSupported { .. })
     ));
     let capabilities = caps(|spec| {
@@ -103,7 +102,7 @@ fn given_several_failing_settings_when_checked_then_the_first_in_the_listed_orde
         spec.max_output_tokens = MaxOutputTokens::new(1).unwrap();
     });
     assert_eq!(
-        check_settings(&capabilities, &settings, CacheClass::Required),
+        check(&capabilities, &settings, &request()),
         Err(ClientError::CacheNotSupported)
     );
 }
@@ -121,35 +120,4 @@ fn given_failing_settings_and_failing_request_when_checked_then_the_settings_com
         bad_request,
     );
     assert!(matches!(error, ClientError::MaxOutputTokensTooLarge { .. }));
-}
-
-#[test]
-fn given_a_cache_requirement_unknown_to_the_mock_when_checked_then_it_is_refused_at_the_cache_position()
- {
-    let settings = settings_with(ReasoningLevel::Off, CacheRequirement::NotRequired, 5);
-    let unknown = check_settings(&everything_caps(), &settings, CacheClass::Unknown).unwrap_err();
-    assert!(is_unknown_value(&unknown, "CacheRequirement"));
-    let wrong_level = caps(|spec| spec.reasoning_levels = Accepted::Only(vec![]));
-    assert!(matches!(
-        check_settings(&wrong_level, &settings, CacheClass::Unknown),
-        Err(ClientError::ReasoningNotSupported { .. })
-    ));
-    let too_many_tokens = caps(|spec| spec.max_output_tokens = MaxOutputTokens::new(1).unwrap());
-    let big = settings_with(ReasoningLevel::Off, CacheRequirement::NotRequired, 9);
-    assert!(is_unknown_value(
-        &check_settings(&too_many_tokens, &big, CacheClass::Unknown).unwrap_err(),
-        "CacheRequirement"
-    ));
-}
-
-#[test]
-fn given_the_known_cache_requirements_when_classified_then_none_is_unknown() {
-    assert_eq!(
-        classify_cache(CacheRequirement::Required),
-        CacheClass::Required
-    );
-    assert_eq!(
-        classify_cache(CacheRequirement::NotRequired),
-        CacheClass::NotRequired
-    );
 }

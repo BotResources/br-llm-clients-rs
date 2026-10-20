@@ -1,10 +1,9 @@
 use std::collections::HashSet;
 
-use br_llm_clients_core::{ClientError, ClientRequest};
+use br_llm_clients_core::{ClientError, ClientRequest, OutputMode};
 use br_llm_messages::{AssistantBlock, Step, StopReason, ToolCallId, WireMessage};
 
-use crate::capabilities::Capabilities;
-use crate::strictness::ModeClass;
+use br_llm_clients_core::Capabilities;
 
 struct Counts {
     text: usize,
@@ -49,7 +48,6 @@ fn blocked(stop_reason: &StopReason) -> bool {
 pub(crate) fn check(
     capabilities: &Capabilities,
     request: &ClientRequest,
-    mode: ModeClass,
     step: &Step,
 ) -> Result<(), ClientError> {
     let counts = count(step);
@@ -63,7 +61,7 @@ pub(crate) fn check(
             }
         });
     }
-    let structured = mode == ModeClass::Structured;
+    let structured = matches!(request.output(), OutputMode::Structured(_));
     if structured
         && counts.structured.saturating_add(counts.tool_calls) == 0
         && blocked(stop_reason)
@@ -72,7 +70,7 @@ pub(crate) fn check(
     }
     if structured {
         check_structured_shape(capabilities, request, &counts)?;
-    } else if counts.structured > 0 && mode == ModeClass::Plain {
+    } else if counts.structured > 0 {
         return Err(malformed(
             "a structured block in a reply to a plain request".to_owned(),
         ));

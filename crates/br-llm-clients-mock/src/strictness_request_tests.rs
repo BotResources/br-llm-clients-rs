@@ -1,35 +1,9 @@
 use br_llm_clients_core::{ClientError, OutputMode};
 use br_llm_messages::ImageMime;
 
-use crate::accepted::Accepted;
-use crate::strictness::{ModeClass, check, check_request, classify_mode};
+use crate::Accepted;
+use crate::strictness::check;
 use crate::test_support::*;
-
-#[test]
-fn given_the_known_output_modes_when_classified_then_none_is_unknown() {
-    assert_eq!(classify_mode(&OutputMode::Plain), ModeClass::Plain);
-    assert_eq!(classify_mode(&shape()), ModeClass::Structured);
-}
-
-#[test]
-fn given_an_output_mode_unknown_to_the_mock_when_checked_then_it_is_refused_at_the_structured_position()
- {
-    let capabilities = everything_caps();
-    let unknown = check_request(&capabilities, &request(), ModeClass::Unknown).unwrap_err();
-    assert!(is_unknown_value(&unknown, "OutputMode"));
-    let no_tools = caps(|spec| spec.tools = false);
-    let with_tool = request_of(vec![user_text("hi")], vec![tool()], OutputMode::Plain);
-    assert_eq!(
-        check_request(&no_tools, &with_tool, ModeClass::Unknown),
-        Err(ClientError::ToolsNotSupported)
-    );
-    let images = request_of(vec![user_image(ImageMime::Png)], vec![], OutputMode::Plain);
-    let no_images = caps(|spec| spec.images = false);
-    assert!(is_unknown_value(
-        &check_request(&no_images, &images, ModeClass::Unknown).unwrap_err(),
-        "OutputMode"
-    ));
-}
 
 #[test]
 fn given_invalid_messages_when_checked_then_the_check_of_core_decides_and_comes_first() {
@@ -39,7 +13,7 @@ fn given_invalid_messages_when_checked_then_the_check_of_core_decides_and_comes_
         vec![tool()],
         OutputMode::Plain,
     );
-    let error = check_request(&capabilities, &bad, ModeClass::Plain).unwrap_err();
+    let error = check(&capabilities, &settings(), &bad).unwrap_err();
     assert_eq!(Some(error), bad.check_messages().err());
 }
 
@@ -56,10 +30,7 @@ fn given_the_rules_of_core_when_checked_then_the_examples_of_the_intent_hold() {
         vec![tool()],
         OutputMode::Plain,
     );
-    assert_eq!(
-        check_request(&capabilities, &accepted, ModeClass::Plain),
-        Ok(())
-    );
+    assert_eq!(check(&capabilities, &settings(), &accepted), Ok(()));
     let refused = request_of(
         vec![
             user_text("go"),
@@ -71,7 +42,7 @@ fn given_the_rules_of_core_when_checked_then_the_examples_of_the_intent_hold() {
         OutputMode::Plain,
     );
     assert!(matches!(
-        check_request(&capabilities, &refused, ModeClass::Plain),
+        check(&capabilities, &settings(), &refused),
         Err(ClientError::InvalidMessages { .. })
     ));
     let repeated = request_of(
@@ -86,7 +57,7 @@ fn given_the_rules_of_core_when_checked_then_the_examples_of_the_intent_hold() {
         OutputMode::Plain,
     );
     assert!(matches!(
-        check_request(&capabilities, &repeated, ModeClass::Plain),
+        check(&capabilities, &settings(), &repeated),
         Err(ClientError::InvalidMessages { .. })
     ));
 }
@@ -105,10 +76,7 @@ fn given_the_rules_left_to_each_library_when_checked_then_the_mock_accepts_them(
         vec![],
         OutputMode::Plain,
     );
-    assert_eq!(
-        check_request(&capabilities, &lenient, ModeClass::Plain),
-        Ok(())
-    );
+    assert_eq!(check(&capabilities, &settings(), &lenient), Ok(()));
 }
 
 #[test]

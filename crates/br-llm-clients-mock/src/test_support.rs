@@ -14,11 +14,11 @@ use br_llm_messages::{
     ToolCall, ToolCallId, ToolName, ToolResult, ToolResultBlock, Usage, WireMessage, WireUserBlock,
 };
 
-use crate::capabilities::{Capabilities, CapabilitiesSpec};
 use crate::mock_client::MockClient;
 use crate::recording_sink::RecordingSink;
 use crate::reply_source::ReplySource;
 use crate::rule::Rule;
+use br_llm_clients_core::{Capabilities, CapabilitiesSpec};
 
 struct Unparker(Thread);
 
@@ -238,11 +238,6 @@ pub(crate) fn caps(change: impl FnOnce(&mut CapabilitiesSpec)) -> Capabilities {
     let mut spec = CapabilitiesSpec::everything();
     change(&mut spec);
     Capabilities::new(spec).unwrap()
-}
-
-pub(crate) fn is_unknown_value(error: &ClientError, type_name: &str) -> bool {
-    matches!(error, ClientError::ProviderRejected { status: None, code: Some(code), body }
-        if code == crate::codes::CODE_UNKNOWN_VALUE && body.contains(type_name))
 }
 
 pub(crate) fn finish_event() -> StreamEvent {

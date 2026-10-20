@@ -3,7 +3,6 @@ use br_llm_messages::{AssistantBlock, RedactedThinking, Step, StopReason, Thinki
 use serde_json::json;
 
 use crate::step_check::check;
-use crate::strictness::ModeClass;
 use crate::test_support::*;
 
 fn thinking_block() -> AssistantBlock {
@@ -45,12 +44,8 @@ fn structured_with_tools() -> ClientRequest {
     request_of(vec![user_text("go")], vec![tool()], shape())
 }
 
-fn verdict(
-    request_value: &ClientRequest,
-    mode: ModeClass,
-    step_value: &Step,
-) -> Result<(), ClientError> {
-    check(&everything_caps(), request_value, mode, step_value)
+fn verdict(request_value: &ClientRequest, step_value: &Step) -> Result<(), ClientError> {
+    check(&everything_caps(), request_value, step_value)
 }
 
 fn awaiting(content: Vec<AssistantBlock>) -> Step {
@@ -70,7 +65,7 @@ fn given_a_step_with_only_thinking_when_the_stop_is_a_filter_or_refusal_then_con
     for reason in [StopReason::ContentFilter, StopReason::Refusal] {
         let step_value = step(vec![thinking_block(), redacted_block()], reason);
         assert_eq!(
-            verdict(&plain(), ModeClass::Plain, &step_value),
+            verdict(&plain(), &step_value),
             Err(ClientError::ContentBlocked)
         );
     }
@@ -88,7 +83,7 @@ fn given_a_step_with_only_thinking_when_the_stop_is_anything_else_then_reply_unu
     ] {
         let step_value = step(vec![thinking_block()], reason.clone());
         assert_eq!(
-            verdict(&plain(), ModeClass::Plain, &step_value),
+            verdict(&plain(), &step_value),
             Err(ClientError::ReplyUnusable {
                 stop_reason: reason
             })
@@ -100,7 +95,7 @@ fn given_a_step_with_only_thinking_when_the_stop_is_anything_else_then_reply_unu
 fn given_an_empty_step_in_structured_mode_when_checked_then_the_first_rule_still_decides() {
     let step_value = step(vec![thinking_block()], StopReason::MaxTokens);
     assert_eq!(
-        verdict(&structured(), ModeClass::Structured, &step_value),
+        verdict(&structured(), &step_value),
         Err(ClientError::ReplyUnusable {
             stop_reason: StopReason::MaxTokens
         })
@@ -113,7 +108,7 @@ fn given_structured_mode_without_value_or_call_when_blocked_then_content_blocked
     for reason in [StopReason::ContentFilter, StopReason::Refusal] {
         let step_value = step(vec![text_block()], reason);
         assert_eq!(
-            verdict(&structured(), ModeClass::Structured, &step_value),
+            verdict(&structured(), &step_value),
             Err(ClientError::ContentBlocked)
         );
     }
@@ -122,16 +117,13 @@ fn given_structured_mode_without_value_or_call_when_blocked_then_content_blocked
 #[test]
 fn given_plain_mode_with_text_when_blocked_then_the_step_is_accepted_as_given() {
     let step_value = step(vec![text_block()], StopReason::ContentFilter);
-    assert_eq!(verdict(&plain(), ModeClass::Plain, &step_value), Ok(()));
+    assert_eq!(verdict(&plain(), &step_value), Ok(()));
 }
 
 #[test]
 fn given_structured_mode_when_the_step_holds_one_value_only_then_accepted() {
     let step_value = ended(vec![thinking_block(), structured_block(), redacted_block()]);
-    assert_eq!(
-        verdict(&structured(), ModeClass::Structured, &step_value),
-        Ok(())
-    );
+    assert_eq!(verdict(&structured(), &step_value), Ok(()));
 }
 
 #[test]
@@ -144,11 +136,7 @@ fn given_structured_mode_when_the_step_is_not_exactly_one_value_then_malformed()
         awaiting(vec![structured_block(), call_block("a")]),
     ];
     for step_value in cases {
-        assert!(is_malformed(verdict(
-            &structured(),
-            ModeClass::Structured,
-            &step_value
-        )));
+        assert!(is_malformed(verdict(&structured(), &step_value)));
     }
 }
 
@@ -160,46 +148,31 @@ fn given_structured_mode_with_tools_when_the_step_holds_calls_and_text_then_acce
         call_block("a"),
         call_block("b"),
     ]);
-    assert_eq!(
-        verdict(&structured_with_tools(), ModeClass::Structured, &step_value),
-        Ok(())
-    );
+    assert_eq!(verdict(&structured_with_tools(), &step_value), Ok(()));
 }
 
 #[test]
 fn given_structured_mode_with_tools_when_the_step_holds_a_value_then_accepted() {
     let step_value = ended(vec![structured_block()]);
-    assert_eq!(
-        verdict(&structured_with_tools(), ModeClass::Structured, &step_value),
-        Ok(())
-    );
+    assert_eq!(verdict(&structured_with_tools(), &step_value), Ok(()));
 }
 
 #[test]
 fn given_structured_mode_with_tools_when_the_step_mixes_value_and_calls_then_malformed() {
     let step_value = awaiting(vec![structured_block(), call_block("a")]);
-    assert!(is_malformed(verdict(
-        &structured_with_tools(),
-        ModeClass::Structured,
-        &step_value
-    )));
+    assert!(is_malformed(verdict(&structured_with_tools(), &step_value)));
 }
 
 #[test]
 fn given_structured_mode_with_tools_when_the_step_holds_only_text_then_malformed() {
     let step_value = ended(vec![text_block()]);
-    assert!(is_malformed(verdict(
-        &structured_with_tools(),
-        ModeClass::Structured,
-        &step_value
-    )));
+    assert!(is_malformed(verdict(&structured_with_tools(), &step_value)));
 }
 
 #[test]
 fn given_structured_mode_without_declared_tools_when_the_step_calls_then_malformed() {
     assert!(is_malformed(verdict(
         &structured(),
-        ModeClass::Structured,
         &awaiting(vec![call_block("a")])
     )));
 }
@@ -207,11 +180,7 @@ fn given_structured_mode_without_declared_tools_when_the_step_calls_then_malform
 #[test]
 fn given_plain_mode_when_the_step_holds_a_structured_block_then_malformed() {
     let step_value = ended(vec![text_block(), structured_block()]);
-    assert!(is_malformed(verdict(
-        &plain(),
-        ModeClass::Plain,
-        &step_value
-    )));
+    assert!(is_malformed(verdict(&plain(), &step_value)));
 }
 
 #[test]
@@ -221,7 +190,7 @@ fn given_a_call_id_equal_to_one_of_the_request_when_checked_then_malformed_names
         vec![tool()],
         OutputMode::Plain,
     );
-    let result = verdict(&history, ModeClass::Plain, &calls_step(&["fresh", "dup"]));
+    let result = verdict(&history, &calls_step(&["fresh", "dup"]));
     let Err(ClientError::MalformedResponse { detail }) = result else {
         panic!("expected a malformed response");
     };
@@ -236,10 +205,7 @@ fn given_a_fresh_call_id_when_checked_then_accepted() {
         vec![tool()],
         OutputMode::Plain,
     );
-    assert_eq!(
-        verdict(&history, ModeClass::Plain, &calls_step(&["new"])),
-        Ok(())
-    );
+    assert_eq!(verdict(&history, &calls_step(&["new"])), Ok(()));
 }
 
 #[test]
@@ -249,11 +215,7 @@ fn given_a_repeated_id_in_structured_mode_when_checked_then_the_id_rule_still_ap
         vec![tool()],
         shape(),
     );
-    assert!(is_malformed(verdict(
-        &history,
-        ModeClass::Structured,
-        &calls_step(&["dup"])
-    )));
+    assert!(is_malformed(verdict(&history, &calls_step(&["dup"]))));
 }
 
 #[test]
@@ -267,9 +229,7 @@ fn given_a_structured_error_and_a_repeated_id_when_checked_then_the_earlier_rule
         vec![structured_block(), call_block("dup")],
         StopReason::AwaitingToolResults,
     );
-    let Err(ClientError::MalformedResponse { detail }) =
-        verdict(&history, ModeClass::Plain, &step_value)
-    else {
+    let Err(ClientError::MalformedResponse { detail }) = verdict(&history, &step_value) else {
         panic!("expected a malformed response");
     };
     assert!(!detail.contains("dup"));
@@ -277,8 +237,5 @@ fn given_a_structured_error_and_a_repeated_id_when_checked_then_the_earlier_rule
 
 #[test]
 fn given_a_plain_text_step_when_checked_then_accepted() {
-    assert_eq!(
-        verdict(&plain(), ModeClass::Plain, &text_step("ok")),
-        Ok(())
-    );
+    assert_eq!(verdict(&plain(), &text_step("ok")), Ok(()));
 }

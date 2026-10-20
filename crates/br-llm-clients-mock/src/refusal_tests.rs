@@ -4,9 +4,7 @@ use br_llm_clients_core::{CacheRequirement, ClientError, OutputMode, ReasoningLe
 use br_llm_messages::{AssistantBlock, StopReason, StreamEvent};
 use serde_json::json;
 
-use crate::accepted::Accepted;
 use crate::call_log::{CallState, Served};
-use crate::capabilities::CapabilitiesSpec;
 use crate::chunking::Chunking;
 use crate::codes::{CODE_INVALID_REPLY, CODE_SCRIPT_EXHAUSTED};
 use crate::derive_events::derive_events;
@@ -14,6 +12,7 @@ use crate::mock_client::MockClient;
 use crate::reply::Reply;
 use crate::rule::Rule;
 use crate::test_support::*;
+use crate::{Accepted, CapabilitiesSpec};
 
 fn strict_mock(change: impl FnOnce(&mut CapabilitiesSpec)) -> MockClient {
     MockClient::new(settings(), caps(change))
@@ -181,11 +180,7 @@ fn given_an_unusable_success_when_called_then_the_error_of_core_is_given_with_th
 
 #[test]
 fn given_the_codes_when_listed_then_they_start_with_mock_and_exhaustion_is_not_retryable() {
-    for code in [
-        CODE_INVALID_REPLY,
-        CODE_SCRIPT_EXHAUSTED,
-        crate::codes::CODE_UNKNOWN_VALUE,
-    ] {
+    for code in [CODE_INVALID_REPLY, CODE_SCRIPT_EXHAUSTED] {
         assert!(code.starts_with("mock."));
     }
     let client = mock();
