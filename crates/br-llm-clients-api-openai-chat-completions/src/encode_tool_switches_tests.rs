@@ -169,3 +169,48 @@ fn given_empty_text_when_a_message_has_no_text_and_no_tool_call_then_it_is_still
     assert_eq!(messages.len(), 2);
     assert_eq!(messages[1]["role"], json!("user"));
 }
+
+#[test]
+fn given_every_switch_of_a_thinking_host_set_together_when_encoded_then_each_one_shows_in_the_body()
+{
+    use crate::{ReasoningEffort, ReasoningRule, ReasoningTable};
+    let table = ReasoningTable::new(
+        ReasoningRule::Send(ReasoningEffort::None),
+        ReasoningRule::Send(ReasoningEffort::Low),
+        ReasoningRule::Send(ReasoningEffort::Medium),
+        ReasoningRule::Omit,
+        ReasoningRule::Omit,
+        ReasoningRule::Omit,
+    );
+    let configured = ChatCompletionsOptions::new(table)
+        .with_omit_effort_above_off(true)
+        .with_reasoning_carry_back_field("reasoning_content")
+        .with_tool_message_name(true)
+        .with_tool_only_content(ToolOnlyContent::EmptyText);
+    let request = request_of(vec![
+        user_text("go"),
+        assistant(vec![
+            AssistantBlock::Thinking(Thinking {
+                text: "check first".to_owned(),
+                signature: None,
+            }),
+            assistant_call("call_1", "weather", json!({})),
+        ]),
+        user(vec![tool_result("call_1", "weather", &["sunny"], false)]),
+    ]);
+    let body = encoded_body(&dialect_for(ReasoningLevel::High, configured), &request);
+    assert!(body.get("reasoning_effort").is_none());
+    assert_eq!(
+        body["messages"][1],
+        json!({
+            "role": "assistant",
+            "content": "",
+            "reasoning_content": "check first",
+            "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "weather", "arguments": "{}"}}]
+        })
+    );
+    assert_eq!(
+        body["messages"][2],
+        json!({"role": "tool", "tool_call_id": "call_1", "name": "weather", "content": "sunny"})
+    );
+}

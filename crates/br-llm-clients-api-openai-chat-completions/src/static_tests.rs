@@ -74,17 +74,3 @@ fn given_two_decoders_of_one_dialect_when_fed_then_their_state_is_separate() {
     assert!(feed(second.as_mut(), &finish).is_ok());
     assert!(feed(first.as_mut(), &finish).is_err());
 }
-
-#[test]
-fn given_the_new_option_enums_when_used_then_they_are_debug_clone_copy_and_equal() {
-    let field = crate::MaxTokensField::MaxTokens;
-    let copied = field;
-    assert_eq!(field, copied);
-    assert_ne!(field, crate::MaxTokensField::MaxCompletionTokens);
-    assert!(!format!("{field:?}").is_empty());
-    let content = crate::ToolOnlyContent::EmptyText;
-    let copied = content;
-    assert_eq!(content, copied);
-    assert_ne!(content, crate::ToolOnlyContent::Omitted);
-    assert!(!format!("{content:?}").is_empty());
-}

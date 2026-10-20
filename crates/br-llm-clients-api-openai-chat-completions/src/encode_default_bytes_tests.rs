@@ -23,7 +23,9 @@ fn bytes_of(case: &GoldenCase, options: ChatCompletionsOptions) -> Vec<u8> {
         .to_vec()
 }
 
-fn with_every_new_option_at_its_default(options: ChatCompletionsOptions) -> ChatCompletionsOptions {
+fn with_every_defaulted_option_set_by_hand(
+    options: ChatCompletionsOptions,
+) -> ChatCompletionsOptions {
     options
         .with_max_tokens_field(MaxTokensField::MaxCompletionTokens)
         .with_tool_message_name(false)
@@ -46,9 +48,10 @@ fn given_the_options_of_0_1_when_encoding_the_recorded_requests_then_the_bytes_a
 }
 
 #[test]
-fn given_the_six_new_options_set_to_their_defaults_when_encoding_then_the_bytes_are_those_of_0_1() {
+fn given_the_four_switchable_new_options_set_to_their_defaults_when_encoding_then_the_bytes_are_those_of_0_1()
+ {
     for case in golden_cases() {
-        let options = with_every_new_option_at_its_default(case.options.clone());
+        let options = with_every_defaulted_option_set_by_hand(case.options.clone());
         assert_eq!(
             bytes_of(&case, options),
             golden(case.name).as_bytes(),

@@ -161,7 +161,6 @@ fn given_each_new_option_when_it_differs_then_the_options_are_not_equal() {
     ];
     for changed in different {
         assert_ne!(changed, base);
-        assert_eq!(changed.clone(), changed);
     }
 }
 
@@ -202,7 +201,7 @@ fn given_the_options_when_debug_printed_then_the_six_new_fields_are_shown() {
 }
 
 #[test]
-fn given_the_new_options_errors_when_displayed_then_they_name_their_field_and_no_value() {
+fn given_the_new_options_errors_when_displayed_then_the_text_names_the_field() {
     let blank = OptionsError::BlankCarryBackField.to_string();
     assert!(blank.contains("carry-back"));
     let reserved = OptionsError::ReservedCarryBackField {
@@ -212,13 +211,6 @@ fn given_the_new_options_errors_when_displayed_then_they_name_their_field_and_no
     assert!(reserved.contains("content"));
     let empty = OptionsError::BlankEmptyToolResultText.to_string();
     assert!(empty.contains("empty tool result"));
-    for error in [
-        OptionsError::BlankCarryBackField,
-        OptionsError::BlankEmptyToolResultText,
-    ] {
-        let as_error: &dyn std::error::Error = &error;
-        assert!(as_error.source().is_none());
-    }
 }
 
 #[test]

@@ -4,7 +4,6 @@ use serde_json::{Map, Value};
 
 use crate::encode_parts::{message, text_part};
 use crate::options::ChatCompletionsOptions;
-use crate::tool_only_content::ToolOnlyContent;
 
 pub(crate) fn assistant_message(
     content: &[AssistantBlock],
@@ -36,7 +35,7 @@ pub(crate) fn assistant_message(
     }
     let mut assistant = message("assistant");
     match texts.as_slice() {
-        [] if !calls.is_empty() && options.tool_only_content() == ToolOnlyContent::EmptyText => {
+        [] if !calls.is_empty() && options.tool_only_content().writes_empty_text() => {
             assistant.insert("content".to_owned(), Value::from(""));
         }
         [] => {}

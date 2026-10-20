@@ -154,23 +154,15 @@ impl ChatCompletionsOptions {
         {
             return Err(OptionsError::BlankEmptyToolResultText);
         }
-        if let Some(member) = self
-            .extra_body
-            .keys()
-            .find(|key| self.is_reserved_body_member(key))
-        {
+        if let Some(member) = self.extra_body.keys().find(|key| {
+            RESERVED_BODY_MEMBERS.contains(&key.as_str())
+                || key.as_str() == self.max_tokens_field.member()
+        }) {
             return Err(OptionsError::ReservedExtraBodyMember {
                 member: member.clone(),
             });
         }
         Ok(())
-    }
-}
-
-impl ChatCompletionsOptions {
-    fn is_reserved_body_member(&self, member: &str) -> bool {
-        RESERVED_BODY_MEMBERS.contains(&member)
-            || (self.max_tokens_field == MaxTokensField::MaxTokens && member == "max_tokens")
     }
 }
 

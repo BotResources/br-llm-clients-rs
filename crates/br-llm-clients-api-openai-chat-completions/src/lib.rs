@@ -101,6 +101,8 @@ mod golden_cases;
 #[cfg(test)]
 mod options_new_tests;
 #[cfg(test)]
+mod options_reserved_tests;
+#[cfg(test)]
 mod options_tests;
 #[cfg(test)]
 mod reasoning_omit_tests;
