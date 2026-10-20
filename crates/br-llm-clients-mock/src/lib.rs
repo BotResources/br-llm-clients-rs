@@ -88,6 +88,8 @@ mod send_sync_tests;
 #[cfg(test)]
 mod step_check_tests;
 #[cfg(test)]
+mod strictness_order_tests;
+#[cfg(test)]
 mod strictness_request_tests;
 #[cfg(test)]
 mod strictness_settings_tests;
