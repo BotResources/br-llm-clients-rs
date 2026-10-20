@@ -2,20 +2,20 @@
 
 Provider clients for LLM calls: send a system prompt, tools and a chat history from `br-llm-messages`, get the reply. Provider clients are separate crates, versioned separately, each released by its own git tag `{crate}/v{version}`:
 
-- `br-llm-clients-common-http` — sends one HTTP POST and gives back the status, the headers and a stream of byte chunks, with every failure told apart; it is meant to be shared by the provider clients (`br-llm-clients-anthropic` uses it).
+- `br-llm-clients-common-http` — sends one HTTP POST and gives back the status, the headers and a stream of byte chunks, with every failure told apart; it is shared by the provider clients.
 - `br-llm-clients-core` — the core: provider-neutral request, settings, outcome, error and the `Client` and `StreamSink` traits every client library implements.
 - `br-llm-clients-mock` — a configurable mock `Client` for fast, parallel tests, used as a dev-dependency.
-- `br-llm-clients-common-call` — runs one call of a client: encodes the request through a dialect, sends it, and turns every failure into a `ClientError`, for any provider and any wire dialect; it is meant to be shared by the provider clients (`br-llm-clients-anthropic` uses it).
-- `br-llm-clients-api-anthropic-messages` — the Anthropic Messages wire dialect: encodes a request and decodes the streamed reply and the errors of the Anthropic Messages API for the shared call; it is used by `br-llm-clients-anthropic`.
-- `br-llm-clients-api-openai-responses` — the OpenAI Responses wire dialect: encodes a request and decodes the streamed reply and the errors of the OpenAI Responses API for the shared call; it is meant to be used by the provider clients (none exists yet).
-- `br-llm-clients-api-openai-chat-completions` — the OpenAI Chat Completions wire dialect: encodes a request and decodes the streamed reply and the errors of the Chat Completions API for the shared call; it is meant to be used by the provider clients (none exists yet).
+- `br-llm-clients-common-call` — runs one call of a client: encodes the request through a dialect, sends it, and turns every failure into a `ClientError`, for any provider and any wire dialect; it is shared by the provider clients.
+- `br-llm-clients-api-anthropic-messages` — the Anthropic Messages wire dialect: encodes a request and decodes the streamed reply and the errors of the Anthropic Messages API for the shared call; `br-llm-clients-anthropic` and `br-llm-clients-litellm` use it.
+- `br-llm-clients-api-openai-responses` — the OpenAI Responses wire dialect: encodes a request and decodes the streamed reply and the errors of the OpenAI Responses API for the shared call; the provider clients use it.
+- `br-llm-clients-api-openai-chat-completions` — the OpenAI Chat Completions wire dialect: encodes a request and decodes the streamed reply and the errors of the Chat Completions API for the shared call; the provider clients use it.
 - `br-llm-clients-kimi` — the client of the Kimi models of Moonshot AI: a `Client` of `br-llm-clients-core` over the Chat Completions API of a Moonshot host, with the way each Kimi model takes thinking.
 - `br-llm-clients-anthropic` — the `Client` of the Anthropic first-party API (the Messages API on `api.anthropic.com`, streaming): where to send, how to authorize, and the declared capabilities of the current Claude models.
 - `br-llm-clients-openai` — a `Client` for the first-party OpenAI API: sends every call to the Responses API with an API key, and knows what each model preset accepts.
 - `br-llm-clients-common-sse` — a Server-Sent Events decoder: turns the bytes of a response body into frames, with a size limit and no hidden damage.
 - `br-llm-clients-litellm` — the `Client` for a LiteLLM proxy: sends a call to the proxy in the chat completions, responses or messages dialect, with a virtual key and the capabilities the operator declares for a name.
 
-**Status:** `br-llm-clients-core` is at `0.4.1`, `br-llm-clients-mock` is at `0.5.0`, and `br-llm-clients-common-sse`, `br-llm-clients-common-http`, `br-llm-clients-common-call`, `br-llm-clients-api-anthropic-messages`, `br-llm-clients-api-openai-responses` and `br-llm-clients-api-openai-chat-completions` and `br-llm-clients-kimi` are at `0.1.0`; the other crates are not written yet.
+**Status:** `br-llm-clients-core` is at `0.4.1`, `br-llm-clients-mock` is at `0.5.0`, and `br-llm-clients-common-sse`, `br-llm-clients-common-http`, `br-llm-clients-common-call`, `br-llm-clients-api-anthropic-messages`, `br-llm-clients-api-openai-responses`, `br-llm-clients-api-openai-chat-completions`, `br-llm-clients-anthropic`, `br-llm-clients-openai`, `br-llm-clients-kimi` and `br-llm-clients-litellm` are at `0.1.0`.
 
 Not on crates.io; pin the git tag with the matching `version` beside it (a tag-only git dependency carries a `*` version requirement, which `cargo-deny` rejects):
 
@@ -36,14 +36,12 @@ br-llm-clients-openai = { git = "https://github.com/BotResources/br-llm-clients-
 
 ## Provider keys for real calls
 
-The tests never call a provider. The example `live_check` of a provider crate does, by hand, with a real key. To run it, or to record a real stream (for example a fixture), copy `.env.template` to `.env`, which git ignores, and fill in the keys you need:
+The example `live_check` of a provider crate calls the real provider, by hand, with a real key. To run it, copy `.env.template` to `.env`, which git ignores, and fill in the keys you need:
 
 ```bash
 cp .env.template .env
 ```
 
-Nothing in this repository reads `.env` by itself; a script that records a call loads it, and so does the `live_check` example of a provider client.
-No library of this repository reads `.env`; the example `live_check` and a script that records a call load it.
-No library of this repository reads `.env`; the example `live_check` of `br-llm-clients-openai` loads it, and a script that records a call loads it too.
+No library of this repository reads `.env`; only the `live_check` example of a provider crate loads it.
 
 No support is provided; paid support is available on request from BotResources. Apache-2.0. Generated by an AI system (Anthropic Claude) under the direction and review of BotResources, which takes full responsibility for it (EU AI Act, Regulation (EU) 2024/1689).
