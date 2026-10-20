@@ -1,13 +1,16 @@
 use br_llm_clients_common_call::Endpoint;
+use br_llm_clients_common_http::ConfigError;
 
 use crate::build_error::OpenAiBuildError;
 
 const DEFAULT_BASE: &str = "https://api.openai.com";
 
-fn invalid(error: impl ToString) -> OpenAiBuildError {
-    OpenAiBuildError::InvalidEndpoint {
-        reason: error.to_string(),
-    }
+fn invalid(error: ConfigError) -> OpenAiBuildError {
+    let reason = match error {
+        ConfigError::InvalidEndpoint { text } => text,
+        other => other.to_string(),
+    };
+    OpenAiBuildError::InvalidEndpoint { reason }
 }
 
 pub(crate) fn responses_endpoint(base: Option<Endpoint>) -> Result<Endpoint, OpenAiBuildError> {
