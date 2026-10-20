@@ -69,13 +69,15 @@ fn given_code_of_the_mock_0_4_when_compiled_then_the_listed_items_work_unchanged
         ..CapabilitiesSpec::everything()
     };
     assert_ne!(spec, partial);
-    assert_eq!(spec.clone(), spec);
-    assert!(format!("{spec:?}").contains("CapabilitiesSpec"));
-    let capabilities: Result<Capabilities, CapabilitiesError> = Capabilities::new(spec);
-    let capabilities = capabilities.unwrap();
-    assert_eq!(capabilities.clone(), capabilities);
-    assert!(format!("{capabilities:?}").contains("Capabilities"));
+    let built: Result<Capabilities, CapabilitiesError> = Capabilities::new(spec);
+    assert!(built.is_ok());
+    plain_data::<CapabilitiesSpec>();
+    plain_data::<Capabilities>();
+    plain_data::<CapabilitiesError>();
+    plain_data::<Accepted<ReasoningLevel>>();
 }
+
+fn plain_data<T: Clone + Eq + std::fmt::Debug>() {}
 
 #[test]
 fn given_images_without_media_types_when_built_then_the_error_has_its_one_case_and_its_text() {

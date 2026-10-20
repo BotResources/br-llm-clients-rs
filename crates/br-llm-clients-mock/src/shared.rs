@@ -1,12 +1,11 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use br_llm_clients_core::{ClientRequest, ClientSettings};
+use br_llm_clients_core::{Capabilities, ClientRequest, ClientSettings};
 
 use crate::log::LogState;
 use crate::script::ScriptState;
 use crate::sync::{lock, wake_all};
 use crate::tracker::{CallTracker, DropGuard};
-use br_llm_clients_core::Capabilities;
 
 pub(crate) struct State {
     pub(crate) script: ScriptState,

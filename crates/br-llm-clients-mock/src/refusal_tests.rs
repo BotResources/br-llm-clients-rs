@@ -95,7 +95,8 @@ fn given_a_rule_that_matches_the_settings_when_a_pair_is_refused_then_the_log_sh
 }
 
 #[test]
-fn given_an_empty_set_of_levels_when_any_call_is_made_then_reasoning_not_supported() {
+fn given_an_empty_set_of_levels_when_a_call_with_valid_messages_is_made_then_reasoning_not_supported()
+ {
     let client = strict_mock(|spec| spec.reasoning_levels = Accepted::Only(vec![]));
     let (outcome, _) = run(&client, &request());
     assert!(matches!(

@@ -1,10 +1,9 @@
-use br_llm_clients_core::ClientSettings;
+use br_llm_clients_core::{Capabilities, ClientSettings};
 
 use crate::mock_client::MockClient;
 use crate::reply_source::ReplySource;
 use crate::rule::Rule;
 use crate::shared::Shared;
-use br_llm_clients_core::Capabilities;
 
 #[derive(Debug)]
 #[must_use]

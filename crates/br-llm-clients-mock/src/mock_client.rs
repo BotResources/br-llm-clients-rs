@@ -2,7 +2,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use br_llm_clients_core::{
-    BoxFuture, CallOutcome, Client, ClientRequest, ClientSettings, StreamSink,
+    BoxFuture, CallOutcome, Capabilities, Client, ClientRequest, ClientSettings, StreamSink,
 };
 
 use crate::call::drive;
@@ -13,7 +13,6 @@ use crate::mock_waits::{WaitForCalls, WaitForState};
 use crate::reply_source::ReplySource;
 use crate::rule::Rule;
 use crate::shared::Shared;
-use br_llm_clients_core::Capabilities;
 
 #[derive(Clone)]
 pub struct MockClient {

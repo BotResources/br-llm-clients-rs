@@ -1,9 +1,7 @@
 use std::collections::HashSet;
 
-use br_llm_clients_core::{ClientError, ClientRequest, OutputMode};
+use br_llm_clients_core::{Capabilities, ClientError, ClientRequest, OutputMode};
 use br_llm_messages::{AssistantBlock, Step, StopReason, ToolCallId, WireMessage};
-
-use br_llm_clients_core::Capabilities;
 
 struct Counts {
     text: usize,
@@ -57,7 +55,10 @@ pub(crate) fn check(
             }
         });
     }
-    let structured = matches!(request.output(), OutputMode::Structured(_));
+    let structured = match request.output() {
+        OutputMode::Structured(_) => true,
+        OutputMode::Plain => false,
+    };
     if structured
         && counts.structured.saturating_add(counts.tool_calls) == 0
         && blocked(stop_reason)

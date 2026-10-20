@@ -37,8 +37,9 @@ form to decide whether a version ships.
   `Accepted` and `CapabilitiesError` is the one that core gives now.
 - Not breaking: `Capabilities`, `CapabilitiesSpec`, `Accepted` and
   `CapabilitiesError` are the types of `br-llm-clients-core`, re-exported by
-  the mock at the same paths, not copies. The mock calls `Capabilities::check`
-  of core after its own check of the messages. The statement of 0.4 that
+  the mock at the same paths, not copies. The mock calls
+  `ClientRequest::check_messages` of core first, then `Capabilities::check` of
+  core. The statement of 0.4 that
   `CapabilitiesSpec::everything` is the only way to build capabilities without
   writing every field is withdrawn.
 - Not breaking: code written for 0.4 compiles unchanged when it uses only these
@@ -63,7 +64,8 @@ form to decide whether a version ships.
   `Capabilities` (`spec`, `reasoning_levels`, `image_media_types`,
   `max_output_tokens`, `tools`, `structured_output`,
   `structured_output_with_tools`, `caching`, `images`,
-  `accepts_structured_output_with_tools`), which were private in 0.4.
+  `accepts_structured_output_with_tools`). `structured_output_with_tools` is
+  new; the other accessors were private in 0.4.
 
 ### Removed
 

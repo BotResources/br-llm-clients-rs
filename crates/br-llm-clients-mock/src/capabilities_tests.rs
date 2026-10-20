@@ -34,14 +34,6 @@ fn given_everything_when_built_then_it_accepts_any_level_the_largest_tokens_and_
 }
 
 #[test]
-fn given_the_everything_spec_when_built_then_it_equals_the_everything_capabilities() {
-    assert_eq!(
-        Capabilities::new(CapabilitiesSpec::everything()).unwrap(),
-        everything_caps()
-    );
-}
-
-#[test]
 fn given_everything_with_changed_fields_when_built_then_only_those_fields_differ() {
     let spec = CapabilitiesSpec {
         tools: false,

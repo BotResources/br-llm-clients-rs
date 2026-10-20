@@ -5,10 +5,10 @@ use std::task::{Context, Poll, Wake, Waker};
 use std::thread::Thread;
 
 use br_llm_clients_core::{
-    CacheRequirement, CallOutcome, Client, ClientError, ClientRequest, ClientSettings,
-    MaxOutputTokens, OutputMode, ReasoningLevel, StructuredShape,
+    CacheRequirement, CallOutcome, Capabilities, CapabilitiesSpec, Client, ClientError,
+    ClientRequest, ClientSettings, MaxOutputTokens, OutputMode, Parameters, ReasoningLevel,
+    StructuredShape, ToolSpec,
 };
-use br_llm_clients_core::{Parameters, ToolSpec};
 use br_llm_messages::{
     AssistantBlock, Base64Data, Image, ImageMime, ModelId, Step, StopReason, StreamEvent, Text,
     ToolCall, ToolCallId, ToolName, ToolResult, ToolResultBlock, Usage, WireMessage, WireUserBlock,
@@ -18,7 +18,6 @@ use crate::mock_client::MockClient;
 use crate::recording_sink::RecordingSink;
 use crate::reply_source::ReplySource;
 use crate::rule::Rule;
-use br_llm_clients_core::{Capabilities, CapabilitiesSpec};
 
 struct Unparker(Thread);
 

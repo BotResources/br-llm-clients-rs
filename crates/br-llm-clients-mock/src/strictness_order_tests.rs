@@ -67,9 +67,10 @@ fn expected_refusal(rule: usize) -> ClientError {
         4 => ClientError::StructuredOutputNotSupported,
         5 => ClientError::StructuredOutputWithToolsNotSupported,
         6 => ClientError::ImageNotSupported,
-        _ => ClientError::ImageMediaTypeNotSupported {
+        7 => ClientError::ImageMediaTypeNotSupported {
             media_type: ImageMime::Png,
         },
+        other => panic!("no capability rule {other}"),
     }
 }
 
