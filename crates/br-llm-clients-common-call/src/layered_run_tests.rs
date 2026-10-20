@@ -177,3 +177,35 @@ async fn given_a_decoder_wrapper_when_run_then_the_call_reads_through_it() {
     assert!(outcome.into_parts().1.is_ok());
     assert_eq!(payloads.load(Ordering::SeqCst), 1);
 }
+
+struct Untouched;
+
+impl DialectHooks for Untouched {}
+
+#[tokio::test]
+async fn given_hooks_with_every_default_when_run_then_the_request_id_and_the_models_are_the_inner_ones()
+ {
+    let server = serve_good(&[("x-request-id", "req-7"), ("x-model", "gw")]).await;
+    let direct = crate::call_spec::CallSpec::new(
+        inner(),
+        server.endpoint("/v1/test"),
+        Arc::new(br_llm_clients_common_http::NoAuthorizer),
+        http_client(),
+        model(),
+    );
+    let (direct_report, direct_step) = run_call(&direct, &user_request()).await.into_parts();
+    let (layered_report, layered_step) = run_call(&spec(Untouched, &server), &user_request())
+        .await
+        .into_parts();
+    assert_eq!(direct_report.request_id(), Some("req-7"));
+    assert_eq!(
+        direct_report.model().map(|model| model.as_str()),
+        Some("gw")
+    );
+    assert_eq!(layered_report.request_id(), direct_report.request_id());
+    assert_eq!(layered_report.model(), direct_report.model());
+    assert_eq!(
+        layered_step.expect("a step").model(),
+        direct_step.expect("a step").model()
+    );
+}
