@@ -28,18 +28,33 @@ fn as_text<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
     value.get(key).and_then(Value::as_str)
 }
 
-fn error_info(holder: &Value) -> ErrorInfo {
-    let code = as_text(holder, "code");
-    let text = error_envelope(as_text(holder, "message"), as_text(holder, "param"), code);
-    let info = ErrorInfo::new(text);
+fn info_of(code: Option<&str>, message: Option<&str>, param: Option<&str>) -> ErrorInfo {
+    let info = ErrorInfo::new(error_envelope(message, param, code));
     match code {
         Some(code) => info.with_code(code),
         None => info,
     }
 }
 
+fn error_info(holder: &Value) -> ErrorInfo {
+    info_of(
+        as_text(holder, "code"),
+        as_text(holder, "message"),
+        as_text(holder, "param"),
+    )
+}
+
+fn event_member<'a>(data: &'a Value, nested: Option<&'a Value>, key: &str) -> Option<&'a str> {
+    as_text(data, key).or_else(|| nested.and_then(|nested| as_text(nested, key)))
+}
+
 pub(super) fn error_event(data: &Value) -> Vec<ProviderEvent> {
-    vec![ProviderEvent::Error(error_info(data))]
+    let nested = data.get("error").filter(|error| error.is_object());
+    vec![ProviderEvent::Error(info_of(
+        event_member(data, nested, "code"),
+        event_member(data, nested, "message"),
+        event_member(data, nested, "param"),
+    ))]
 }
 
 pub(super) fn failed(data: &Value) -> Result<Vec<ProviderEvent>, PayloadError> {

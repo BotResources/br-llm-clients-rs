@@ -18,7 +18,9 @@ mod error_envelope;
 mod input;
 mod input_assistant;
 mod input_user;
+mod option_values;
 mod options;
+mod options_error;
 mod reasoning_plan;
 mod refine;
 mod request_id;
@@ -28,7 +30,10 @@ mod tools;
 mod turn;
 
 pub use dialect::OpenAiResponses;
+pub use option_values::{PromptCacheMode, ServiceTier};
 pub use options::{Options, ReasoningParameter, ReasoningSummary};
+pub use options_error::OptionsError;
+pub use serde_json::{Map, Value};
 
 #[cfg(test)]
 mod decode_call_held_tests;
@@ -36,6 +41,8 @@ mod decode_call_held_tests;
 mod decode_call_tests;
 #[cfg(test)]
 mod decode_error_event_tests;
+#[cfg(test)]
+mod decode_error_nested_tests;
 #[cfg(test)]
 mod decode_item_state_tests;
 #[cfg(test)]
@@ -63,6 +70,8 @@ mod encode_body_tests;
 #[cfg(test)]
 mod encode_golden_tests;
 #[cfg(test)]
+mod encode_options_tests;
+#[cfg(test)]
 mod encode_reasoning_tests;
 #[cfg(test)]
 mod encode_structured_tests;
@@ -74,6 +83,8 @@ mod encode_tools_tests;
 mod encode_user_tests;
 #[cfg(test)]
 mod error_tests;
+#[cfg(test)]
+mod options_tests;
 #[cfg(test)]
 mod recorded_decode_tests;
 #[cfg(test)]

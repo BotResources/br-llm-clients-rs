@@ -1,6 +1,6 @@
 use br_llm_clients_common_call::EncodedRequest;
 use br_llm_clients_core::{ClientError, ClientRequest, OutputMode, ReasoningLevel};
-use serde_json::{Map, Value};
+use serde_json::{Map, Value, json};
 
 use crate::input::items;
 use crate::options::Options;
@@ -13,6 +13,27 @@ pub(crate) struct Fixed<'a> {
     pub(crate) reasoning: ReasoningLevel,
     pub(crate) max_output_tokens: u32,
     pub(crate) options: &'a Options,
+}
+
+fn add_options_fields(body: &mut Map<String, Value>, options: &Options) {
+    if let Some(key) = &options.prompt_cache_key {
+        body.insert("prompt_cache_key".to_owned(), Value::String(key.clone()));
+    }
+    if let Some(tier) = options.service_tier {
+        body.insert(
+            "service_tier".to_owned(),
+            Value::String(tier.wire().to_owned()),
+        );
+    }
+    if let Some(mode) = options.cache_mode {
+        body.insert(
+            "prompt_cache_options".to_owned(),
+            json!({ "mode": mode.wire() }),
+        );
+    }
+    for (name, value) in options.extra_body() {
+        body.insert(name.clone(), value.clone());
+    }
 }
 
 pub(crate) fn encode(
@@ -48,6 +69,7 @@ pub(crate) fn encode(
     if let Some(include) = reasoning.include {
         body.insert("include".to_owned(), include);
     }
+    add_options_fields(&mut body, fixed.options);
     Ok(EncodedRequest::new(Value::Object(body).to_string())
         .with_header("Content-Type", "application/json"))
 }

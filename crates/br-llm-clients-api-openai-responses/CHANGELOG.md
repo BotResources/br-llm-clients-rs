@@ -9,6 +9,21 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.2.0
+
+### Added
+
+- `Options` has three new public fields: `prompt_cache_key` (a text, sent as `prompt_cache_key`), `service_tier` (a `ServiceTier`, sent as `service_tier`) and `cache_mode` (a `PromptCacheMode`, sent as `prompt_cache_options` with the one member `mode`). All default to `None`, which sends nothing. The new types `ServiceTier` (`Auto`, `Default`, `Flex`, `Priority`) and `PromptCacheMode` (`Implicit`, `Explicit`) are `#[non_exhaustive]`.
+- `Options::with_extra_body` takes a `Map<String, Value>` and adds its members to the top level of every request body, after the members the dialect writes; `Options::extra_body` gives the object. A member named `model`, `stream`, `store`, `instructions`, `input`, `max_output_tokens`, `tools`, `text`, `reasoning`, `include`, `prompt_cache_key`, `service_tier` or `prompt_cache_options` is refused with the new `OptionsError::ReservedExtraBodyMember`, which names the member and never shows a value. The library re-exports `Map` and `Value` of `serde_json`.
+- The decoder reads the `code`, `message` and `param` of an `error` event also under a nested `error` object (the Azure form), when the member is not a text at the top level. A text at the top level wins; an `error` member that is not an object is ignored.
+
+### Changed
+
+- Breaking: `Options` is no longer `Copy`; it holds a text and a JSON object. Code that copies an `Options` after use must call `clone`. `Options::default()`, the two 0.1 fields and `OpenAiResponses::new` are as in 0.1.
+- Breaking: the `Debug` text of `Options` (and of `OpenAiResponses`, which shows its `Options`) changes. It shows only whether `prompt_cache_key` is set and only the member names of `extra_body`, never the cache key text or a value.
+- Breaking: the line of `br-llm-clients-common-call` is 0.2 in place of 0.1. An importer moves to `common-call` 0.2 and to this version together. The test-only dependency `br-llm-clients-common-http` is in its line 0.2.
+- The wire of 0.1 is not changed: an `Options` with the 0.1 fields only gives the same body, and every 0.1 stream is decoded as before, except an `error` event with its members under a nested `error` object, which now gives the code and the members instead of null ones. `CacheRequirement` still has no effect on the body and is not read.
+
 ## 0.1.0
 
 ### Added
