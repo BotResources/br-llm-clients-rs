@@ -41,6 +41,18 @@ form to decide whether a version ships.
   of core after its own check of the messages. The statement of 0.4 that
   `CapabilitiesSpec::everything` is the only way to build capabilities without
   writing every field is withdrawn.
+- Not breaking: code written for 0.4 compiles unchanged when it uses only these
+  items, which are facts of core 0.4.1. `Accepted` is an enum with the variants
+  `Any` and `Only(Vec<T>)`, not marked non-exhaustive. `CapabilitiesSpec` is a
+  struct with the same eight public fields and types as in 0.4, not marked
+  non-exhaustive, so the struct syntax with or without
+  `..CapabilitiesSpec::everything()` compiles; `everything()` has the same
+  signature. `Capabilities::new` takes a `CapabilitiesSpec` by value and gives
+  `Result<Capabilities, CapabilitiesError>`. `CapabilitiesError` has one case,
+  `InconsistentCapabilities`, with no field, and the `Display` text `images are
+  supported but the set of image media types is empty`. The four types have
+  `Debug`, `Clone`, `PartialEq` and `Eq`; `CapabilitiesError` also has `Display`
+  and `Error`.
 
 ### Added
 
@@ -60,18 +72,6 @@ form to decide whether a version ships.
   not know. The mock has no rule for a value that it does not know; core 0.4
   defines no value that could trigger the rule, so only a `use` of the constant
   stops compiling.
-- The own copies of `Capabilities`, `CapabilitiesSpec`, `Accepted` and
-  `CapabilitiesError`, and the own check of the capabilities.
-
-### Tests
-
-- The order of the refusals: invalid messages with any broken capability rule
-  give `InvalidMessages`; two or more broken capability rules give the earliest
-  listed; an empty set of levels gives `ReasoningNotSupported` for valid
-  messages and `InvalidMessages` for invalid ones; the reason names the model id.
-- A `Capabilities` built through the path of the mock is accepted where
-  `br_llm_clients_core::Capabilities` is expected, and the other way round; the
-  items that compile unchanged from 0.4 are used by an importer test.
 
 ## 0.4.0
 

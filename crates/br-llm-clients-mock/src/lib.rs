@@ -50,6 +50,8 @@ mod call_hang_tests;
 #[cfg(test)]
 mod call_reply_tests;
 #[cfg(test)]
+mod capabilities_tests;
+#[cfg(test)]
 mod chunking_tests;
 #[cfg(test)]
 mod derive_events_tests;
