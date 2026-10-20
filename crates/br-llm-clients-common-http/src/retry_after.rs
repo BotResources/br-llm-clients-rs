@@ -1,11 +1,11 @@
 use std::time::{Duration, SystemTime};
 
 pub(crate) fn parse(value: &[u8], now: SystemTime) -> Option<Duration> {
-    let text = std::str::from_utf8(value).ok()?.trim_matches([' ', '\t']);
+    let text = trimmed(value)?;
     if text.is_empty() {
         return None;
     }
-    if text.bytes().all(|b| b.is_ascii_digit()) {
+    if all_digits(text) {
         return Some(seconds(text));
     }
     let date = httpdate::parse_http_date(text).ok()?;
@@ -13,25 +13,44 @@ pub(crate) fn parse(value: &[u8], now: SystemTime) -> Option<Duration> {
 }
 
 pub(crate) fn parse_millis(value: &[u8]) -> Option<Duration> {
-    let text = std::str::from_utf8(value).ok()?.trim_matches([' ', '\t']);
-    if text.is_empty() || !text.bytes().all(|b| b.is_ascii_digit()) {
+    let text = trimmed(value)?;
+    if text.is_empty() || !all_digits(text) {
         return None;
     }
-    Some(from_digits(text, Duration::from_millis))
+    Some(milliseconds(text))
+}
+
+fn trimmed(value: &[u8]) -> Option<&str> {
+    Some(std::str::from_utf8(value).ok()?.trim_matches([' ', '\t']))
+}
+
+fn all_digits(text: &str) -> bool {
+    text.bytes().all(|b| b.is_ascii_digit())
+}
+
+fn count(digits: &str) -> Option<u128> {
+    let mut total: u128 = 0;
+    for byte in digits.bytes() {
+        let digit = u128::from(byte.saturating_sub(b'0'));
+        total = total.checked_mul(10)?.checked_add(digit)?;
+    }
+    Some(total)
 }
 
 fn seconds(digits: &str) -> Duration {
-    from_digits(digits, Duration::from_secs)
+    count(digits)
+        .and_then(|total| u64::try_from(total).ok())
+        .map_or(Duration::MAX, Duration::from_secs)
 }
 
-fn from_digits(digits: &str, unit: fn(u64) -> Duration) -> Duration {
-    let mut total: u64 = 0;
-    for byte in digits.bytes() {
-        let digit = u64::from(byte.saturating_sub(b'0'));
-        match total.checked_mul(10).and_then(|t| t.checked_add(digit)) {
-            Some(next) => total = next,
-            None => return Duration::MAX,
-        }
-    }
-    unit(total)
+fn milliseconds(digits: &str) -> Duration {
+    let Some(total) = count(digits) else {
+        return Duration::MAX;
+    };
+    let Ok(whole_seconds) = u64::try_from(total / 1000) else {
+        return Duration::MAX;
+    };
+    let rest_millis = u32::try_from(total % 1000).unwrap_or(0);
+    let nanos = rest_millis.saturating_mul(1_000_000);
+    Duration::new(whole_seconds, nanos)
 }
