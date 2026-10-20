@@ -19,6 +19,9 @@ fn parse_line(line: &str) -> Option<(String, String)> {
     if name.is_empty() {
         return None;
     }
+    if name.contains('\0') || value.contains('\0') {
+        return None;
+    }
     let value = value.trim();
     let unquoted = ['"', '\'']
         .iter()
@@ -27,17 +30,20 @@ fn parse_line(line: &str) -> Option<(String, String)> {
     Some((name.to_owned(), unquoted.to_owned()))
 }
 
-pub fn load() {
+fn is_filled(name: &str) -> bool {
+    env::var_os(name).is_some_and(|value| !value.is_empty())
+}
+
+pub unsafe fn load() {
     for path in candidates() {
         let Ok(text) = fs::read_to_string(&path) else {
             continue;
         };
         for (name, value) in text.lines().filter_map(parse_line) {
-            if env::var_os(&name).is_none() && !value.is_empty() {
-                // SAFETY: called from main before any thread is started.
+            if !value.is_empty() && !is_filled(&name) {
+                // SAFETY: the caller guarantees that no other thread reads or writes the environment.
                 unsafe { env::set_var(&name, &value) };
             }
         }
-        return;
     }
 }

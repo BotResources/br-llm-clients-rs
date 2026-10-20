@@ -12,7 +12,7 @@ use crate::check_key::check_key;
 use crate::config::LiteLlmConfig;
 use crate::extra_headers::check_extra_headers;
 use crate::hooks::LiteLlmHooks;
-use crate::key_header::{authorizer, check_placement};
+use crate::key_header::key_authorizer;
 use crate::route::{route_dialect, route_endpoint};
 use crate::secrets::guard_values;
 
@@ -33,8 +33,7 @@ impl LiteLlmClient {
         http: HttpClient,
     ) -> Result<Self, LiteLlmBuildError> {
         check_key(&config.key)?;
-        check_placement(&config.key_placement, &config.key)?;
-        let authorizer = authorizer(&config.key_placement, &config.key)?;
+        let authorizer = key_authorizer(&config.key_placement, &config.key)?;
         check_extra_headers(&config.extra_headers, &config.base)?;
         let endpoint = route_endpoint(&config.base, &config.family)?;
         let route = route_dialect(&settings, &config.family)?;

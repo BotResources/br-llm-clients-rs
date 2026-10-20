@@ -1,8 +1,9 @@
 use br_llm_clients_common_http::{ConfigError, Endpoint, Request};
 
 use crate::build_error::LiteLlmBuildError;
+use crate::key_header::{ACCEPT_HEADER, AUTHORIZATION_HEADER, LITELLM_KEY_HEADER};
 
-const REFUSED_NAMES: [&str; 3] = ["accept", "authorization", "x-litellm-api-key"];
+const REFUSED_NAMES: [&str; 3] = [ACCEPT_HEADER, AUTHORIZATION_HEADER, LITELLM_KEY_HEADER];
 
 fn invalid(position: usize, fault: &str) -> LiteLlmBuildError {
     LiteLlmBuildError::InvalidExtraHeader {

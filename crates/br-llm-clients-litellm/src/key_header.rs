@@ -5,13 +5,19 @@ use br_llm_clients_common_http::{ApiKeyAuthorizer, Authorizer, BearerAuthorizer,
 use crate::build_error::LiteLlmBuildError;
 use crate::key_placement::KeyPlacement;
 
-const LITELLM_KEY_HEADER: &str = "x-litellm-api-key";
+pub(crate) const AUTHORIZATION_HEADER: &str = "authorization";
+pub(crate) const ACCEPT_HEADER: &str = "accept";
+pub(crate) const LITELLM_KEY_HEADER: &str = "x-litellm-api-key";
+const CONTENT_TYPE_HEADER: &str = "content-type";
 const REFUSED_NAMES: [&str; 4] = [
-    "authorization",
+    AUTHORIZATION_HEADER,
     LITELLM_KEY_HEADER,
-    "accept",
-    "content-type",
+    ACCEPT_HEADER,
+    CONTENT_TYPE_HEADER,
 ];
+const REFUSED_NAME_REASON: &str = "the header name is one that the library refuses for a configured key header: authorization, x-litellm-api-key, accept or content-type";
+const INVALID_NAME_REASON: &str = "the header name is not valid or is managed by the HTTP library";
+const INVALID_VALUE_REASON: &str = "the key header value could not be made";
 
 fn invalid(reason: &str) -> LiteLlmBuildError {
     LiteLlmBuildError::InvalidKeyHeader {
@@ -19,44 +25,29 @@ fn invalid(reason: &str) -> LiteLlmBuildError {
     }
 }
 
-pub(crate) fn check_placement(
-    placement: &KeyPlacement,
-    key: &Secret,
-) -> Result<(), LiteLlmBuildError> {
-    let KeyPlacement::ConfiguredKeyHeader(name) = placement else {
-        return Ok(());
-    };
-    if REFUSED_NAMES
-        .iter()
-        .any(|refused| refused.eq_ignore_ascii_case(name))
-    {
-        return Err(invalid(
-            "the header name is one that the library refuses for a configured key header: authorization, x-litellm-api-key, accept or content-type",
-        ));
-    }
-    ApiKeyAuthorizer::new(name, key.clone())
-        .map(drop)
-        .map_err(|_| invalid("the header name is not valid or is managed by the HTTP library"))
-}
-
-fn bearer_value(key: &Secret) -> Result<Secret, LiteLlmBuildError> {
-    Secret::new(format!("Bearer {}", key.expose()))
-        .map_err(|_| invalid("the key header value could not be made"))
-}
-
-pub(crate) fn authorizer(
+pub(crate) fn key_authorizer(
     placement: &KeyPlacement,
     key: &Secret,
 ) -> Result<Arc<dyn Authorizer>, LiteLlmBuildError> {
     match placement {
         KeyPlacement::AuthorizationBearer => Ok(Arc::new(BearerAuthorizer::new(key))),
         KeyPlacement::LiteLlmKeyHeader => header_authorizer(LITELLM_KEY_HEADER, key),
-        KeyPlacement::ConfiguredKeyHeader(name) => header_authorizer(name, key),
+        KeyPlacement::ConfiguredKeyHeader(name) => {
+            if REFUSED_NAMES
+                .iter()
+                .any(|refused| refused.eq_ignore_ascii_case(name))
+            {
+                return Err(invalid(REFUSED_NAME_REASON));
+            }
+            header_authorizer(name, key)
+        }
     }
 }
 
 fn header_authorizer(name: &str, key: &Secret) -> Result<Arc<dyn Authorizer>, LiteLlmBuildError> {
-    let authorizer = ApiKeyAuthorizer::new(name, bearer_value(key)?)
-        .map_err(|_| invalid("the header name is not valid or is managed by the HTTP library"))?;
+    let value = Secret::new(format!("Bearer {}", key.expose()))
+        .map_err(|_| invalid(INVALID_VALUE_REASON))?;
+    let authorizer =
+        ApiKeyAuthorizer::new(name, value).map_err(|_| invalid(INVALID_NAME_REASON))?;
     Ok(Arc::new(authorizer))
 }

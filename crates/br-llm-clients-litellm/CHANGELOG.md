@@ -36,7 +36,24 @@ form to decide whether a version ships.
 - `LiteLlmBuildError` (`#[non_exhaustive]`) with the cases `InvalidCredential`,
   `InvalidKeyHeader`, `InvalidExtraHeader`, `InvalidEndpoint` and
   `InvalidDialectOptions`, each with a `reason` that never holds the key, a
-  header value or a body.
+  header value or a body. `LiteLlmClient::new` returns the first failure, in
+  that order.
+- `InvalidCredential`: the key is refused when it holds a byte outside 0x21 to
+  0x7E, or a `"` or a `\`.
+- `InvalidKeyHeader`: a `ConfiguredKeyHeader` name is refused when it is not a
+  valid header name, when `br-llm-clients-common-http` manages it, or when it is
+  `authorization`, `x-litellm-api-key`, `accept` or `content-type`, compared
+  without regard to case.
+- `InvalidExtraHeader`: the extra headers are checked in list order, and the
+  first fault is returned. A fault is a name or a value that
+  `br-llm-clients-common-http` refuses, a name given twice, or the name
+  `accept`, `authorization` or `x-litellm-api-key`, compared without regard to
+  case. The `reason` gives the position of the header and never a value.
+- `InvalidEndpoint`: adding the route to the base gives a result longer than the
+  limit of an `Endpoint`. `InvalidDialectOptions`: the chat completions options
+  are refused by their library, and the `reason` is its text.
+- A base built with `Endpoint::plain_http` is accepted; the key then goes in
+  clear text.
 - The capabilities are the ones the operator declares: a `Capabilities` of
   `br-llm-clients-core`, checked before every send. The library reads none from
   the proxy and infers none from the name.

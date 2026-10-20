@@ -24,7 +24,10 @@ type Failure = Box<dyn std::error::Error>;
 const DEFAULT_MODEL: &str = "gpt-4o-mini";
 
 fn required(name: &str) -> Result<String, Failure> {
-    env::var(name).map_err(|_| format!("the variable {name} is not set").into())
+    env::var(name)
+        .ok()
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| format!("the variable {name} is not set").into())
 }
 
 fn base_endpoint(text: &str) -> Result<Endpoint, Failure> {
@@ -50,7 +53,10 @@ fn reasoning_table() -> ReasoningTable {
 fn build_client() -> Result<LiteLlmClient, Failure> {
     let key = Secret::new(required("LITELLM_API_KEY")?)?;
     let base = base_endpoint(&required("LITELLM_BASE_URL")?)?;
-    let model = env::var("LITELLM_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_owned());
+    let model = env::var("LITELLM_MODEL")
+        .ok()
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| DEFAULT_MODEL.to_owned());
     println!("model name: {model}");
     let settings = ClientSettings::new(
         ModelId::new(model)?,
@@ -91,7 +97,8 @@ async fn run() -> Result<bool, Failure> {
 }
 
 fn main() -> ExitCode {
-    env_file::load();
+    // SAFETY: first statement of main, before Runtime::new, so no other thread exists.
+    unsafe { env_file::load() };
     let runtime = match tokio::runtime::Runtime::new() {
         Ok(runtime) => runtime,
         Err(error) => {
