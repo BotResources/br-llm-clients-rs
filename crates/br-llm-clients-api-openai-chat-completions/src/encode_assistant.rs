@@ -3,15 +3,25 @@ use br_llm_messages::{AssistantBlock, ToolCall};
 use serde_json::{Map, Value};
 
 use crate::encode_parts::{message, text_part};
+use crate::options::ChatCompletionsOptions;
+use crate::tool_only_content::ToolOnlyContent;
 
-pub(crate) fn assistant_message(content: &[AssistantBlock]) -> Result<Option<Value>, ClientError> {
+pub(crate) fn assistant_message(
+    content: &[AssistantBlock],
+    options: &ChatCompletionsOptions,
+    in_turn: bool,
+) -> Result<Option<Value>, ClientError> {
     let mut texts: Vec<String> = Vec::new();
     let mut calls = Vec::new();
+    let mut thinking = String::new();
     for block in content {
         match block {
             AssistantBlock::Text { text } => texts.push(text.as_str().to_owned()),
             AssistantBlock::Structured { value } => texts.push(value.to_string()),
             AssistantBlock::ToolCall(call) => calls.push(tool_call(call)),
+            AssistantBlock::Thinking(block) if block.signature.is_none() => {
+                thinking.push_str(&block.text);
+            }
             AssistantBlock::Thinking(_) | AssistantBlock::RedactedThinking(_) => {}
             _ => {
                 return Err(ClientError::InvalidMessages {
@@ -26,6 +36,9 @@ pub(crate) fn assistant_message(content: &[AssistantBlock]) -> Result<Option<Val
     }
     let mut assistant = message("assistant");
     match texts.as_slice() {
+        [] if !calls.is_empty() && options.tool_only_content() == ToolOnlyContent::EmptyText => {
+            assistant.insert("content".to_owned(), Value::from(""));
+        }
         [] => {}
         [only] => {
             assistant.insert("content".to_owned(), Value::from(only.as_str()));
@@ -37,6 +50,12 @@ pub(crate) fn assistant_message(content: &[AssistantBlock]) -> Result<Option<Val
     }
     if !calls.is_empty() {
         assistant.insert("tool_calls".to_owned(), Value::Array(calls));
+    }
+    if in_turn
+        && !thinking.is_empty()
+        && let Some(field) = options.reasoning_carry_back_field()
+    {
+        assistant.insert(field.to_owned(), Value::from(thinking));
     }
     Ok(Some(Value::Object(assistant)))
 }

@@ -78,10 +78,10 @@ impl ReasoningTable {
         ]
     }
 
-    pub(crate) fn check(&self) -> Result<(), OptionsError> {
+    pub(crate) fn check(&self, omit_above_off: bool) -> Result<(), OptionsError> {
         let mut highest: Option<(ReasoningLevel, ReasoningEffort)> = None;
         for (level, rule) in self.rules() {
-            check_rule(level, rule)?;
+            check_rule(level, rule, omit_above_off)?;
             if let ReasoningRule::Send(effort) = rule {
                 if let Some((earlier, top)) = highest
                     && effort.rank() < top.rank()
@@ -97,7 +97,11 @@ impl ReasoningTable {
     }
 }
 
-fn check_rule(level: ReasoningLevel, rule: ReasoningRule) -> Result<(), OptionsError> {
+fn check_rule(
+    level: ReasoningLevel,
+    rule: ReasoningRule,
+    omit_above_off: bool,
+) -> Result<(), OptionsError> {
     let is_off = level == ReasoningLevel::Off;
     match rule {
         ReasoningRule::Send(effort) if is_off && effort != ReasoningEffort::None => {
@@ -106,7 +110,9 @@ fn check_rule(level: ReasoningLevel, rule: ReasoningRule) -> Result<(), OptionsE
         ReasoningRule::Send(ReasoningEffort::None) if !is_off => {
             Err(OptionsError::NoneAboveOff { level })
         }
-        ReasoningRule::Omit if !is_off => Err(OptionsError::OmitAboveOff { level }),
+        ReasoningRule::Omit if !is_off && !omit_above_off => {
+            Err(OptionsError::OmitAboveOff { level })
+        }
         ReasoningRule::Send(_) | ReasoningRule::Omit | ReasoningRule::Refuse => Ok(()),
     }
 }

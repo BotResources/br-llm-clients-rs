@@ -1,6 +1,6 @@
 [package]
 name = "br-llm-clients-api-openai-chat-completions"
-version = "0.1.0"
+version = "0.2.0"
 description = "the OpenAI Chat Completions wire dialect: encodes a request and decodes the streamed reply and the errors of the Chat Completions API, for the shared call of the family"
 edition.workspace = true
 rust-version.workspace = true

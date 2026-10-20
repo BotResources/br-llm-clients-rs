@@ -28,6 +28,11 @@ pub enum OptionsError {
     ReservedExtraBodyMember {
         member: String,
     },
+    BlankCarryBackField,
+    ReservedCarryBackField {
+        field: String,
+    },
+    BlankEmptyToolResultText,
 }
 
 impl fmt::Display for OptionsError {
@@ -59,6 +64,16 @@ impl fmt::Display for OptionsError {
                 f,
                 "the extra body member `{member}` is written by the dialect"
             ),
+            OptionsError::BlankCarryBackField => {
+                f.write_str("the reasoning carry-back field name is blank")
+            }
+            OptionsError::ReservedCarryBackField { field } => write!(
+                f,
+                "the reasoning carry-back field name `{field}` is a member that the dialect writes"
+            ),
+            OptionsError::BlankEmptyToolResultText => {
+                f.write_str("the text for an empty tool result is blank")
+            }
         }
     }
 }
