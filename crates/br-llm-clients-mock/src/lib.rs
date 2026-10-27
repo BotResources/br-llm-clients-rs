@@ -62,6 +62,8 @@ mod call_reply_tests;
 #[cfg(test)]
 mod chunking_tests;
 #[cfg(test)]
+mod collision_tests;
+#[cfg(test)]
 mod first_poll_tests;
 #[cfg(test)]
 mod fixtures;
@@ -70,9 +72,15 @@ mod gate_state_tests;
 #[cfg(test)]
 mod gate_tests;
 #[cfg(test)]
+mod identity_support;
+#[cfg(test)]
+mod identity_tests;
+#[cfg(test)]
 mod log_switch_tests;
 #[cfg(test)]
 mod log_tests;
+#[cfg(test)]
+mod maximal;
 #[cfg(test)]
 mod parallel_tests;
 #[cfg(test)]
@@ -99,6 +107,10 @@ mod rule_tests;
 mod script_tests;
 #[cfg(test)]
 mod send_sync_tests;
+#[cfg(test)]
+mod sequential_id_source_tests;
+#[cfg(test)]
+mod sketch_tests;
 #[cfg(test)]
 mod strictness_tests;
 #[cfg(test)]
