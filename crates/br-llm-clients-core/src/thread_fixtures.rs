@@ -91,6 +91,15 @@ pub(crate) fn agent_mail(content: Vec<PlainBlock>) -> IncomingEntry {
     .into()
 }
 
+pub(crate) fn as_turn_entry(entry: IncomingEntry) -> TurnEntry {
+    match entry {
+        IncomingEntry::HumanMessage(message) => message.into(),
+        IncomingEntry::AgentRequest(request) => request.into(),
+        IncomingEntry::AgentMail(mail) => mail.into(),
+        other => panic!("fixture entry of a kind outside the three: {other:?}"),
+    }
+}
+
 pub(crate) fn input_turn(entries: Vec<IncomingEntry>) -> Turn {
     Turn::InputTurn(InputTurn::new(turn_id(), entries).unwrap())
 }

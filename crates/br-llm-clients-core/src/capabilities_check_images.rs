@@ -57,19 +57,21 @@ fn images_in_order(request: &ClientRequest) -> Vec<Option<MediaType>> {
 }
 
 fn read_incoming(entry: &IncomingEntry, images: &mut Vec<Option<MediaType>>) {
-    let content = match entry {
-        IncomingEntry::HumanMessage(message) => message.content(),
-        IncomingEntry::AgentRequest(request) => request.content(),
-        IncomingEntry::AgentMail(mail) => mail.content(),
-        IncomingEntry::AgentOutput(output) => output.content(),
-        IncomingEntry::PartialAgentOutput(output) => output.content(),
-        _ => return,
-    };
-    read_plain(content, images);
+    match entry {
+        IncomingEntry::HumanMessage(message) => read_plain(message.content(), images),
+        IncomingEntry::AgentRequest(request) => read_plain(request.content(), images),
+        IncomingEntry::AgentMail(mail) => read_plain(mail.content(), images),
+        IncomingEntry::AgentOutput(output) => read_plain(output.content(), images),
+        IncomingEntry::PartialAgentOutput(output) => read_plain(output.content(), images),
+        _ => {}
+    }
 }
 
 fn read_turn_entry(entry: &TurnEntry, reply: bool, images: &mut Vec<Option<MediaType>>) {
     match entry {
+        TurnEntry::HumanMessage(message) => read_plain(message.content(), images),
+        TurnEntry::AgentRequest(request) => read_plain(request.content(), images),
+        TurnEntry::AgentMail(mail) => read_plain(mail.content(), images),
         TurnEntry::ModelResponse(response) => {
             for block in response.blocks() {
                 read_response_block(block, reply, images);

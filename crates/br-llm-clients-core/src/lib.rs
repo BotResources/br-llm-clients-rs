@@ -36,6 +36,8 @@ mod capabilities_check_grid_tests;
 #[cfg(test)]
 mod capabilities_check_images_tests;
 #[cfg(test)]
+mod capabilities_check_incoming_in_ai_turn_tests;
+#[cfg(test)]
 mod capabilities_check_order_tests;
 #[cfg(test)]
 mod capabilities_check_reading_tests;
