@@ -1,15 +1,16 @@
-use br_llm_clients_core::{CallOutcome, ClientError};
-use br_llm_messages::{MessageError, Step, StreamEvent};
+use br_llm_clients_core::CallOutcome;
+use br_llm_messages::{ModelResponse, ResponseDelta};
 
 use crate::call_context::CallContext;
 use crate::chunking::Chunking;
-use crate::derive_events::derive_events;
+use crate::codes;
+use crate::derive_deltas::derive_deltas;
 use crate::gate::Gate;
 use crate::outcomes;
+use crate::renew::renew;
 use crate::reply::{Reply, Shape};
 use crate::report_values::ReportValues;
-use crate::step_check;
-use crate::tool_call_id::rename_tool_calls;
+use crate::response_check;
 
 pub(crate) enum Ending {
     Outcome(Box<CallOutcome>),
@@ -17,7 +18,7 @@ pub(crate) enum Ending {
 }
 
 pub(crate) struct Plan {
-    pub(crate) events: Vec<StreamEvent>,
+    pub(crate) deltas: Vec<ResponseDelta>,
     pub(crate) gates: Vec<(usize, Gate)>,
     pub(crate) ending: Ending,
 }
@@ -26,47 +27,43 @@ fn internal(cause: &impl std::fmt::Display) -> Box<CallOutcome> {
     Box::new(outcomes::refused(outcomes::inconsistent(cause)))
 }
 
-fn renamed(
-    call: &CallContext<'_>,
-    step: Step,
-    renaming: Option<&str>,
-) -> Result<Step, MessageError> {
-    match renaming {
-        Some(prefix) => rename_tool_calls(&step, prefix, call.tracker.sequence()),
-        None => Ok(step),
-    }
+fn collision() -> Box<CallOutcome> {
+    Box::new(outcomes::refused(codes::identity_collision()))
 }
 
-fn with_model(
+fn renewed(
     call: &CallContext<'_>,
-    step: Step,
-    report: &ReportValues,
-) -> Result<Step, MessageError> {
-    if step.model().is_some() {
-        return Ok(step);
-    }
-    let model = report
-        .model
-        .clone()
-        .unwrap_or_else(|| call.settings.model().clone());
-    Step::new(
-        step.content().to_vec(),
-        step.stop_reason().clone(),
-        step.usage().cloned(),
-        Some(model),
+    response: &ModelResponse,
+) -> Result<ModelResponse, Box<CallOutcome>> {
+    renew(
+        call.tracker.shared().id_source(),
+        call.request.reply_entry(),
+        response,
     )
+    .map_err(|_| collision())
 }
 
-fn truncated(
-    step: &Step,
+fn derived(
+    call: &CallContext<'_>,
+    response: &ModelResponse,
     chunking: &Chunking,
-    after: usize,
-) -> Result<Vec<StreamEvent>, Box<CallOutcome>> {
-    let mut events = derive_events(step, chunking)
-        .map_err(|error| internal(&error))?
-        .into_events();
-    events.truncate(after);
-    Ok(events)
+) -> Result<Vec<ResponseDelta>, Box<CallOutcome>> {
+    derive_deltas(call.request.reply_turn(), response, chunking)
+        .map(crate::derive_deltas::DerivedDeltas::into_deltas)
+        .map_err(|error| internal(&error))
+}
+
+fn of_request(call: &CallContext<'_>, deltas: Vec<ResponseDelta>) -> Vec<ResponseDelta> {
+    deltas
+        .into_iter()
+        .map(|delta| {
+            ResponseDelta::new(
+                call.request.reply_turn(),
+                call.request.reply_entry(),
+                delta.op().clone(),
+            )
+        })
+        .collect()
 }
 
 pub(crate) fn plan(call: &CallContext<'_>, reply: Reply) -> Result<Plan, Box<CallOutcome>> {
@@ -75,81 +72,71 @@ pub(crate) fn plan(call: &CallContext<'_>, reply: Reply) -> Result<Plan, Box<Cal
         report,
         gates,
         chunking,
-        renaming,
+        request_identities,
     } = reply;
-    let named_usage = report.usage.clone();
-    let (events, ending) = match shape {
-        Shape::Failure(error) => (
-            Vec::new(),
-            Ending::Outcome(Box::new(outcomes::failed(
-                report.report(named_usage),
-                error,
-            ))),
-        ),
-        Shape::Broken { events, error } => (
-            events,
-            Ending::Outcome(Box::new(outcomes::failed(
-                report.report(named_usage),
-                error,
-            ))),
-        ),
-        Shape::Cut { step, after, error } => {
-            let step =
-                renamed(call, step, renaming.as_deref()).map_err(|error| internal(&error))?;
-            (
-                truncated(&step, &chunking, after)?,
-                Ending::Outcome(Box::new(outcomes::failed(
-                    report.report(named_usage),
-                    error,
-                ))),
-            )
+    let (deltas, ending) = match shape {
+        Shape::Failure(error) => (Vec::new(), failure(&report, error)),
+        Shape::Broken { deltas, error } => {
+            let deltas = if request_identities {
+                of_request(call, deltas)
+            } else {
+                deltas
+            };
+            (deltas, failure(&report, error))
         }
-        Shape::Hang { step, after } => {
-            let step =
-                renamed(call, step, renaming.as_deref()).map_err(|error| internal(&error))?;
-            (truncated(&step, &chunking, after)?, Ending::Hang)
+        Shape::Cut {
+            response,
+            after,
+            error,
+        } => {
+            let response = renewed(call, &response)?;
+            let mut deltas = derived(call, &response, &chunking)?;
+            deltas.truncate(after);
+            (deltas, failure(&report, error))
         }
-        Shape::Success(step) => {
-            let step = renamed(call, step, renaming.as_deref())
-                .and_then(|step| with_model(call, step, &report))
-                .map_err(|error| internal(&error))?;
-            success_plan(call, step, &report, &chunking)?
+        Shape::Hang { response, after } => {
+            let response = renewed(call, &response)?;
+            let mut deltas = derived(call, &response, &chunking)?;
+            deltas.truncate(after);
+            (deltas, Ending::Hang)
+        }
+        Shape::Success(response) => {
+            let response = renewed(call, &response)?;
+            success_plan(call, response, &report, &chunking)?
         }
     };
     Ok(Plan {
-        events,
+        deltas,
         gates,
         ending,
     })
 }
 
+fn failure(report: &ReportValues, error: br_llm_clients_core::ClientError) -> Ending {
+    Ending::Outcome(Box::new(outcomes::failed(report.named_report(), error)))
+}
+
 fn success_plan(
     call: &CallContext<'_>,
-    step: Step,
+    response: ModelResponse,
     report: &ReportValues,
     chunking: &Chunking,
-) -> Result<(Vec<StreamEvent>, Ending), Box<CallOutcome>> {
-    let mut events = derive_events(&step, chunking)
-        .map_err(|error| internal(&error))?
-        .into_events();
-    let finish = events.pop();
-    let step_report = report.report(step.usage().cloned());
-    let verdict = check_against_request(call, &step);
-    match verdict {
+) -> Result<(Vec<ResponseDelta>, Ending), Box<CallOutcome>> {
+    let mut deltas = derived(call, &response, chunking)?;
+    let completed = deltas.pop();
+    let response_report = report.report(response.usage().cloned(), response.model().cloned());
+    let capabilities = call.tracker.shared().capabilities();
+    match response_check::check(capabilities, call.request, &response) {
         Err(error) => Ok((
-            events,
-            Ending::Outcome(Box::new(outcomes::failed(step_report, error))),
+            deltas,
+            Ending::Outcome(Box::new(outcomes::failed(response_report, error))),
         )),
         Ok(()) => {
-            events.extend(finish);
+            deltas.extend(completed);
             Ok((
-                events,
-                Ending::Outcome(Box::new(outcomes::succeeded(step_report, step))),
+                deltas,
+                Ending::Outcome(Box::new(outcomes::succeeded(response_report, response))),
             ))
         }
     }
-}
-
-fn check_against_request(call: &CallContext<'_>, step: &Step) -> Result<(), ClientError> {
-    step_check::check(call.tracker.shared().capabilities(), call.request, step)
 }

@@ -189,10 +189,10 @@ dependencies = [
 
 [[package]]
 name = "br-llm-clients-mock"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
- "br-llm-clients-core 0.4.1",
- "br-llm-messages 0.5.0",
+ "br-llm-clients-core 0.5.0",
+ "br-llm-messages 2.1.0",
  "serde_json",
  "thiserror",
 ]

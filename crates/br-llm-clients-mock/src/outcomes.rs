@@ -1,5 +1,5 @@
 use br_llm_clients_core::{CallOutcome, CallReport, ClientError};
-use br_llm_messages::Step;
+use br_llm_messages::ModelResponse;
 
 use crate::report_values::bare_report;
 
@@ -17,8 +17,8 @@ pub(crate) fn failed(report: CallReport, error: ClientError) -> CallOutcome {
     CallOutcome::failure(report, error)
 }
 
-pub(crate) fn succeeded(report: CallReport, step: Step) -> CallOutcome {
-    match CallOutcome::success(report, step) {
+pub(crate) fn succeeded(report: CallReport, response: ModelResponse) -> CallOutcome {
+    match CallOutcome::success(report, response) {
         Ok(outcome) => outcome,
         Err(error) => refused(inconsistent(&error)),
     }
