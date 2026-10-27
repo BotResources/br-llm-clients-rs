@@ -23,9 +23,10 @@ a tag of line 0.1 stays valid on that tag and is not changed.
   The id of a block comes from it, in the order of the blocks, when the first
   event of the block is sent.
 - `ProviderEvent::ResponseId(String)`: the id that the provider gives to the
-  response. An empty text is read as no id and changes nothing; a later id
-  replaces an earlier one. It is sent as a metadata update and is the provider
-  response id of the `ModelResponse`.
+  response. An empty text is ignored entirely: it does not count as the first
+  event of the reply and does not send `ResponseStarted`. A later id replaces an
+  earlier one. It is sent as a metadata update and is the provider response id of
+  the `ModelResponse`.
 - `SecretLog`: the secrets that are made while a call runs, such as a token that
   an authorizer fetches inside `send`. `SecretLog::new` (and `Default`) makes an
   empty log; a clone shares the same list; `record` takes a `Secret` by
@@ -66,8 +67,8 @@ a tag of line 0.1 stays valid on that tag and is not changed.
   `ResponseDelta` values. The library applies each delta to a `ResponseDraft` and
   gives it to the `StreamSink` only after the draft accepts it; a refused delta is
   not given and makes the reply `MalformedResponse`. `ResponseStarted` is the
-  first delta (sent when the first provider event other than `Error` and
-  `Complete` is accepted) and `ResponseCompleted`, with the corrected ending, is
+  first delta (sent when the first provider event other than `Error`, `Complete`
+  and an empty `ResponseId` is accepted) and `ResponseCompleted`, with the corrected ending, is
   the last and only on success. `Model`, `Usage` and `ResponseId` events are sent
   as metadata updates when they are applied. No `observed_at` is set. A `Usage`
   event that holds one count is sent as it is.
@@ -95,6 +96,14 @@ a tag of line 0.1 stays valid on that tag and is not changed.
   `ProviderContinuation` as an ending makes the reply `MalformedResponse`.
 - The id of a tool call from the provider is the external id of the call, as
   received; an empty id is read as no id; a repeated id is no longer refused.
+- A payload that holds only metadata (a `Model`, a `Usage` or a non-empty
+  `ResponseId` event) now counts as the first event of the reply, because
+  `ResponseStarted` is the first sink call: the time to the first event of the
+  `CallReport` stops there.
+- The crate pins `br-llm-clients-core` 0.5.0, `br-llm-clients-common-http` 0.2.0
+  and `br-llm-clients-common-sse` 0.1.0 by git tag, each as
+  `{crate}/v{version}` of this repository. A library that names the types of these
+  crates must pin the same tags, so that one copy of each is resolved.
 - The line of `br-llm-clients-common-http` is 0.2, because `Secret::appears_in`
   and `Response::retry_after_ms` are new in that line. `Secret`, `Endpoint`,
   `Headers`, `HttpClient` and `Authorizer`, which this crate re-exports, are now
@@ -104,21 +113,33 @@ a tag of line 0.1 stays valid on that tag and is not changed.
   types must use the same `common-http` in the same release.
 - A refusal body longer than 64 KiB is trimmed at its end before the secrets are
   replaced: the longest suffix of the collected bytes that equals the start of a
-  secret in effect (at least one byte, fewer than the whole secret) is removed.
+  secret in effect (at least one byte, fewer than the whole secret) is removed,
+  except that bytes belonging to a secret that is whole in the collected bytes
+  stay for the replacement, unless a longer secret could continue from them
+  past the cut.
   In 0.1.0 the body was cut first and the secrets were replaced after, so a
   secret that crossed the cut left its first part in the text of the
   `ClientError` and in the text that `error_code` and `refine_error` read. Nothing
   is trimmed when the collection is not cut.
+- The secrets are replaced in one pass over the text: at each position the longest
+  secret in effect that matches is replaced by `[redacted]` and the scan goes on
+  after the match, so the placeholder is never scanned again. In 0.1.0 each secret
+  was replaced in turn over the whole text, so a secret that is a part of
+  `[redacted]` rewrote the placeholders already written.
 - A secret recorded in the `SecretLog` is removed from every text of the outcome
   before the cut to 64 KiB, as the secrets of the list. The code and the text of an
-  `Error` event are cleaned with the secrets in effect too. A `CallSpec` whose log
-  stays empty behaves as in 0.1.0.
+  `Error` event are cleaned with the secrets in effect too, and so is the reason
+  of an `unclassified` ending inside a `ReplyUnusable`.
 - The delay of a refusal is read from `retry-after-ms` first, as
   `Response::retry_after_ms` reads it, and from `Retry-After` when the first gives
   nothing. In 0.1.0 only `Retry-After` was read. The delay of an error inside a
   stream is not changed.
 - The request id of the `CallReport` is absent when a secret in effect appears in
   it, at any place in the text. In 0.1.0 it was never tested.
+
+- An open block is found by its key in constant time, and a block that finished
+  is freed, so the cost of a reply no longer grows with the square of its number
+  of blocks. The deltas sent do not change.
 
 ### Removed
 
