@@ -227,3 +227,49 @@ fn given_a_structured_value_with_a_time_when_served_then_only_its_identity_chang
     assert_eq!(shape_of(&given), shape_of(&response));
     assert_eq!(ids_in_order(&given), [identity_uuid(START)]);
 }
+
+#[test]
+fn given_tool_arguments_and_a_structured_value_with_the_keys_id_and_call_when_served_then_the_keys_are_kept()
+ {
+    let json = r#"{"id":"mine","call":{"id":1},"list":[{"id":2,"call":3}]}"#;
+    let kept = serde_json::from_str::<serde_json::Value>(json).unwrap();
+    let cases = [
+        (
+            response_of(
+                vec![call_content("search", json)],
+                br_llm_messages::ResponseEnding::tool_use(),
+                br_llm_messages::ResponseMetadata::new(),
+            ),
+            request(),
+            "arguments",
+        ),
+        (
+            response_of(
+                vec![ContentBlock::StructuredContent(
+                    br_llm_messages::StructuredBlock::new(
+                        crate::fixtures::block_id(),
+                        br_llm_messages::OpaqueJson::parse(json).unwrap(),
+                    )
+                    .unwrap(),
+                )],
+                br_llm_messages::ResponseEnding::finished(),
+                br_llm_messages::ResponseMetadata::new(),
+            ),
+            crate::response_support::structured_request(),
+            "value",
+        ),
+    ];
+    for (response, request_value, field) in cases {
+        let source = SequentialIdSource::starting_at(START);
+        let client = client_with(&source);
+        client.push_reply(Reply::success(response.clone()).build().unwrap());
+        let (outcome, _) = run(&client, &request_value);
+        let given = response_from(&outcome);
+        assert_ne!(ids_in_order(&given), ids_in_order(&response));
+        assert_eq!(shape_of(&given), shape_of(&response));
+        let shape = shape_of(&given);
+        assert_eq!(shape["content"][0][field], kept);
+        let served = serde_json::to_value(&given).unwrap();
+        assert_eq!(served["content"][0][field], kept);
+    }
+}

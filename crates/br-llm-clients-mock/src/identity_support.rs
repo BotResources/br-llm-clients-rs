@@ -38,15 +38,31 @@ pub(crate) fn ids_in_order(response: &ModelResponse) -> Vec<Uuid> {
     out
 }
 
-pub(crate) fn without_identities(value: &mut Value) {
-    match value {
-        Value::Object(map) => {
-            map.remove("id");
-            map.remove("call");
-            map.values_mut().for_each(without_identities);
+fn without_block_identities(block: &mut Value) {
+    let Value::Object(map) = block else {
+        return;
+    };
+    map.remove("id");
+    map.remove("call");
+    if let Some(Value::Array(citations)) = map.get_mut("citations") {
+        for citation in citations {
+            if let Value::Object(citation) = citation {
+                citation.remove("id");
+            }
         }
-        Value::Array(items) => items.iter_mut().for_each(without_identities),
-        _ => {}
+    }
+    if let Some(Value::Array(content)) = map.get_mut("content") {
+        content.iter_mut().for_each(without_block_identities);
+    }
+}
+
+pub(crate) fn without_identities(response: &mut Value) {
+    let Value::Object(map) = response else {
+        return;
+    };
+    map.remove("id");
+    if let Some(Value::Array(content)) = map.get_mut("content") {
+        content.iter_mut().for_each(without_block_identities);
     }
 }
 
