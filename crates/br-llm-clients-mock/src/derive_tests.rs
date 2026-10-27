@@ -163,7 +163,7 @@ fn given_a_text_block_with_an_item_ref_and_a_time_when_derived_then_its_start_ca
 }
 
 #[test]
-fn given_a_response_with_a_runtime_call_and_another_ending_when_derived_then_completed_carries_tool_use()
+fn given_a_response_with_a_runtime_call_and_the_ending_tool_use_when_derived_then_completed_carries_tool_use()
  {
     let response = response_of(
         vec![call_content("search", "{}")],
@@ -171,7 +171,54 @@ fn given_a_response_with_a_runtime_call_and_another_ending_when_derived_then_com
         ResponseMetadata::new(),
     );
     let last = derived(&response).pop().unwrap();
+    assert_eq!(last.kind(), K::ResponseCompleted);
     assert!(start_of(&last).to_string().contains("tool_use"));
+}
+
+#[test]
+fn given_a_response_with_a_runtime_call_and_another_ending_when_derived_then_completed_carries_tool_use()
+ {
+    for ending in [
+        ResponseEnding::finished(),
+        ResponseEnding::refusal(),
+        ResponseEnding::output_exhaustion(),
+    ] {
+        let response = response_of(
+            vec![call_content("search", "{}")],
+            ending,
+            ResponseMetadata::new(),
+        );
+        let last = derived(&response).pop().unwrap();
+        assert_eq!(last.kind(), K::ResponseCompleted);
+        let json = start_of(&last).to_string();
+        assert!(json.contains("tool_use"), "{json}");
+    }
+}
+
+#[test]
+fn given_a_response_with_a_runtime_call_and_the_ending_finished_when_derived_then_the_deltas_fold_to_a_tool_use_response()
+ {
+    let blocks = vec![text_content("let me look"), call_content("search", "{}")];
+    let response = response_of(
+        blocks.clone(),
+        ResponseEnding::finished(),
+        ResponseMetadata::new(),
+    );
+    let folded = fold_deltas(&derived(&response)).unwrap();
+    assert_eq!(folded.ending(), &ResponseEnding::tool_use());
+    assert_eq!(folded.blocks(), blocks.as_slice());
+}
+
+#[test]
+fn given_a_response_with_no_runtime_call_when_derived_then_completed_keeps_the_ending_of_the_response()
+ {
+    let response = response_of(
+        vec![text_content("hi")],
+        ResponseEnding::output_exhaustion(),
+        ResponseMetadata::new(),
+    );
+    let folded = fold_deltas(&derived(&response)).unwrap();
+    assert_eq!(folded.ending(), &ResponseEnding::output_exhaustion());
 }
 
 #[test]
