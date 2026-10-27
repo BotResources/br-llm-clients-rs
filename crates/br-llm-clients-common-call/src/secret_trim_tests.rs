@@ -92,3 +92,30 @@ fn given_two_secrets_when_the_longest_start_is_the_longer_ones_then_it_is_remove
         b"aaaa"
     );
 }
+
+#[test]
+fn given_a_whole_secret_whose_last_byte_is_its_first_when_it_ends_the_bytes_then_it_stays_whole() {
+    let secret = "QZXVsecret7788Q";
+    let bytes = [b"aaaa".as_slice(), secret.as_bytes()].concat();
+    assert_eq!(trimmed(&[secret], &bytes), bytes);
+}
+
+#[test]
+fn given_a_whole_secret_whose_tail_starts_another_when_it_ends_the_bytes_then_it_stays_whole() {
+    let first = "abcdefXYZ123";
+    let second = "cdefXYZ123ghij";
+    let bytes = [b"zzzz".as_slice(), first.as_bytes()].concat();
+    assert_eq!(trimmed(&[first, second], &bytes), bytes);
+    assert_eq!(trimmed(&[second, first], &bytes), bytes);
+}
+
+#[test]
+fn given_a_whole_secret_then_a_start_when_trimmed_then_only_the_start_goes() {
+    assert_eq!(trimmed(&["QZXV"], b"aaaaQZXVQZ"), b"aaaaQZXV");
+}
+
+#[test]
+fn given_a_whole_secret_that_starts_a_longer_one_when_trimmed_then_it_goes_with_the_longer_start() {
+    assert_eq!(trimmed(&["QZXV", "QZXVQ"], b"aaaaQZXV"), b"aaaa");
+    assert_eq!(trimmed(&["QZXVQ", "QZXV"], b"aaaaQZXV"), b"aaaa");
+}

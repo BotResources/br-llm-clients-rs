@@ -100,6 +100,8 @@ mod run_timing_tests;
 #[cfg(test)]
 mod secret_log_tests;
 #[cfg(test)]
+mod secret_trim_exhaustive_tests;
+#[cfg(test)]
 mod secret_trim_tests;
 #[cfg(test)]
 mod static_tests;

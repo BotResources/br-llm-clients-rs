@@ -59,3 +59,36 @@ fn given_a_replacement_that_grows_the_text_when_cleaned_then_the_cut_applies_aft
     assert_eq!(cleaned.len(), 65_536);
     assert!(cleaned.starts_with("[redacted][redacted]"));
 }
+
+#[test]
+fn given_secrets_that_hold_the_placeholder_letters_when_replaced_then_the_placeholder_is_not_scanned()
+ {
+    let letters = ["r", "e", "d", "a", "c", "t"];
+    assert_eq!(secrets(&letters).replace("r"), "[redacted]");
+    assert_eq!(secrets(&letters).replace("rrrr"), "[redacted]".repeat(4));
+    assert_eq!(
+        secrets(&["LONGSECRETVALUE", "red"]).replace("LONGSECRETVALUE red"),
+        "[redacted] [redacted]"
+    );
+}
+
+#[test]
+fn given_a_text_that_holds_the_placeholder_when_replaced_then_it_is_scanned_as_any_text() {
+    assert_eq!(secrets(&["red"]).replace("[redacted]"), "[[redacted]acted]");
+}
+
+#[test]
+fn given_secrets_that_overlap_in_the_text_when_replaced_then_the_leftmost_goes_and_the_scan_goes_on_after_it()
+ {
+    assert_eq!(secrets(&["xyx"]).replace("xyxyx"), "[redacted]yx");
+    assert_eq!(secrets(&["xyx", "yxy"]).replace("xyxy"), "[redacted]y");
+    assert_eq!(secrets(&["xy", "xyzw"]).replace("xyzw"), "[redacted]");
+}
+
+#[test]
+fn given_a_secret_with_multibyte_characters_when_replaced_then_the_characters_around_stay() {
+    assert_eq!(
+        secrets(&["pre-€-post"]).replace("é pre-€-post ü"),
+        "é [redacted] ü"
+    );
+}
