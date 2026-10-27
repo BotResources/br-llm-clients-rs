@@ -3,6 +3,7 @@ use std::time::Duration;
 use br_llm_messages::{MediaType, ResponseEnding, ToolName};
 
 use crate::client_error::{ClientError, LimitKind};
+use crate::duration::present_duration;
 use crate::reasoning::ReasoningLevel;
 use crate::schema::present;
 
@@ -26,11 +27,11 @@ pub(crate) enum RawClientError {
     },
     QuotaExceeded {},
     RateLimited {
-        #[serde(default, deserialize_with = "present")]
+        #[serde(default, deserialize_with = "present_duration")]
         retry_after: Option<Duration>,
     },
     Unavailable {
-        #[serde(default, deserialize_with = "present")]
+        #[serde(default, deserialize_with = "present_duration")]
         retry_after: Option<Duration>,
     },
     StreamTruncated {},

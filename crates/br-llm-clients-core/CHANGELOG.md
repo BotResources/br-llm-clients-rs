@@ -81,7 +81,9 @@ form to decide whether a version ships.
   cases without fields (such as `ClientError::Transport`,
   `OutputMode::Plain` and the plain kinds of a parameter). An explicit `null`
   for an optional item is refused (an absent item is omitted). A key given
-  twice is refused. A duration with `nanos` of 1000000000 or more is refused.
+  twice is refused. A duration (`CallReport` durations and the `retry_after` of
+  `ClientError::RateLimited` and `ClientError::Unavailable`) with `nanos` of
+  1000000000 or more is refused.
 - The capability check reads the images of the thread. It still does not
   render the history or check it, and never gives `InvalidMessages`. A
   `RuntimeNotice` entry of the thread is ignored by the check.
