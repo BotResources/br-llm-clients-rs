@@ -129,9 +129,9 @@ dependencies = [
 name = "br-llm-clients-common-call"
 version = "0.2.0"
 dependencies = [
- "br-llm-clients-common-http 0.2.0",
- "br-llm-clients-common-sse 0.1.0",
- "br-llm-clients-core 0.5.0",
+ "br-llm-clients-common-http 0.2.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-common-http%2Fv0.2.0)",
+ "br-llm-clients-common-sse 0.1.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-common-sse%2Fv0.1.0)",
+ "br-llm-clients-core 0.5.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-core%2Fv0.5.0)",
  "br-llm-messages 2.1.0",
  "serde_json",
  "thiserror",
@@ -177,6 +177,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "br-llm-clients-common-http"
+version = "0.2.0"
+source = "git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-common-http%2Fv0.2.0#f16adaef1d12be8e0b33117e1deedef0f73bd282"
+dependencies = [
+ "bytes",
+ "h2",
+ "http",
+ "httpdate",
+ "hyper",
+ "hyper-util",
+ "rustls",
+ "rustls-pki-types",
+ "thiserror",
+ "tokio",
+ "tokio-rustls",
+ "webpki-roots",
+]
+
+[[package]]
 name = "br-llm-clients-common-sse"
 version = "0.1.0"
 
@@ -184,6 +203,11 @@ version = "0.1.0"
 name = "br-llm-clients-common-sse"
 version = "0.1.0"
 source = "git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-common-call%2Fv0.1.0#a809b067182f740fd6f0ede1f7c7148d5511f963"
+
+[[package]]
+name = "br-llm-clients-common-sse"
+version = "0.1.0"
+source = "git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-common-sse%2Fv0.1.0#474999b432f09ced4baa49a07b248e935fdfaf72"
 
 [[package]]
 name = "br-llm-clients-core"
@@ -212,6 +236,17 @@ dependencies = [
  "br-llm-messages 2.1.0",
  "serde",
  "serde_json",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
+name = "br-llm-clients-core"
+version = "0.5.0"
+source = "git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-core%2Fv0.5.0#337094a8cdd1d169b3e8602e2d7a4ca67eaf9f31"
+dependencies = [
+ "br-llm-messages 2.1.0",
+ "serde",
  "thiserror",
  "uuid",
 ]
