@@ -50,9 +50,11 @@ form to decide whether a version ships.
   request holds a `ProjectedThread` in place of the wire messages;
   `ModelResponse` and `ResponseEnding` take the place of `Step` and
   `StopReason`; `Usage`, `ModelName` (was `ModelId`), `ToolName`, `PlainText`
-  (was `Text`) and `MediaType` (was `ImageMime`) are those of line 2. An
-  importer that also uses `br-llm-messages` must move to 2.1 too; the types
-  of 0.5 and of 2.1 are not the same types.
+  (was `Text`) and `MediaType` (was `ImageMime`) are those of line 2; so
+  `CapabilitiesSpec::image_media_types` and `Capabilities::image_media_types`
+  are `Accepted<MediaType>`. An importer that also uses `br-llm-messages` must
+  move to 2.1 too; the types of messages 0.5 and of messages 2.1 are not the
+  same types.
 - Breaking: `ClientRequest::new` takes the system prompt, the history (a
   `ProjectedThread`), the turn and the entry of the reply (a `TurnId` and an
   `EntryId`), the tools and the output mode. New accessors `history`,
