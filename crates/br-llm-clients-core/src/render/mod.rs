@@ -16,6 +16,8 @@ mod content_tests;
 #[cfg(test)]
 mod frames_tests;
 #[cfg(test)]
+mod free_order_tests;
+#[cfg(test)]
 mod merge_tests;
 #[cfg(test)]
 mod notices_tests;
