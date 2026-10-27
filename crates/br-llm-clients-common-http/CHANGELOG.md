@@ -29,11 +29,11 @@ No change breaks 0.1.0. Seven operations are added and nothing else changes, exc
   re-encoded value is not found. An empty text gives false. It never shows the
   value.
 - `Response::retry_after_ms` reads the `retry-after-ms` header (first value) and
-  gives a duration: decimal digits, with or without a space or a tab around
-  them, are milliseconds and a number too large for a `Duration` saturates at the largest
-  duration. A date, a fraction or a sign gives nothing. It does not read
-  `Retry-After`, and `retry_after` does not read `retry-after-ms` and is
-  unchanged.
+  gives a duration: decimal digits, with or without spaces and tabs at their
+  start and at their end, are milliseconds and a number too large for a
+  `Duration` saturates at the largest duration. A date, a fraction or a sign
+  gives nothing. It does not read `Retry-After`, and `retry_after` does not
+  read `retry-after-ms` and is unchanged.
 
 ## 0.1.0
 
