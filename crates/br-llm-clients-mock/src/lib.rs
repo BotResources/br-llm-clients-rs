@@ -82,6 +82,12 @@ mod reentrancy_tests;
 #[cfg(test)]
 mod refusal_tests;
 #[cfg(test)]
+mod reply_build_gate_tests;
+#[cfg(test)]
+mod reply_build_tests;
+#[cfg(test)]
+mod reply_build_usage_tests;
+#[cfg(test)]
 mod reply_function_tests;
 #[cfg(test)]
 mod response_check_tests;
