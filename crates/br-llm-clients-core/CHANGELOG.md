@@ -19,7 +19,9 @@ form to decide whether a version ships.
   `User` or `Assistant` only: no entry becomes a system instruction. Entries
   are rendered one by one, consecutive entries of one role are merged into one
   message, and in a `User` message the tool results come first, in the order
-  of their calls. The content of another agent (`AgentRequest`, `AgentMail`,
+  of their calls. A tool result, delivered or built, is placed in the `User`
+  message that comes directly after the message holding its call, wherever it
+  was recorded; if no message follows the call, a new `User` message is opened. The content of another agent (`AgentRequest`, `AgentMail`,
   `AgentOutput`, `PartialAgentOutput`) is rendered inside a frame with an
   escaped author and escaped text. The notices (`RequestAccepted`,
   `QueuePosition`, `TaskStarted`, `TaskCompleted`, `TaskFailed`, and a

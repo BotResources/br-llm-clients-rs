@@ -71,3 +71,14 @@ fn without_replay(call: &RuntimeToolCall) -> Result<RuntimeToolCall, ClientError
         None => rebuilt,
     })
 }
+
+pub(super) fn call_indices(response: &ModelResponse, calls: &CallTable) -> Vec<usize> {
+    response
+        .blocks()
+        .iter()
+        .filter_map(|block| match block {
+            ContentBlock::RuntimeToolCall(call) => calls.get(call.id()).map(|info| info.index),
+            _ => None,
+        })
+        .collect()
+}

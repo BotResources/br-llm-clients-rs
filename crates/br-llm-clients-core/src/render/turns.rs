@@ -21,7 +21,7 @@ pub(super) fn messages(
         match turn {
             Turn::InputTurn(input) => {
                 for entry in input.entries() {
-                    merge.push(Item::user(incoming::of_incoming(entry)?));
+                    merge.push(Item::user(incoming::of_incoming(entry)?))?;
                 }
             }
             Turn::AITurn(ai) => ai_turn(ai, ai.id() == reply_turn, calls, &mut merge)?,
@@ -53,20 +53,23 @@ fn ai_turn(
     for entry in turn.entries() {
         match entry {
             TurnEntry::ModelResponse(model) => {
-                merge.push(Item::assistant(response::parts(model, reply, calls)?));
+                merge.push(Item::assistant(
+                    response::parts(model, reply, calls)?,
+                    response::call_indices(model, calls),
+                ))?;
             }
             TurnEntry::RuntimeToolResults(delivery) => {
-                merge.push(results::delivered(delivery, calls)?);
+                merge.push(results::delivered(delivery, calls)?)?;
             }
             TurnEntry::TurnClosure(closure) => {
                 merge.push(results::unresolved(
                     state.outstanding_runtime_calls(),
                     calls,
-                )?);
-                merge.push(Item::user(notices::turn_closure(closure)?));
+                )?)?;
+                merge.push(Item::user(notices::turn_closure(closure)?))?;
             }
             other => match incoming::of_turn_entry(other)? {
-                Some(parts) => merge.push(Item::user(parts)),
+                Some(parts) => merge.push(Item::user(parts))?,
                 None => {
                     return Err(invalid(format!(
                         "unknown entry kind {}",

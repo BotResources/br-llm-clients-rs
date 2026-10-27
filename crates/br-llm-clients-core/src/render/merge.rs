@@ -1,7 +1,12 @@
+use std::collections::HashMap;
+
+use super::refusal::invalid;
 use super::types::{RenderedMessage, RenderedPart, RenderedRole};
+use crate::client_error::ClientError;
 
 pub(super) struct Item {
     role: RenderedRole,
+    calls: Vec<usize>,
     results: Vec<(usize, RenderedPart)>,
     parts: Vec<RenderedPart>,
 }
@@ -10,14 +15,16 @@ impl Item {
     pub(super) fn user(parts: Vec<RenderedPart>) -> Self {
         Self {
             role: RenderedRole::User,
+            calls: Vec::new(),
             results: Vec::new(),
             parts,
         }
     }
 
-    pub(super) fn assistant(parts: Vec<RenderedPart>) -> Self {
+    pub(super) fn assistant(parts: Vec<RenderedPart>, calls: Vec<usize>) -> Self {
         Self {
             role: RenderedRole::Assistant,
+            calls,
             results: Vec::new(),
             parts,
         }
@@ -26,6 +33,7 @@ impl Item {
     pub(super) fn results(results: Vec<(usize, RenderedPart)>) -> Self {
         Self {
             role: RenderedRole::User,
+            calls: Vec::new(),
             results,
             parts: Vec::new(),
         }
@@ -38,8 +46,8 @@ impl Item {
 
 #[derive(Default)]
 pub(super) struct Merge {
-    messages: Vec<RenderedMessage>,
-    open: Option<Open>,
+    messages: Vec<Open>,
+    holders: HashMap<usize, usize>,
 }
 
 struct Open {
@@ -49,38 +57,63 @@ struct Open {
 }
 
 impl Merge {
-    pub(super) fn push(&mut self, item: Item) {
+    pub(super) fn push(&mut self, item: Item) -> Result<(), ClientError> {
         if item.renders_nothing() {
-            return;
+            return Ok(());
         }
-        match self.open.as_mut() {
-            Some(open) if open.role == item.role => {
-                open.results.extend(item.results);
-                open.parts.extend(item.parts);
-            }
-            _ => {
-                self.close();
-                self.open = Some(Open {
-                    role: item.role,
-                    results: item.results,
-                    parts: item.parts,
-                });
-            }
+        for (index, part) in item.results {
+            self.route(index, part)?;
         }
+        if !item.parts.is_empty() {
+            self.append(item.role, item.parts, &item.calls);
+        }
+        Ok(())
     }
 
-    pub(super) fn finish(mut self) -> Vec<RenderedMessage> {
-        self.close();
+    pub(super) fn finish(self) -> Vec<RenderedMessage> {
         self.messages
+            .into_iter()
+            .map(|mut open| {
+                open.results.sort_by_key(|(index, _)| *index);
+                let mut parts: Vec<RenderedPart> =
+                    open.results.into_iter().map(|(_, part)| part).collect();
+                parts.extend(open.parts);
+                RenderedMessage::new(open.role, parts)
+            })
+            .collect()
     }
 
-    fn close(&mut self) {
-        if let Some(mut open) = self.open.take() {
-            open.results.sort_by_key(|(index, _)| *index);
-            let mut parts: Vec<RenderedPart> =
-                open.results.into_iter().map(|(_, part)| part).collect();
-            parts.extend(open.parts);
-            self.messages.push(RenderedMessage::new(open.role, parts));
+    fn route(&mut self, index: usize, part: RenderedPart) -> Result<(), ClientError> {
+        let holder = *self
+            .holders
+            .get(&index)
+            .ok_or_else(|| invalid("a tool result comes before its tool call"))?;
+        let target = holder.saturating_add(1);
+        if target >= self.messages.len() {
+            self.messages.push(Open {
+                role: RenderedRole::User,
+                results: Vec::new(),
+                parts: Vec::new(),
+            });
+        }
+        if let Some(message) = self.messages.get_mut(target) {
+            message.results.push((index, part));
+        }
+        Ok(())
+    }
+
+    fn append(&mut self, role: RenderedRole, parts: Vec<RenderedPart>, calls: &[usize]) {
+        match self.messages.last_mut() {
+            Some(last) if last.role == role => last.parts.extend(parts),
+            _ => self.messages.push(Open {
+                role,
+                results: Vec::new(),
+                parts,
+            }),
+        }
+        let position = self.messages.len().saturating_sub(1);
+        for call in calls {
+            self.holders.insert(*call, position);
         }
     }
 }
