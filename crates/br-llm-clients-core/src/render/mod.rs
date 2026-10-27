@@ -11,6 +11,23 @@ mod results;
 mod turns;
 mod types;
 
+#[cfg(test)]
+mod content_tests;
+#[cfg(test)]
+mod frames_tests;
+#[cfg(test)]
+mod merge_tests;
+#[cfg(test)]
+mod notices_tests;
+#[cfg(test)]
+mod outstanding_tests;
+#[cfg(test)]
+mod replay_tests;
+#[cfg(test)]
+mod test_support;
+#[cfg(test)]
+mod wire_id_tests;
+
 pub use types::{RenderedHistory, RenderedMessage, RenderedPart, RenderedResultPart, RenderedRole};
 
 use crate::client_error::ClientError;
