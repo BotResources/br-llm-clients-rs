@@ -3,9 +3,9 @@ use br_llm_messages::ToolName;
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum BuildError {
-    #[error("a request needs at least one message")]
-    NoMessage,
-    #[error("two tools share the name {name}")]
+    #[error("a request needs a thread with at least one turn")]
+    EmptyThread,
+    #[error("two tools share the name {}", .name.as_str())]
     DuplicateToolName { name: ToolName },
     #[error("two parameters of one list share the name {parameter:?}")]
     DuplicateParameterName { parameter: String },
@@ -23,8 +23,6 @@ pub enum BuildError {
     ZeroMaxOutputTokens,
     #[error("parameter {parameter:?} is nested deeper than the limit")]
     NestingTooDeep { parameter: String },
-    #[error("a relay must be the last message and must not be the only one")]
-    MisplacedRelay,
-    #[error("the usage of the report differs from the usage of the step")]
+    #[error("the usage of the report differs from the usage of the response")]
     UsageMismatch,
 }

@@ -1,4 +1,4 @@
-use br_llm_messages::ModelId;
+use br_llm_messages::ModelName;
 
 use crate::cache::CacheRequirement;
 use crate::max_output_tokens::MaxOutputTokens;
@@ -8,7 +8,7 @@ use crate::schema::{self, LoadError};
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(try_from = "StoredClientSettings", into = "StoredClientSettings")]
 pub struct ClientSettings {
-    model: ModelId,
+    model: ModelName,
     reasoning: ReasoningLevel,
     cache: CacheRequirement,
     max_output_tokens: MaxOutputTokens,
@@ -18,7 +18,7 @@ pub struct ClientSettings {
 #[serde(deny_unknown_fields)]
 struct StoredClientSettings {
     schema: String,
-    model: ModelId,
+    model: ModelName,
     reasoning: ReasoningLevel,
     cache: CacheRequirement,
     max_output_tokens: MaxOutputTokens,
@@ -41,7 +41,7 @@ impl TryFrom<StoredClientSettings> for ClientSettings {
 impl From<ClientSettings> for StoredClientSettings {
     fn from(settings: ClientSettings) -> Self {
         Self {
-            schema: schema::current(),
+            schema: schema::SCHEMA_VERSION.to_owned(),
             model: settings.model,
             reasoning: settings.reasoning,
             cache: settings.cache,
@@ -52,7 +52,7 @@ impl From<ClientSettings> for StoredClientSettings {
 
 impl ClientSettings {
     pub fn new(
-        model: ModelId,
+        model: ModelName,
         reasoning: ReasoningLevel,
         cache: CacheRequirement,
         max_output_tokens: MaxOutputTokens,
@@ -65,7 +65,7 @@ impl ClientSettings {
         }
     }
 
-    pub fn model(&self) -> &ModelId {
+    pub fn model(&self) -> &ModelName {
         &self.model
     }
 

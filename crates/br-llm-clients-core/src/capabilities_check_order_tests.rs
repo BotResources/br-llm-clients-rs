@@ -1,4 +1,4 @@
-use br_llm_messages::ImageMime;
+use br_llm_messages::MediaType;
 
 use crate::capabilities_test_support::{
     CallShape, MODEL_NAME, STEPS, Step, image_request, settings,
@@ -59,11 +59,11 @@ impl Scenario {
             }
             Step::Image => {
                 self.spec.images = false;
-                self.call.image = Some(ImageMime::Png);
+                self.call.image = Some(MediaType::Png);
             }
             Step::MediaType => {
-                self.spec.image_media_types = Accepted::Only(vec![ImageMime::Png]);
-                self.call.image = Some(ImageMime::Gif);
+                self.spec.image_media_types = Accepted::Only(vec![MediaType::Png]);
+                self.call.image = Some(MediaType::Gif);
             }
         }
     }
@@ -91,7 +91,7 @@ fn refusal_of_step(step: Step) -> ClientError {
         Step::StructuredWithTools => ClientError::StructuredOutputWithToolsNotSupported,
         Step::Image => ClientError::ImageNotSupported,
         Step::MediaType => ClientError::ImageMediaTypeNotSupported {
-            media_type: ImageMime::Gif,
+            media_type: MediaType::Gif,
         },
     }
 }
@@ -135,13 +135,13 @@ fn given_a_call_with_an_image_when_images_are_off_and_the_media_type_is_also_bad
  {
     let capabilities = Capabilities::normalized(CapabilitiesSpec {
         images: false,
-        image_media_types: Accepted::Only(vec![ImageMime::Png]),
+        image_media_types: Accepted::Only(vec![MediaType::Png]),
         ..CapabilitiesSpec::everything()
     });
     assert_eq!(
         capabilities.check(
             &settings(ReasoningLevel::Off, CacheRequirement::NotRequired, 10),
-            &image_request(&[ImageMime::Gif])
+            &image_request(&[MediaType::Gif])
         ),
         Err(ClientError::ImageNotSupported)
     );

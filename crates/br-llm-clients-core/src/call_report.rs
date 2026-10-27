@@ -1,17 +1,35 @@
 use std::time::Duration;
 
-use br_llm_messages::{ModelId, Usage};
+use br_llm_messages::{ModelName, Usage};
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+use crate::schema::present;
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CallReport {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
     usage: Option<Usage>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    model: Option<ModelId>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    model: Option<ModelName>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
     request_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
     time_to_first_event: Option<Duration>,
     total_duration: Duration,
 }
@@ -32,7 +50,7 @@ impl CallReport {
         self
     }
 
-    pub fn with_model(mut self, model: ModelId) -> Self {
+    pub fn with_model(mut self, model: ModelName) -> Self {
         self.model = Some(model);
         self
     }
@@ -51,7 +69,7 @@ impl CallReport {
         self.usage.as_ref()
     }
 
-    pub fn model(&self) -> Option<&ModelId> {
+    pub fn model(&self) -> Option<&ModelName> {
         self.model.as_ref()
     }
 

@@ -1,6 +1,6 @@
-use br_llm_messages::ImageMime;
+use br_llm_messages::MediaType;
 
-use crate::capabilities_test_support::{ALL_LEVELS, ALL_MIMES, CallShape, STEPS, Step};
+use crate::capabilities_test_support::{ALL_LEVELS, ALL_MEDIA_TYPES, CallShape, STEPS, Step};
 use crate::{Accepted, CacheRequirement, Capabilities, CapabilitiesSpec, ReasoningLevel};
 
 fn uses_a_feature(call: &CallShape) -> bool {
@@ -18,7 +18,9 @@ fn every_call() -> Vec<CallShape> {
             for tokens in [1, 8192, u32::MAX] {
                 for tools in [true, false] {
                     for structured in [true, false] {
-                        let images = [None].into_iter().chain(ALL_MIMES.into_iter().map(Some));
+                        let images = [None]
+                            .into_iter()
+                            .chain(ALL_MEDIA_TYPES.into_iter().map(Some));
                         for image in images {
                             calls.push(CallShape {
                                 level,
@@ -79,7 +81,7 @@ fn expected_refusal(spec: &CapabilitiesSpec, call: &CallShape) -> Option<Step> {
         Accepted::Any => true,
         Accepted::Only(list) => list.contains(&call.level),
     };
-    let accepted_mime = |mime: ImageMime| match &spec.image_media_types {
+    let accepted_mime = |mime: MediaType| match &spec.image_media_types {
         Accepted::Any => true,
         Accepted::Only(list) => list.contains(&mime),
     };
@@ -118,7 +120,7 @@ fn given_a_grid_of_declarations_and_calls_when_checked_then_the_first_broken_rul
             structured_output_with_tools: false,
             caching: false,
             images: true,
-            image_media_types: Accepted::Only(vec![ImageMime::Png, ImageMime::Jpeg]),
+            image_media_types: Accepted::Only(vec![MediaType::Png, MediaType::Jpeg]),
         },
         CapabilitiesSpec {
             tools: false,

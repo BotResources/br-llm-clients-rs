@@ -1,10 +1,10 @@
-use br_llm_messages::ModelId;
+use br_llm_messages::ModelName;
 
 use crate::{CacheRequirement, ClientSettings, MaxOutputTokens, ReasoningLevel, SCHEMA_VERSION};
 
 fn settings() -> ClientSettings {
     ClientSettings::new(
-        ModelId::new("model-x").unwrap(),
+        ModelName::new("model-x").unwrap(),
         ReasoningLevel::Off,
         CacheRequirement::NotRequired,
         MaxOutputTokens::new(4096).unwrap(),
@@ -15,7 +15,7 @@ fn settings() -> ClientSettings {
 fn given_settings_when_stored_then_they_carry_the_schema() {
     let json = serde_json::to_value(settings()).unwrap();
     assert_eq!(json["schema"], serde_json::json!(SCHEMA_VERSION));
-    assert_eq!(SCHEMA_VERSION, "br-llm-clients-core/1");
+    assert_eq!(SCHEMA_VERSION, "br-llm-clients-core/2");
 }
 
 #[test]
@@ -30,7 +30,7 @@ fn given_settings_when_round_tripped_then_identical() {
 #[test]
 fn given_another_schema_when_loaded_then_refused() {
     let mut json = serde_json::to_value(settings()).unwrap();
-    json["schema"] = serde_json::json!("br-llm-clients-core/2");
+    json["schema"] = serde_json::json!("br-llm-clients-core/1");
     assert!(serde_json::from_value::<ClientSettings>(json).is_err());
 }
 

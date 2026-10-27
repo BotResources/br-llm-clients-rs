@@ -15,6 +15,5 @@ pub trait Client: Send + Sync {
         sink: &'a mut dyn StreamSink,
     ) -> BoxFuture<'a, CallOutcome>;
 
-    /// The common settings this client is bound to; pure, no I/O.
     fn settings(&self) -> &ClientSettings;
 }

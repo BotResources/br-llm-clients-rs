@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use br_llm_messages::{ImageMime, StopReason, ToolName};
+use br_llm_messages::{MediaType, ResponseEnding, ToolName};
 
 use crate::client_error::{ClientError, LimitKind};
 use crate::reasoning::ReasoningLevel;
@@ -17,7 +17,7 @@ fn every_case() -> Vec<ClientError> {
         ClientError::ContextTooLong { limit: None },
         ClientError::ContentBlocked,
         ClientError::ReplyUnusable {
-            stop_reason: StopReason::MaxTokens,
+            ending: ResponseEnding::output_exhaustion(),
         },
         ClientError::InvalidMessages {
             reason: "no".to_owned(),
@@ -42,7 +42,7 @@ fn every_case() -> Vec<ClientError> {
         ClientError::CacheNotSupported,
         ClientError::ImageNotSupported,
         ClientError::ImageMediaTypeNotSupported {
-            media_type: ImageMime::Gif,
+            media_type: MediaType::Gif,
         },
         ClientError::LimitExceeded {
             kind: LimitKind::Tools,
@@ -175,26 +175,23 @@ fn given_a_provider_error_when_displayed_then_status_and_body_show_unchanged() {
 }
 
 #[test]
-fn given_an_extra_field_when_loaded_then_refusal_covers_structures_and_struct_cases_not_unit_cases()
-{
-    let extra_on_struct_case = serde_json::json!({
-        "type": "rate_limited", "host": "example.org"
-    });
-    assert!(serde_json::from_value::<ClientError>(extra_on_struct_case).is_err());
+fn given_an_extra_field_on_any_stored_case_when_loaded_then_refused_unit_cases_included() {
+    for error in every_case() {
+        let mut json = serde_json::to_value(&error).unwrap();
+        json["host"] = serde_json::json!("example.org");
+        assert!(
+            serde_json::from_value::<ClientError>(json).is_err(),
+            "{error}"
+        );
+    }
+}
 
-    let extra_on_stored_structure = serde_json::json!({
+#[test]
+fn given_an_extra_field_on_the_other_stored_structures_when_loaded_then_refused() {
+    let on_report = serde_json::json!({
         "total_duration": { "secs": 1, "nanos": 0 }, "host": "example.org"
     });
-    assert!(serde_json::from_value::<crate::CallReport>(extra_on_stored_structure).is_err());
-
-    let extra_on_unit_case = serde_json::json!({ "type": "transport", "host": "example.org" });
-    assert_eq!(
-        serde_json::from_value::<ClientError>(extra_on_unit_case).unwrap(),
-        ClientError::Transport
-    );
-    let extra_on_plain = serde_json::json!({ "type": "plain", "host": "example.org" });
-    assert_eq!(
-        serde_json::from_value::<crate::OutputMode>(extra_on_plain).unwrap(),
-        crate::OutputMode::Plain
-    );
+    assert!(serde_json::from_value::<crate::CallReport>(on_report).is_err());
+    let on_plain = serde_json::json!({ "type": "plain", "host": "example.org" });
+    assert!(serde_json::from_value::<crate::OutputMode>(on_plain).is_err());
 }

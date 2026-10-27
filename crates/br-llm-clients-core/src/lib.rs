@@ -2,6 +2,7 @@ mod accepted;
 mod build_error;
 mod cache;
 mod call_outcome;
+mod call_outcome_stored;
 mod call_report;
 mod capabilities;
 mod capabilities_check;
@@ -10,10 +11,11 @@ mod capabilities_error;
 mod capabilities_spec;
 mod client;
 mod client_error;
+mod client_error_raw;
 mod client_request;
 mod client_settings;
+mod id_source;
 mod max_output_tokens;
-mod message_rules;
 mod output_mode;
 mod reasoning;
 mod schema;
@@ -30,6 +32,8 @@ mod capabilities_check_grid_tests;
 mod capabilities_check_images_tests;
 #[cfg(test)]
 mod capabilities_check_order_tests;
+#[cfg(test)]
+mod capabilities_check_reading_tests;
 #[cfg(test)]
 mod capabilities_check_tests;
 #[cfg(test)]
@@ -49,9 +53,9 @@ mod client_settings_tests;
 #[cfg(test)]
 mod client_trait_tests;
 #[cfg(test)]
-mod message_rules_tests;
-#[cfg(test)]
 mod test_support;
+#[cfg(test)]
+mod thread_fixtures;
 
 pub use accepted::Accepted;
 pub use build_error::BuildError;
@@ -65,6 +69,7 @@ pub use client::{BoxFuture, Client};
 pub use client_error::{ClientError, LimitKind};
 pub use client_request::ClientRequest;
 pub use client_settings::ClientSettings;
+pub use id_source::{DefaultIdSource, IdSource};
 pub use max_output_tokens::MaxOutputTokens;
 pub use output_mode::{OutputMode, StructuredShape};
 pub use reasoning::ReasoningLevel;

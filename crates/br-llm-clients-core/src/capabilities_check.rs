@@ -39,7 +39,7 @@ impl Capabilities {
             level,
             reason: format!(
                 "the declared capabilities of model {} do not accept this level",
-                settings.model()
+                settings.model().as_str()
             ),
         })
     }

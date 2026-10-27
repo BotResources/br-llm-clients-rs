@@ -1,6 +1,6 @@
 use std::num::NonZeroU32;
 
-use br_llm_messages::ImageMime;
+use br_llm_messages::MediaType;
 
 use crate::capabilities_test_support::{AmbiguousIfDefault, assert_plain_data};
 use crate::{Accepted, CapabilitiesSpec, MaxOutputTokens, ReasoningLevel};
@@ -69,10 +69,10 @@ fn given_the_two_starting_points_when_asked_if_inconsistent_then_neither_is() {
 #[test]
 fn given_every_combination_of_images_and_media_types_when_asked_then_only_images_with_an_empty_only_is_inconsistent()
  {
-    let sets: [Accepted<ImageMime>; 3] = [
+    let sets: [Accepted<MediaType>; 3] = [
         Accepted::Any,
         Accepted::Only(Vec::new()),
-        Accepted::Only(vec![ImageMime::Png]),
+        Accepted::Only(vec![MediaType::Png]),
     ];
     for images in [true, false] {
         for set in &sets {

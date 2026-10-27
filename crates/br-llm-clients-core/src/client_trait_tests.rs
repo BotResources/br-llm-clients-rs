@@ -4,9 +4,10 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
-use br_llm_messages::{BlockKind, ModelId, StreamEvent, WireMessage, WireUserBlock};
+use br_llm_messages::{DeltaOp, EntryId, ModelName, ResponseDelta, TurnId};
 
-use crate::test_support::{block_on, text};
+use crate::test_support::block_on;
+use crate::thread_fixtures::{block_id, entry_id, human_thread, text_block, turn_id};
 use crate::{
     BoxFuture, CacheRequirement, CallOutcome, CallReport, Client, ClientError, ClientRequest,
     ClientSettings, MaxOutputTokens, OutputMode, ReasoningLevel, StreamSink,
@@ -33,14 +34,14 @@ struct Journal {
 }
 
 impl StreamSink for Journal {
-    fn send<'a>(&'a mut self, event: StreamEvent) -> BoxFuture<'a, ()> {
+    fn send<'a>(&'a mut self, delta: ResponseDelta) -> BoxFuture<'a, ()> {
         Box::pin(async move {
-            let StreamEvent::BlockStart { index, .. } = event else {
+            let DeltaOp::TextAppended { text, .. } = delta.op() else {
                 return;
             };
-            self.entries.push(format!("enter {index}"));
+            self.entries.push(format!("enter {text}"));
             YieldOnce(false).await;
-            self.entries.push(format!("leave {index}"));
+            self.entries.push(format!("leave {text}"));
         })
     }
 }
@@ -61,7 +62,7 @@ impl Streaming {
 
 fn settings(model: &str, reasoning: ReasoningLevel) -> ClientSettings {
     ClientSettings::new(
-        ModelId::new(model).unwrap(),
+        ModelName::new(model).unwrap(),
         reasoning,
         CacheRequirement::NotRequired,
         MaxOutputTokens::new(4096).unwrap(),
@@ -71,16 +72,13 @@ fn settings(model: &str, reasoning: ReasoningLevel) -> ClientSettings {
 impl Client for Streaming {
     fn call<'a>(
         &'a self,
-        _request: &'a ClientRequest,
+        request: &'a ClientRequest,
         sink: &'a mut dyn StreamSink,
     ) -> BoxFuture<'a, CallOutcome> {
         Box::pin(async move {
             for index in 0..self.blocks {
-                sink.send(StreamEvent::BlockStart {
-                    index,
-                    kind: BlockKind::Text,
-                })
-                .await;
+                sink.send(appended(request.reply_turn(), request.reply_entry(), index))
+                    .await;
             }
             CallOutcome::failure(
                 CallReport::new(Duration::from_millis(1)),
@@ -95,10 +93,24 @@ impl Client for Streaming {
 }
 
 fn request() -> ClientRequest {
-    let message = WireMessage::User {
-        content: vec![WireUserBlock::Text { text: text("hi") }],
-    };
-    ClientRequest::new(None, vec![message], vec![], OutputMode::Plain).unwrap()
+    ClientRequest::new(
+        None,
+        human_thread(vec![text_block("hi")]),
+        turn_id(),
+        entry_id(),
+        vec![],
+        OutputMode::Plain,
+    )
+    .unwrap()
+}
+
+fn appended(turn: TurnId, entry: EntryId, index: usize) -> ResponseDelta {
+    let block = block_id();
+    ResponseDelta::new(
+        turn,
+        entry,
+        DeltaOp::text_appended(block, index.to_string()),
+    )
 }
 
 fn assert_send<T: Send>() {}
@@ -160,10 +172,7 @@ fn given_a_call_when_it_returns_then_the_request_and_the_sink_are_still_usable_b
     block_on(client.call(&request, &mut sink));
     assert_eq!(request, before);
     assert_eq!(sink.entries.len(), 4);
-    block_on(sink.send(StreamEvent::BlockStart {
-        index: 9,
-        kind: BlockKind::Text,
-    }));
+    block_on(sink.send(appended(request.reply_turn(), request.reply_entry(), 9)));
     assert_eq!(sink.entries.last().map(String::as_str), Some("leave 9"));
 }
 

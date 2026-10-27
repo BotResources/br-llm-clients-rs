@@ -1,8 +1,11 @@
-use br_llm_messages::ImageMime;
+use br_llm_messages::{ContentBlock, MediaType, ResponseEnding};
 
 use crate::capabilities_test_support::{
-    ALL_LEVELS, MODEL_NAME, assistant_text, caps_with, image_request, one_tool, plain_request,
-    plain_settings, request_of, settings, shape, user_text,
+    ALL_LEVELS, MODEL_NAME, caps_with, hi_request, image_request, one_tool, plain_request,
+    plain_settings, request_of, settings, shape,
+};
+use crate::thread_fixtures::{
+    Fixture, ai_turn, human_turn, response, text_block, tool_call, turn_id,
 };
 use crate::{
     Accepted, CacheRequirement, Capabilities, CapabilitiesSpec, ClientError, OutputMode,
@@ -168,7 +171,7 @@ fn given_the_smallest_and_largest_limits_when_checked_then_the_edges_hold() {
 #[test]
 fn given_tools_when_the_model_takes_none_then_tools_not_supported() {
     let capabilities = caps_with(|spec| spec.tools = false);
-    let with_tool = request_of(vec![user_text("hi")], one_tool(), OutputMode::Plain);
+    let with_tool = hi_request(one_tool(), OutputMode::Plain);
     assert_eq!(
         capabilities.check(&plain_settings(), &with_tool),
         Err(ClientError::ToolsNotSupported)
@@ -185,8 +188,8 @@ fn given_tools_when_the_model_takes_none_then_tools_not_supported() {
 fn given_structured_output_when_the_model_cannot_give_it_then_structured_output_not_supported_with_or_without_tools()
  {
     let capabilities = caps_with(|spec| spec.structured_output = false);
-    let alone = request_of(vec![user_text("hi")], vec![], shape());
-    let with_tool = request_of(vec![user_text("hi")], one_tool(), shape());
+    let alone = hi_request(vec![], shape());
+    let with_tool = hi_request(one_tool(), shape());
     for request in [&alone, &with_tool] {
         assert_eq!(
             capabilities.check(&plain_settings(), request),
@@ -203,23 +206,23 @@ fn given_structured_output_when_the_model_cannot_give_it_then_structured_output_
 fn given_structured_output_with_tools_when_the_model_cannot_combine_them_then_the_pair_is_refused()
 {
     let capabilities = caps_with(|spec| spec.structured_output_with_tools = false);
-    let combined = request_of(vec![user_text("hi")], one_tool(), shape());
+    let combined = hi_request(one_tool(), shape());
     assert_eq!(
         capabilities.check(&plain_settings(), &combined),
         Err(ClientError::StructuredOutputWithToolsNotSupported)
     );
-    let structured_alone = request_of(vec![user_text("hi")], vec![], shape());
+    let structured_alone = hi_request(vec![], shape());
     assert_eq!(
         capabilities.check(&plain_settings(), &structured_alone),
         Ok(())
     );
-    let tools_plain = request_of(vec![user_text("hi")], one_tool(), OutputMode::Plain);
+    let tools_plain = hi_request(one_tool(), OutputMode::Plain);
     assert_eq!(capabilities.check(&plain_settings(), &tools_plain), Ok(()));
 }
 
 #[test]
 fn given_the_pair_flag_true_when_the_model_takes_the_pair_then_the_call_passes() {
-    let combined = request_of(vec![user_text("hi")], one_tool(), shape());
+    let combined = hi_request(one_tool(), shape());
     assert_eq!(
         Capabilities::everything().check(&plain_settings(), &combined),
         Ok(())
@@ -232,7 +235,7 @@ fn given_the_pair_flag_true_when_structured_output_is_false_then_step_five_refus
         spec.structured_output = false;
         spec.structured_output_with_tools = true;
     });
-    let combined = request_of(vec![user_text("hi")], one_tool(), shape());
+    let combined = hi_request(one_tool(), shape());
     assert_eq!(
         capabilities.check(&plain_settings(), &combined),
         Err(ClientError::StructuredOutputNotSupported)
@@ -245,7 +248,7 @@ fn given_the_pair_flag_true_when_tools_is_false_then_step_four_refuses() {
         spec.tools = false;
         spec.structured_output_with_tools = true;
     });
-    let combined = request_of(vec![user_text("hi")], one_tool(), shape());
+    let combined = hi_request(one_tool(), shape());
     assert_eq!(
         capabilities.check(&plain_settings(), &combined),
         Err(ClientError::ToolsNotSupported)
@@ -253,14 +256,18 @@ fn given_the_pair_flag_true_when_tools_is_false_then_step_four_refuses() {
 }
 
 #[test]
-fn given_a_conversation_that_breaks_the_message_rules_when_checked_then_the_check_does_not_look_at_messages()
+fn given_a_history_with_an_unanswered_tool_call_in_an_open_turn_when_checked_then_the_check_does_not_look_at_the_history()
  {
-    let request = request_of(
-        vec![assistant_text("first"), user_text("then")],
-        vec![],
-        OutputMode::Plain,
+    let fixture = Fixture::new();
+    let reply = response(
+        vec![ContentBlock::RuntimeToolCall(tool_call("search"))],
+        ResponseEnding::tool_use(),
     );
-    assert!(request.check_messages().is_err());
+    let thread = fixture.project(vec![
+        human_turn(vec![text_block("then")]),
+        ai_turn(turn_id(), fixture.agent, vec![reply.into()]),
+    ]);
+    let request = request_of(thread, vec![], OutputMode::Plain);
     assert_eq!(
         Capabilities::everything().check(&plain_settings(), &request),
         Ok(())
@@ -276,7 +283,7 @@ fn given_a_conversation_that_breaks_the_message_rules_when_checked_then_the_chec
 #[test]
 fn given_the_same_arguments_when_checked_twice_then_the_result_is_the_same() {
     let capabilities = Capabilities::nothing();
-    let request = image_request(&[ImageMime::Png]);
+    let request = image_request(&[MediaType::Png]);
     let settings = level_settings(ReasoningLevel::High);
     let first = capabilities.check(&settings, &request);
     assert!(first.is_err());

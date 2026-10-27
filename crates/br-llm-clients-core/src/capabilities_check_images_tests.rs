@@ -1,24 +1,48 @@
-use br_llm_messages::ImageMime;
+use br_llm_messages::{MediaType, ProjectedThread};
 
 use crate::capabilities_test_support::{
-    ALL_MIMES, assistant_text, caps_with, image_request, plain_request, plain_settings, request_of,
-    user_images, user_result_message, user_text,
+    ALL_MEDIA_TYPES, caps_with, image_request, plain_request, plain_settings, request_of,
+};
+use crate::thread_fixtures::{
+    Fixture, ai_turn, content_text, finished, human_turn, plain_images, text_block, turn_id,
 };
 use crate::{Accepted, Capabilities, ClientError, OutputMode};
+
+fn thread_of_image_groups(groups: &[&[MediaType]]) -> ProjectedThread {
+    let fixture = Fixture::new();
+    let mut turns = Vec::new();
+    for (index, group) in groups.iter().enumerate() {
+        if index > 0 {
+            turns.push(ai_turn(
+                turn_id(),
+                fixture.agent,
+                vec![finished(vec![content_text("seen")])],
+            ));
+        }
+        let mut content = vec![text_block("see")];
+        content.extend(plain_images(group));
+        turns.push(human_turn(content));
+    }
+    fixture.project(turns)
+}
+
+fn request_of_groups(groups: &[&[MediaType]]) -> crate::ClientRequest {
+    request_of(thread_of_image_groups(groups), vec![], OutputMode::Plain)
+}
 
 #[test]
 fn given_an_image_when_the_model_takes_none_then_image_not_supported_whatever_the_media_types() {
     for media in [
         Accepted::Any,
         Accepted::Only(Vec::new()),
-        Accepted::Only(vec![ImageMime::Png]),
+        Accepted::Only(vec![MediaType::Png]),
     ] {
         let capabilities = caps_with(|spec| {
             spec.images = false;
             spec.image_media_types = media.clone();
         });
         assert_eq!(
-            capabilities.check(&plain_settings(), &image_request(&[ImageMime::Png])),
+            capabilities.check(&plain_settings(), &image_request(&[MediaType::Png])),
             Err(ClientError::ImageNotSupported)
         );
         assert_eq!(
@@ -31,15 +55,7 @@ fn given_an_image_when_the_model_takes_none_then_image_not_supported_whatever_th
 #[test]
 fn given_an_image_late_in_the_conversation_when_the_model_takes_none_then_it_is_still_found() {
     let capabilities = caps_with(|spec| spec.images = false);
-    let request = request_of(
-        vec![
-            user_text("a"),
-            assistant_text("b"),
-            user_images(&[ImageMime::Gif]),
-        ],
-        vec![],
-        OutputMode::Plain,
-    );
+    let request = request_of_groups(&[&[], &[], &[MediaType::Gif]]);
     assert_eq!(
         capabilities.check(&plain_settings(), &request),
         Err(ClientError::ImageNotSupported)
@@ -49,35 +65,35 @@ fn given_an_image_late_in_the_conversation_when_the_model_takes_none_then_it_is_
 #[test]
 fn given_a_media_type_the_list_does_not_hold_when_checked_then_it_is_named() {
     let capabilities =
-        caps_with(|spec| spec.image_media_types = Accepted::Only(vec![ImageMime::Png]));
+        caps_with(|spec| spec.image_media_types = Accepted::Only(vec![MediaType::Png]));
     assert_eq!(
-        capabilities.check(&plain_settings(), &image_request(&[ImageMime::Gif])),
+        capabilities.check(&plain_settings(), &image_request(&[MediaType::Gif])),
         Err(ClientError::ImageMediaTypeNotSupported {
-            media_type: ImageMime::Gif
+            media_type: MediaType::Gif
         })
     );
     assert_eq!(
-        capabilities.check(&plain_settings(), &image_request(&[ImageMime::Png])),
+        capabilities.check(&plain_settings(), &image_request(&[MediaType::Png])),
         Ok(())
     );
 }
 
 #[test]
-fn given_several_bad_images_in_one_message_when_checked_then_the_first_in_block_order_is_named() {
+fn given_several_bad_images_in_one_entry_when_checked_then_the_first_in_block_order_is_named() {
     let capabilities =
-        caps_with(|spec| spec.image_media_types = Accepted::Only(vec![ImageMime::Png]));
+        caps_with(|spec| spec.image_media_types = Accepted::Only(vec![MediaType::Png]));
     for (order, first) in [
         (
-            [ImageMime::Png, ImageMime::Gif, ImageMime::Webp],
-            ImageMime::Gif,
+            [MediaType::Png, MediaType::Gif, MediaType::Webp],
+            MediaType::Gif,
         ),
         (
-            [ImageMime::Webp, ImageMime::Gif, ImageMime::Png],
-            ImageMime::Webp,
+            [MediaType::Webp, MediaType::Gif, MediaType::Png],
+            MediaType::Webp,
         ),
         (
-            [ImageMime::Jpeg, ImageMime::Png, ImageMime::Gif],
-            ImageMime::Jpeg,
+            [MediaType::Jpeg, MediaType::Png, MediaType::Gif],
+            MediaType::Jpeg,
         ),
     ] {
         assert_eq!(
@@ -88,66 +104,47 @@ fn given_several_bad_images_in_one_message_when_checked_then_the_first_in_block_
 }
 
 #[test]
-fn given_bad_images_in_several_messages_when_checked_then_message_order_comes_before_block_order() {
+fn given_bad_images_in_several_turns_when_checked_then_turn_order_comes_before_block_order() {
     let capabilities =
-        caps_with(|spec| spec.image_media_types = Accepted::Only(vec![ImageMime::Png]));
-    let request = request_of(
-        vec![
-            user_images(&[ImageMime::Png, ImageMime::Webp]),
-            assistant_text("seen"),
-            user_images(&[ImageMime::Gif]),
-        ],
-        vec![],
-        OutputMode::Plain,
-    );
+        caps_with(|spec| spec.image_media_types = Accepted::Only(vec![MediaType::Png]));
+    let request = request_of_groups(&[&[MediaType::Png, MediaType::Webp], &[MediaType::Gif]]);
     assert_eq!(
         capabilities.check(&plain_settings(), &request),
         Err(ClientError::ImageMediaTypeNotSupported {
-            media_type: ImageMime::Webp
+            media_type: MediaType::Webp
         })
     );
 }
 
 #[test]
-fn given_an_image_after_good_images_in_a_later_user_message_when_checked_then_it_is_named() {
+fn given_an_image_after_good_images_in_a_later_turn_when_checked_then_it_is_named() {
     let capabilities =
-        caps_with(|spec| spec.image_media_types = Accepted::Only(vec![ImageMime::Png]));
-    let request = request_of(
-        vec![
-            user_images(&[ImageMime::Png]),
-            assistant_text("seen"),
-            user_images(&[ImageMime::Png, ImageMime::Jpeg]),
-        ],
-        vec![],
-        OutputMode::Plain,
-    );
+        caps_with(|spec| spec.image_media_types = Accepted::Only(vec![MediaType::Png]));
+    let request = request_of_groups(&[&[MediaType::Png], &[MediaType::Png, MediaType::Jpeg]]);
     assert_eq!(
         capabilities.check(&plain_settings(), &request),
         Err(ClientError::ImageMediaTypeNotSupported {
-            media_type: ImageMime::Jpeg
+            media_type: MediaType::Jpeg
         })
     );
 }
 
 #[test]
-fn given_a_user_message_with_text_and_results_and_no_image_when_checked_then_no_image_rule_applies()
-{
-    let capabilities = Capabilities::nothing();
-    let request = request_of(
-        vec![user_text("a"), user_result_message("t1")],
-        vec![],
-        OutputMode::Plain,
+fn given_a_thread_without_any_image_when_checked_against_nothing_then_no_image_rule_applies() {
+    let request = request_of_groups(&[&[], &[]]);
+    assert_eq!(
+        Capabilities::nothing().check(&plain_settings(), &request),
+        Ok(())
     );
-    assert_eq!(capabilities.check(&plain_settings(), &request), Ok(()));
 }
 
 #[test]
 fn given_every_media_type_when_the_list_holds_all_of_them_then_every_image_passes() {
     let capabilities = caps_with(|spec| {
-        spec.image_media_types = Accepted::Only(ALL_MIMES.to_vec());
+        spec.image_media_types = Accepted::Only(ALL_MEDIA_TYPES.to_vec());
     });
     assert_eq!(
-        capabilities.check(&plain_settings(), &image_request(&ALL_MIMES)),
+        capabilities.check(&plain_settings(), &image_request(&ALL_MEDIA_TYPES)),
         Ok(())
     );
 }

@@ -8,7 +8,7 @@
 
 use std::num::NonZeroU32;
 
-use br_llm_messages::ImageMime;
+use br_llm_messages::MediaType;
 
 use crate::accepted::Accepted;
 use crate::max_output_tokens::MaxOutputTokens;
@@ -23,7 +23,7 @@ pub struct CapabilitiesSpec {
     pub structured_output_with_tools: bool,
     pub caching: bool,
     pub images: bool,
-    pub image_media_types: Accepted<ImageMime>,
+    pub image_media_types: Accepted<MediaType>,
 }
 
 impl CapabilitiesSpec {

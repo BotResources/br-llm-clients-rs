@@ -8,9 +8,10 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-br-llm-messages = { git = "https://github.com/BotResources/br-llm-messages-rs", tag = "br-llm-messages/v0.5.0", version = "0.5.0" }
+br-llm-messages = { git = "https://github.com/BotResources/br-llm-messages-rs", tag = "br-llm-messages/v2.0.0", version = "2.0.0" }
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"
+uuid = { version = "1", default-features = false, features = ["std", "v7"] }
 
 [dev-dependencies]
 serde_json = "1"
