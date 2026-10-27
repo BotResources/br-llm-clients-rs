@@ -80,13 +80,21 @@ mod recording_sink_tests;
 #[cfg(test)]
 mod reentrancy_tests;
 #[cfg(test)]
+mod refusal_tests;
+#[cfg(test)]
 mod reply_function_tests;
+#[cfg(test)]
+mod response_check_tests;
+#[cfg(test)]
+mod response_support;
 #[cfg(test)]
 mod rule_tests;
 #[cfg(test)]
 mod script_tests;
 #[cfg(test)]
 mod send_sync_tests;
+#[cfg(test)]
+mod strictness_tests;
 #[cfg(test)]
 mod sync_tests;
 #[cfg(test)]

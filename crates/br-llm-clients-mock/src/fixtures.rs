@@ -4,7 +4,8 @@ use br_llm_messages::{
     AITurn, AgentId, Author, Base64Data, BlockId, ContentBlock, Conversation, ConversationId,
     EntryId, HumanId, HumanMessage, ImageBlock, ImageSource, IncomingEntry, InputTurn, MediaType,
     ModelResponse, OpaqueJson, Perspective, PlainBlock, ProjectedThread, ResponseEnding,
-    ResponseMetadata, RuntimeToolCall, TextBlock, ToolName, Turn, TurnEntry, TurnId, Uuid,
+    ResponseMetadata, RuntimeToolCall, RuntimeToolResult, RuntimeToolResults, TextBlock, ToolName,
+    Turn, TurnEntry, TurnId, Uuid,
 };
 
 use crate::sequential_id_source::identity_uuid;
@@ -121,4 +122,48 @@ pub(crate) fn answered_turn(agent: AgentId, value: &str) -> Turn {
         )
         .unwrap(),
     )
+}
+
+pub(crate) fn tool_exchange_turn(agent: AgentId) -> Turn {
+    let call_id = block_id();
+    let name = ToolName::new("search").unwrap();
+    let call =
+        RuntimeToolCall::new(call_id, name.clone(), OpaqueJson::parse("{}").unwrap()).unwrap();
+    let response = ModelResponse::new(
+        entry_id(),
+        vec![ContentBlock::RuntimeToolCall(call)],
+        ResponseEnding::tool_use(),
+        ResponseMetadata::new(),
+    )
+    .unwrap();
+    let result =
+        RuntimeToolResult::new(block_id(), call_id, name, false, vec![text_block("found")])
+            .unwrap();
+    let results = RuntimeToolResults::new(entry_id(), vec![result]).unwrap();
+    let answer = answered_entry("done");
+    let author = Author::new("target").unwrap();
+    Turn::AITurn(
+        AITurn::from_parts(
+            turn_id(),
+            agent,
+            author,
+            vec![
+                TurnEntry::ModelResponse(response),
+                TurnEntry::RuntimeToolResults(results),
+                TurnEntry::ModelResponse(answer),
+            ],
+        )
+        .unwrap(),
+    )
+}
+
+fn answered_entry(value: &str) -> ModelResponse {
+    let block = TextBlock::new(block_id(), value).unwrap();
+    ModelResponse::new(
+        entry_id(),
+        vec![ContentBlock::Text(block)],
+        ResponseEnding::finished(),
+        ResponseMetadata::new(),
+    )
+    .unwrap()
 }
