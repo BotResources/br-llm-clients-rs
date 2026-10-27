@@ -53,6 +53,53 @@ mod sync;
 mod tracker;
 mod usage_rules;
 
+#[cfg(test)]
+mod call_cut_tests;
+#[cfg(test)]
+mod call_hang_tests;
+#[cfg(test)]
+mod call_reply_tests;
+#[cfg(test)]
+mod chunking_tests;
+#[cfg(test)]
+mod first_poll_tests;
+#[cfg(test)]
+mod fixtures;
+#[cfg(test)]
+mod gate_state_tests;
+#[cfg(test)]
+mod gate_tests;
+#[cfg(test)]
+mod log_switch_tests;
+#[cfg(test)]
+mod log_tests;
+#[cfg(test)]
+mod parallel_tests;
+#[cfg(test)]
+mod recording_sink_tests;
+#[cfg(test)]
+mod reentrancy_tests;
+#[cfg(test)]
+mod reply_function_tests;
+#[cfg(test)]
+mod rule_tests;
+#[cfg(test)]
+mod script_tests;
+#[cfg(test)]
+mod send_sync_tests;
+#[cfg(test)]
+mod sync_tests;
+#[cfg(test)]
+mod test_support;
+#[cfg(test)]
+mod waker_drop_tests;
+#[cfg(test)]
+mod waker_panic_tests;
+#[cfg(test)]
+mod waker_replace_tests;
+#[cfg(test)]
+mod waker_support;
+
 pub use br_llm_clients_core::{Accepted, Capabilities, CapabilitiesError, CapabilitiesSpec};
 pub use build_error::MockBuildError;
 pub use call_log::{CallState, LoggedCall, Served, StateKind};
