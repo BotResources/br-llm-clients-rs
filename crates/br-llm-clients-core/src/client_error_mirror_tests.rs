@@ -5,8 +5,6 @@ use crate::client_error::ClientError;
 use crate::client_error_raw::RawClientError;
 use crate::client_error_tests::every_case;
 
-const CASES: usize = 27;
-
 fn mirror(error: &ClientError) -> RawClientError {
     match error {
         ClientError::ModelNotFound => RawClientError::ModelNotFound {},
@@ -87,8 +85,36 @@ fn given_every_case_when_mirrored_then_the_raw_case_converts_back_to_the_same_er
     }
 }
 
+fn stored_kinds() -> Vec<String> {
+    let message = serde_json::from_value::<RawClientError>(serde_json::json!({"type": "?"}))
+        .err()
+        .map(|error| error.to_string())
+        .unwrap_or_default();
+    let (_, listed) = message
+        .split_once("expected one of ")
+        .expect("the refusal lists every kind");
+    listed
+        .split(", ")
+        .map(|kind| kind.trim_matches('`').to_owned())
+        .collect()
+}
+
 #[test]
-fn given_the_cases_listed_for_the_tests_when_counted_then_each_of_the_cases_is_there() {
-    let kinds: HashSet<_> = every_case().iter().map(discriminant).collect();
-    assert_eq!(kinds.len(), CASES);
+fn given_the_stored_kinds_when_read_then_they_are_the_ones_of_the_raw_error() {
+    let kinds = stored_kinds();
+    assert!(kinds.len() > 1);
+    assert!(kinds.contains(&"model_not_found".to_owned()));
+    assert!(kinds.contains(&"provider_failed".to_owned()));
+}
+
+#[test]
+fn given_the_cases_listed_for_the_tests_when_counted_then_each_stored_kind_has_one_at_least() {
+    let cases = every_case();
+    let kinds: HashSet<_> = cases.iter().map(discriminant).collect();
+    assert_eq!(kinds.len(), stored_kinds().len());
+    let mirrored: HashSet<_> = cases
+        .iter()
+        .map(|error| discriminant(&mirror(error)))
+        .collect();
+    assert_eq!(mirrored.len(), stored_kinds().len());
 }
