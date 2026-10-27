@@ -79,14 +79,16 @@ a tag of line 0.1 stays valid on that tag and is not changed.
   normalizer and of the draft, with ids of their own, so a failure never follows
   the release of held events.
 - A block that the provider closes with complete JSON is finalized at once. A
-  block closed with incomplete JSON gets no finalization. A block still open at the
-  end is judged by the ending of the `Stop` event as the core states: complete JSON
-  is finalized, incomplete JSON gives `ContentBlocked` for a filter ending,
-  `ReplyUnusable` carrying the ending before correction for a cut, and
-  `MalformedResponse` otherwise. JSON is classified as the draft reads it: a text
-  that stops early is incomplete, one that is wrong before its end or that the draft
-  refuses is malformed, and the arguments of a tool call must be an object. A
-  tool call with no argument fragment is incomplete.
+  block closed with incomplete JSON gets no finalization. A tool call or a
+  structured block still open at the end is incomplete JSON whatever its text.
+  Incomplete JSON is judged by the ending of the `Stop` event as the core states:
+  `ContentBlocked` for a `filtering` or `refusal` ending, `ReplyUnusable` carrying
+  the ending before correction for `output_exhaustion`, and `MalformedResponse`
+  for any other ending. JSON is classified as the draft reads it: a text that
+  stops early is incomplete, one that is wrong before its end or that the draft
+  refuses is malformed, and the arguments of a tool call must be an object. An
+  empty text is incomplete, so a tool call with no argument fragment is
+  incomplete.
 - A signature delta fits only a thinking block, redacted data only a redacted
   thinking block, a structured delta only a structured block, and arguments only a
   tool call block; any other pairing makes the reply `MalformedResponse`.

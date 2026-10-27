@@ -11,7 +11,7 @@ Provider clients for LLM calls: send a system prompt, tools and a chat history f
 - `br-llm-clients-api-openai-chat-completions` — the OpenAI Chat Completions wire dialect: encodes a request and decodes the streamed reply and the errors of the Chat Completions API for the shared call; it is meant to be used by the provider clients (none exists yet).
 - `br-llm-clients-common-sse` — a Server-Sent Events decoder: turns the bytes of a response body into frames, with a size limit and no hidden damage.
 
-**Status:** `br-llm-clients-core` is at `0.5.0`, `br-llm-clients-mock` is at `0.5.0`, `br-llm-clients-common-http` is at `0.2.0`, and `br-llm-clients-common-call` is at `0.2.0`, and `br-llm-clients-common-sse`, `br-llm-clients-api-anthropic-messages`, `br-llm-clients-api-openai-responses` and `br-llm-clients-api-openai-chat-completions` are at `0.1.0`; the other crates are not written yet.
+**Status:** `br-llm-clients-core` is at `0.5.0`, `br-llm-clients-mock` is at `0.5.0`, `br-llm-clients-common-http` and `br-llm-clients-common-call` are at `0.2.0`, and `br-llm-clients-common-sse`, `br-llm-clients-api-anthropic-messages`, `br-llm-clients-api-openai-responses` and `br-llm-clients-api-openai-chat-completions` are at `0.1.0`; the other crates are not written yet.
 
 Not on crates.io; pin the git tag with the matching `version` beside it (a tag-only git dependency carries a `*` version requirement, which `cargo-deny` rejects):
 
