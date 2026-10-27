@@ -15,7 +15,7 @@ use br_llm_messages::{
 };
 
 use crate::chunking::Chunking;
-use crate::derive_deltas::derive_deltas;
+use crate::derive_deltas::derive_response_deltas;
 use crate::fixtures::{
     agent_id, answered_turn, block_id, entry_id, human_turn, project, text_block, thread_of,
     turn_id, unanswered_call_turn,
@@ -282,7 +282,7 @@ pub(crate) fn expected_deltas(
         response,
     )
     .unwrap();
-    derive_deltas(request.reply_turn(), &renewed, chunking)
+    derive_response_deltas(request.reply_turn(), &renewed, chunking)
         .unwrap()
         .into_deltas()
 }

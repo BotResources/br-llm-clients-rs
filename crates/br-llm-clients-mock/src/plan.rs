@@ -4,7 +4,7 @@ use br_llm_messages::{ModelResponse, ResponseDelta};
 use crate::call_context::CallContext;
 use crate::chunking::Chunking;
 use crate::codes;
-use crate::derive_deltas::derive_deltas;
+use crate::derive_deltas::derive_response_deltas;
 use crate::gate::Gate;
 use crate::outcomes;
 use crate::renew::renew;
@@ -48,7 +48,7 @@ fn derived(
     response: &ModelResponse,
     chunking: &Chunking,
 ) -> Result<Vec<ResponseDelta>, Box<CallOutcome>> {
-    derive_deltas(call.request.reply_turn(), response, chunking)
+    derive_response_deltas(call.request.reply_turn(), response, chunking)
         .map(crate::derive_deltas::DerivedDeltas::into_deltas)
         .map_err(|error| internal(&error))
 }

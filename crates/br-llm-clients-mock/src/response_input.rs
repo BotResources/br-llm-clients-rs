@@ -29,3 +29,15 @@ impl From<Sketch> for ResponseInput {
         ResponseInput::Sketch(Box::new(sketch))
     }
 }
+
+impl From<&ModelResponse> for ResponseInput {
+    fn from(response: &ModelResponse) -> Self {
+        ResponseInput::Response(Box::new(response.clone()))
+    }
+}
+
+impl From<&Sketch> for ResponseInput {
+    fn from(sketch: &Sketch) -> Self {
+        ResponseInput::Sketch(Box::new(sketch.clone()))
+    }
+}

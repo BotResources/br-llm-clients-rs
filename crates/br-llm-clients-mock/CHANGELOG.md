@@ -11,8 +11,6 @@ form to decide whether a version ships.
 
 ## 0.6.0
 
-Prepared on 2026-10-27.
-
 ### Changed
 
 - Breaking, the types of a reply. A reply holds a `ModelResponse` where it held a `Step`. A hang and a cut count deltas. A broken stream holds `ResponseDelta` values. The sink receives `ResponseDelta` values, and `RecordingSink` keeps them. The types `Step`, `StreamEvent` and `WireMessage` no longer exist for the mock.
@@ -35,9 +33,9 @@ Prepared on 2026-10-27.
 
 - The response sketch `Sketch` and the short forms `Reply::text`, `Reply::tool_call` and `Reply::structured`. A reply takes a sketch wherever it takes a `ModelResponse`. `JsonInput` and `ResponseInput` are the types of their arguments.
 - `SequentialIdSource` and the constant `DEFAULT_ID_START`, with `MockBuilder::id_source`. A clone shares the count; `next_number` and `given` read it; `next_entry_id` and `next_turn_id` take from the same count. A source asked for an identity at or above the number 2^62 - 1 panics instead of repeating one.
-- The turn argument of the derivation, and `fold_deltas` and `fold_partial` with `PartialFold` and `Stop`. `RecordingSink::fold` folds the deltas it holds.
+- `derive_deltas` takes a turn, and a response or a sketch; a sketch that breaks a rule of `br-llm-messages` gives `SketchInvalid`. `fold_deltas` and `fold_partial` with `PartialFold` and `Stop`. `RecordingSink::fold` folds the deltas it holds.
 - The code `CODE_IDENTITY_COLLISION`, `mock.identity_collision`.
-- `MockBuildError` cases `DeltaCountOutOfRange`, `ChunkingWithoutResponse` and `SketchInvalid`, and the case `DerivationFailed`, which no reply that passes the other checks reaches. The type stays `#[non_exhaustive]`.
+- `MockBuildError` cases `SketchInvalid` and `DerivationFailed`. `DerivationFailed` carries the reason of `br-llm-messages` when the derivation of a delta is refused by it; no test of this crate reaches it, and it is a best-effort guard. The type stays `#[non_exhaustive]`.
 
 ## 0.5.0
 

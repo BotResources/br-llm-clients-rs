@@ -197,3 +197,23 @@ fn given_a_sketch_with_a_tool_call_when_served_then_the_ending_is_tool_use() {
         ResponseEnding::tool_use()
     );
 }
+
+#[test]
+fn given_a_sketch_when_deltas_are_derived_then_a_test_chooses_the_count_of_a_cut_from_the_list() {
+    let sketch = Sketch::new()
+        .text("abcdef")
+        .tool_call("search", r#"{"q":1}"#);
+    let request_value = request();
+    let chunking = Chunking::none().text(2);
+    let derived = derive_deltas(request_value.reply_turn(), &sketch, &chunking).unwrap();
+    let count = derived.before_completed();
+    assert_eq!(derived.deltas().len(), count + 1);
+    let cut = Reply::cut(sketch.clone(), count, ClientError::Transport)
+        .chunking(chunking)
+        .build();
+    assert!(cut.is_ok());
+    let too_far = Reply::cut(sketch, count + 1, ClientError::Transport)
+        .chunking(chunking)
+        .build();
+    assert!(too_far.is_err());
+}

@@ -2,7 +2,7 @@ use br_llm_messages::{ModelResponse, TurnId};
 
 use crate::build_error::MockBuildError;
 use crate::chunking::Chunking;
-use crate::derive_deltas::derive_deltas;
+use crate::derive_deltas::derive_response_deltas;
 use crate::reply::{Reply, Shape};
 use crate::sequential_id_source::identity_uuid;
 use crate::usage_rules;
@@ -30,7 +30,7 @@ pub(crate) fn count_before_completed(
         TurnId::from_uuid(identity_uuid(0)).map_err(|error| MockBuildError::DerivationFailed {
             reason: error.to_string(),
         })?;
-    Ok(derive_deltas(turn, response, chunking)?.before_completed())
+    Ok(derive_response_deltas(turn, response, chunking)?.before_completed())
 }
 
 fn check_usages(reply: &Reply) -> Result<(), MockBuildError> {

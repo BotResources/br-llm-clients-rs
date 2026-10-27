@@ -6,6 +6,7 @@ use br_llm_messages::{
 use crate::block_deltas::BlockEmitter;
 use crate::build_error::MockBuildError;
 use crate::chunking::Chunking;
+use crate::response_input::ResponseInput;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DerivedDeltas {
@@ -49,6 +50,14 @@ fn started(response: &ModelResponse) -> ResponseMetadata {
 }
 
 pub fn derive_deltas(
+    turn: TurnId,
+    response: impl Into<ResponseInput>,
+    chunking: &Chunking,
+) -> Result<DerivedDeltas, MockBuildError> {
+    derive_response_deltas(turn, &response.into().resolve()?, chunking)
+}
+
+pub(crate) fn derive_response_deltas(
     turn: TurnId,
     response: &ModelResponse,
     chunking: &Chunking,

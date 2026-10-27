@@ -6,8 +6,8 @@ use br_llm_messages::{
 
 use crate::build_error::MockBuildError;
 use crate::chunking::Chunking;
+use crate::derive_deltas::derive_deltas;
 use crate::reply::Reply;
-use crate::reply_check::count_before_completed;
 use crate::sketch::Sketch;
 use crate::test_support::*;
 
@@ -222,7 +222,16 @@ fn given_a_sketch_and_a_response_of_the_same_content_when_served_then_the_outcom
 fn given_a_sketch_when_a_reply_is_checked_then_the_delta_count_is_the_one_of_the_response() {
     let (sketch, built) = sketched_and_built();
     let chunking = Chunking::none().text(2).tool_arguments(3);
-    let count = count_before_completed(&built, &chunking).unwrap();
+    let turn = crate::fixtures::turn_id();
+    let count = derive_deltas(turn, &sketch, &chunking)
+        .unwrap()
+        .before_completed();
+    assert_eq!(
+        count,
+        derive_deltas(turn, &built, &chunking)
+            .unwrap()
+            .before_completed()
+    );
     assert!(
         Reply::cut(sketch.clone(), count, ClientError::Transport)
             .chunking(chunking)
@@ -265,4 +274,16 @@ fn given_a_usage_that_breaks_counting_in_a_sketch_when_a_reply_is_built_then_usa
         Reply::success(sketch).build().unwrap_err(),
         MockBuildError::UsageBreaksCounting
     );
+}
+
+#[test]
+fn given_an_invalid_sketch_when_deltas_are_derived_then_sketch_invalid() {
+    assert!(matches!(
+        derive_deltas(
+            crate::fixtures::turn_id(),
+            Sketch::new().text(""),
+            &Chunking::none()
+        ),
+        Err(MockBuildError::SketchInvalid { .. })
+    ));
 }

@@ -153,7 +153,7 @@ fn given_a_size_of_zero_when_derived_then_chunk_size_zero() {
         Chunking::none().structured(0),
     ] {
         assert_eq!(
-            derive_deltas(turn_id(), &text_response("a"), &chunking).map(|_| ()),
+            derive_deltas(turn_id(), text_response("a"), &chunking).map(|_| ()),
             Err(MockBuildError::ChunkSizeZero)
         );
     }
