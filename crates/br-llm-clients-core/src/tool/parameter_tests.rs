@@ -205,3 +205,19 @@ fn given_an_object_kind_stored_with_a_blank_inner_name_when_loaded_then_refused(
     });
     assert!(serde_json::from_value::<ParameterKind>(stored).is_err());
 }
+
+#[test]
+fn given_a_stored_scalar_kind_with_an_unknown_key_when_loaded_then_refused() {
+    for kind in ["string", "number", "integer", "boolean"] {
+        let plain = serde_json::json!({ "type": kind });
+        assert!(
+            serde_json::from_value::<ParameterKind>(plain).is_ok(),
+            "{kind}"
+        );
+        let extra = serde_json::json!({ "type": kind, "format": "date" });
+        assert!(
+            serde_json::from_value::<ParameterKind>(extra).is_err(),
+            "{kind}"
+        );
+    }
+}

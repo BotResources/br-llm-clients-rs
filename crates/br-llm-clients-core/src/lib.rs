@@ -25,6 +25,10 @@ mod tool;
 #[cfg(test)]
 mod accepted_tests;
 #[cfg(test)]
+mod call_outcome_refusal_tests;
+#[cfg(test)]
+mod call_outcome_stored_tests;
+#[cfg(test)]
 mod call_outcome_tests;
 #[cfg(test)]
 mod capabilities_check_grid_tests;
@@ -45,6 +49,8 @@ mod capabilities_test_support;
 #[cfg(test)]
 mod capabilities_tests;
 #[cfg(test)]
+mod client_error_stored_tests;
+#[cfg(test)]
 mod client_error_tests;
 #[cfg(test)]
 mod client_request_tests;
@@ -53,9 +59,13 @@ mod client_settings_tests;
 #[cfg(test)]
 mod client_trait_tests;
 #[cfg(test)]
+mod id_source_tests;
+#[cfg(test)]
 mod test_support;
 #[cfg(test)]
 mod thread_fixtures;
+#[cfg(test)]
+mod trait_set_tests;
 
 pub use accepted::Accepted;
 pub use build_error::BuildError;
