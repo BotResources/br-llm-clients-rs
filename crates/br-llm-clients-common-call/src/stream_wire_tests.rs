@@ -216,3 +216,44 @@ async fn given_a_refusal_when_run_then_no_decoder_is_made() {
     crate::run::run(&spec, &user_request(), &mut sink).await;
     assert_eq!(dialect.log.created(), 0);
 }
+
+#[tokio::test]
+async fn given_a_stream_with_only_empty_response_ids_when_run_then_nothing_is_sent_and_there_is_no_first_event_time()
+ {
+    let dialect = calm();
+    let called = call_with(
+        &dialect,
+        &user_request(),
+        body(&[&["rid ", "rid ", "complete"]]),
+    )
+    .await;
+    let (report, result) = called.outcome.into_parts();
+    assert_eq!(result.expect_err("no ending"), ClientError::StreamTruncated);
+    assert!(called.sink.deltas.is_empty());
+    assert_eq!(report.time_to_first_event(), None);
+}
+
+#[tokio::test]
+async fn given_an_empty_response_id_before_the_reply_when_run_then_the_start_comes_with_the_next_event()
+ {
+    let dialect = calm();
+    let lines = [
+        "rid ",
+        "start a text",
+        "text a hi",
+        "end a",
+        "stop finished",
+    ];
+    let called = call_with(&dialect, &user_request(), body(&[&lines])).await;
+    assert!(called.outcome.into_parts().1.is_ok());
+    assert_eq!(
+        kinds(&called.sink.deltas),
+        vec![
+            "started",
+            "start 1 text",
+            "text 1 \"hi\"",
+            "final 1",
+            "done Finished"
+        ]
+    );
+}

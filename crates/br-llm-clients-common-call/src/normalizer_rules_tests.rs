@@ -250,3 +250,14 @@ fn given_an_empty_response_id_when_accepted_then_nothing_changes_and_an_earlier_
     let out = kinds(&feed(&mut normalizer, &["rid r1", "rid ", "rid r2"]));
     assert_eq!(out, vec!["started", "meta rid=r1", "meta rid=r2"]);
 }
+
+#[test]
+fn given_an_empty_response_id_as_the_first_event_when_accepted_then_it_is_ignored_entirely() {
+    let mut normalizer = fresh();
+    assert!(feed(&mut normalizer, &["rid ", "rid "]).is_empty());
+    let out = kinds(&feed(&mut normalizer, &["rid ", "usage 3", "rid r1"]));
+    assert_eq!(
+        out,
+        vec!["started", "meta usage=Some(3)/None", "meta rid=r1"]
+    );
+}

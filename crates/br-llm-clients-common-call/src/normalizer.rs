@@ -169,10 +169,11 @@ impl Normalizer {
     }
 
     fn set_response_id(&mut self, text: String, out: &mut Vec<ResponseDelta>) {
+        let Ok(id) = ExternalId::new(text) else {
+            return;
+        };
         self.begin(out);
-        if let Ok(id) = ExternalId::new(text) {
-            out.push(self.update(ResponseMetadataUpdate::new().with_provider_response_id(id)));
-        }
+        out.push(self.update(ResponseMetadataUpdate::new().with_provider_response_id(id)));
     }
 
     fn open_position(&self, key: &str) -> Option<usize> {
