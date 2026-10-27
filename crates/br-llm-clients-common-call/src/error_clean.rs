@@ -53,11 +53,6 @@ fn clean_ending(ending: ResponseEnding, secrets: &Secrets) -> ResponseEnding {
             ResponseEnding::unclassified(secrets.clean(reason))
                 .unwrap_or_else(|_| ResponseEnding::finished())
         }
-        ResponseEnding::StopSequence {
-            sequence: Some(sequence),
-            ..
-        } => ResponseEnding::matched_stop_sequence(secrets.clean(sequence))
-            .unwrap_or_else(|_| ResponseEnding::stop_sequence()),
         _ => ending,
     }
 }

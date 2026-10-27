@@ -1,6 +1,6 @@
 use br_llm_clients_common_http::Secret;
 use br_llm_clients_core::{ClientError, LimitKind, ReasoningLevel};
-use br_llm_messages::{MediaType, ToolName};
+use br_llm_messages::{MediaType, ResponseEnding, ToolName};
 
 use crate::error_clean::clean_error;
 use crate::text_clean::Secrets;
@@ -110,6 +110,51 @@ fn given_cases_without_a_text_when_cleaned_then_they_are_unchanged() {
         },
     ];
     for error in errors {
+        assert_eq!(clean_error(error.clone(), &secrets()), error);
+    }
+}
+
+fn unusable(ending: ResponseEnding) -> ClientError {
+    ClientError::ReplyUnusable { ending }
+}
+
+fn unclassified(reason: &str) -> ResponseEnding {
+    ResponseEnding::unclassified(reason).expect("ending")
+}
+
+#[test]
+fn given_a_secret_in_the_reason_of_an_unclassified_ending_when_cleaned_then_it_is_replaced() {
+    let cleaned = clean_error(unusable(unclassified("rate TOPSECRET token")), &secrets());
+    assert_eq!(cleaned, unusable(unclassified("rate [redacted] token")));
+}
+
+#[test]
+fn given_a_reason_over_the_cap_when_cleaned_then_the_replacement_comes_before_the_cut() {
+    let long = format!("TOPSECRET{}", "a".repeat(70_000));
+    let expected = format!("[redacted]{}", "a".repeat(65_526));
+    assert_eq!(
+        clean_error(unusable(unclassified(&long)), &secrets()),
+        unusable(unclassified(&expected))
+    );
+    let at_the_cut = format!("{}TOPSECRET", "a".repeat(65_533));
+    let expected = format!("{}[re", "a".repeat(65_533));
+    assert_eq!(
+        clean_error(unusable(unclassified(&at_the_cut)), &secrets()),
+        unusable(unclassified(&expected))
+    );
+}
+
+#[test]
+fn given_the_other_endings_in_a_reply_unusable_when_cleaned_then_they_are_unchanged() {
+    let endings = [
+        ResponseEnding::finished(),
+        ResponseEnding::output_exhaustion(),
+        ResponseEnding::stop_sequence(),
+        ResponseEnding::matched_stop_sequence("TOPSECRET").expect("ending"),
+        unclassified("plain reason"),
+    ];
+    for ending in endings {
+        let error = unusable(ending);
         assert_eq!(clean_error(error.clone(), &secrets()), error);
     }
 }
