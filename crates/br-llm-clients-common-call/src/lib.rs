@@ -86,6 +86,8 @@ mod outcome_tests;
 #[cfg(test)]
 mod request_id_guard_tests;
 #[cfg(test)]
+mod run_cancel_tests;
+#[cfg(test)]
 mod run_cut_secret_tests;
 #[cfg(test)]
 mod run_ending_clean_tests;
