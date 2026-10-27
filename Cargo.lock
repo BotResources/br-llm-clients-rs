@@ -149,7 +149,7 @@ version = "0.1.0"
 
 [[package]]
 name = "br-llm-clients-core"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "br-llm-messages 2.1.0",
  "serde",

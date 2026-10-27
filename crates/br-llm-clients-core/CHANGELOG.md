@@ -9,6 +9,101 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.5.0
+
+### Added
+
+- `render_history(&ClientRequest) -> Result<RenderedHistory, ClientError>`: the
+  one rendering of a history for a model. It is synchronous, does no I/O and
+  keeps no state. It gives `InvalidMessages` with a reason as text. Roles are
+  `User` or `Assistant` only: no entry becomes a system instruction. Entries
+  are rendered one by one, consecutive entries of one role are merged into one
+  message, and in a `User` message the tool results come first, in the order
+  of their calls. The content of another agent (`AgentRequest`, `AgentMail`,
+  `AgentOutput`, `PartialAgentOutput`) is rendered inside a frame with an
+  escaped author and escaped text. The notices (`RequestAccepted`,
+  `QueuePosition`, `TaskStarted`, `TaskCompleted`, `TaskFailed`, and a
+  `TurnClosure` by its reason) are fixed English sentences in a `<notice>`
+  frame. A tool call of a closed AI turn that no result answers gets a built
+  failure result; a call that no result answers in a turn that is not closed
+  is refused. A call gets a wire id, and its result carries the same id.
+  Thinking, redacted thinking and replay material of a turn other than the
+  turn named by `reply_turn` are not rendered.
+- `RenderedHistory` (with `messages`), `RenderedMessage` (with `role` and
+  `parts`), `RenderedRole` (`User`, `Assistant`), `RenderedPart` (`Text`,
+  `Image`, `ToolCall`, `ToolResult`, `Block`) and `RenderedResultPart` (`Text`,
+  `Image`: the parts of a tool result). `RenderedPart` and `RenderedResultPart`
+  are `#[non_exhaustive]`. `RenderedHistory`, `RenderedMessage`,
+  `RenderedPart` and `RenderedResultPart` have `Debug`, `Clone` and
+  `PartialEq`, and no `Eq`. None of these types is stored data.
+- `IdSource` (one operation, `next_block_id`, which gives a new `BlockId`;
+  `Send` and `Sync`; usable as a trait object) and `DefaultIdSource`, a unit
+  struct with `Default`, `Clone`, `Copy` and `Debug` that builds each identity
+  with `Uuid::now_v7`.
+- This crate now owns the `v7` feature of `uuid` (version 1): an importer does
+  not need to add it.
+
+### Changed
+
+- Breaking: the types of `br-llm-messages` in the public API are now those of
+  `br-llm-messages` 2.1.0 (tag `br-llm-messages/v2.1.0`), its line 2. The
+  request holds a `ProjectedThread` in place of the wire messages;
+  `ModelResponse` and `ResponseEnding` take the place of `Step` and
+  `StopReason`; `Usage`, `ModelName` (was `ModelId`), `ToolName`, `PlainText`
+  (was `Text`) and `MediaType` (was `ImageMime`) are those of line 2. An
+  importer that also uses `br-llm-messages` must move to 2.1 too; the types
+  of 0.5 and of 2.1 are not the same types.
+- Breaking: `ClientRequest::new` takes the system prompt, the history (a
+  `ProjectedThread`), the turn and the entry of the reply (a `TurnId` and an
+  `EntryId`), the tools and the output mode. New accessors `history`,
+  `reply_turn` and `reply_entry`; `messages` is removed. A request is checked
+  for a thread with at least one turn and for unique tool names only.
+- Breaking: `BuildError::NoMessage` becomes `EmptyThread`.
+- Breaking: `CallOutcome::success` takes a `ModelResponse`; `result` and
+  `into_parts` give a `ModelResponse` on success. `UsageMismatch` compares the
+  usage of the report with the usage of the response.
+- Breaking: `CallReport` loses `Eq` (it keeps `PartialEq`), because `Usage` has
+  no `Eq`.
+- Breaking: `StreamSink::send` takes a `ResponseDelta` by value in place of a
+  `StreamEvent`.
+- Breaking: `ClientError::ReplyUnusable` holds `ending: ResponseEnding` in
+  place of `stop_reason`, and its message prints the ending.
+  `ClientError::ImageMediaTypeNotSupported` holds a `MediaType`.
+- Breaking: the stored schema is `br-llm-clients-core/2` (`SCHEMA_VERSION`).
+  In a stored `CallOutcome` the key `response` (the JSON of a `ModelResponse`)
+  replaces the key `step`. A document of the schema `br-llm-clients-core/1` is
+  refused, and the refusal names the schema found. This crate holds no
+  migration.
+- Breaking: loading is stricter. A `ClientSettings` or a `CallOutcome` checks
+  its schema before anything else. An unknown key is now refused also in the
+  cases without fields (such as `ClientError::Transport`,
+  `OutputMode::Plain` and the plain kinds of a parameter). An explicit `null`
+  for an optional item is refused (an absent item is omitted). A key given
+  twice is refused. A duration with `nanos` of 1000000000 or more is refused.
+- The capability check reads the images of the thread. It still does not
+  render the history or check it, and never gives `InvalidMessages`. A
+  `RuntimeNotice` entry of the thread is ignored by the check.
+- Breaking: the `Relay` rules of `ClientRequest::check_messages` and the
+  system-role carrier of notices are replaced by the rendering of a history.
+  The rules that an adapter must apply on the first message and the last
+  message of the rendering stay with the client library.
+- `render_history` refuses a `RuntimeNotice` entry with `InvalidMessages`; the
+  reason names `runtime_notice`.
+
+### Removed
+
+- `ClientRequest::check_messages` and `ClientRequest::messages`.
+- `BuildError::MisplacedRelay`.
+
+### Notes
+
+- `StructuredShape::name` still gives a `&str`; the model of `ClientSettings`
+  is a `ModelName`.
+- `IdSource` is not data: it is not stored and carries no schema, like
+  `Client` and `StreamSink`.
+- `DefaultIdSource` has two panic paths of `Uuid::now_v7` (a system clock
+  before 1970, a system that gives no random bytes).
+
 ## 0.4.1
 
 ### Added
