@@ -1,6 +1,7 @@
 use br_llm_messages::OpaqueJson;
 
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum JsonInput {
     Value(OpaqueJson),
     Text(String),

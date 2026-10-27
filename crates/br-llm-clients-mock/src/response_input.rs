@@ -4,6 +4,7 @@ use crate::build_error::MockBuildError;
 use crate::sketch::Sketch;
 
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum ResponseInput {
     Response(Box<ModelResponse>),
     Sketch(Box<Sketch>),
