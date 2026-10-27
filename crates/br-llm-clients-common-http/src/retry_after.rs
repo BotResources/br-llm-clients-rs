@@ -50,7 +50,12 @@ fn milliseconds(digits: &str) -> Duration {
     let Ok(whole_seconds) = u64::try_from(total / 1000) else {
         return Duration::MAX;
     };
-    let rest_millis = u32::try_from(total % 1000).unwrap_or(0);
-    let nanos = rest_millis.saturating_mul(1_000_000);
-    Duration::new(whole_seconds, nanos)
+    Duration::new(whole_seconds, rest_millis(digits).saturating_mul(1_000_000))
+}
+
+fn rest_millis(digits: &str) -> u32 {
+    digits.bytes().fold(0, |rest, byte| {
+        let digit = u32::from(byte.saturating_sub(b'0'));
+        rest.saturating_mul(10).saturating_add(digit) % 1000
+    })
 }
