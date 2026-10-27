@@ -78,6 +78,8 @@ mod normalizer_order_tests;
 #[cfg(test)]
 mod normalizer_rules_tests;
 #[cfg(test)]
+mod normalizer_scale_tests;
+#[cfg(test)]
 mod normalizer_thinking_tests;
 #[cfg(test)]
 mod outcome_tests;

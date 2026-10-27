@@ -47,7 +47,6 @@ impl Emit<'_> {
 
 #[derive(Clone)]
 pub(crate) struct Block {
-    pub(crate) key: String,
     kind: Kind,
     pub(crate) closed: bool,
     provider_closed: bool,
@@ -64,9 +63,8 @@ pub(crate) fn is_blank(text: &str) -> bool {
 }
 
 impl Block {
-    pub(crate) fn new(key: String, kind: Kind) -> Self {
+    pub(crate) fn new(kind: Kind) -> Self {
         Self {
-            key,
             kind,
             closed: false,
             provider_closed: false,

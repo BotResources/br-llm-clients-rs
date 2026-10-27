@@ -1,3 +1,4 @@
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
 use br_llm_clients_core::{ClientError, ClientRequest, DefaultIdSource, IdSource};
@@ -13,8 +14,9 @@ use crate::provider_event::{ProviderBlock, ProviderEvent};
 
 #[derive(Clone)]
 pub(crate) struct Normalizer {
-    blocks: Vec<Block>,
-    head: usize,
+    pending: VecDeque<Block>,
+    settled: Vec<Held>,
+    open: HashMap<String, usize>,
     ids: Arc<dyn IdSource>,
     turn: TurnId,
     entry: EntryId,
@@ -32,8 +34,9 @@ impl Normalizer {
         answered: Option<ModelName>,
     ) -> Self {
         Self {
-            blocks: Vec::new(),
-            head: 0,
+            pending: VecDeque::new(),
+            settled: Vec::new(),
+            open: HashMap::new(),
             ids,
             turn: request.reply_turn(),
             entry: request.reply_entry(),
@@ -65,7 +68,16 @@ impl Normalizer {
     }
 
     pub(crate) fn held(&self) -> Vec<Held> {
-        self.blocks.iter().map(Block::held).collect()
+        self.settled
+            .iter()
+            .cloned()
+            .chain(self.pending.iter().map(Block::held))
+            .collect()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn pending_blocks(&self) -> usize {
+        self.pending.len()
     }
 
     pub(crate) fn completed(&self, ending: ResponseEnding) -> ResponseDelta {
@@ -119,9 +131,10 @@ impl Normalizer {
     }
 
     pub(crate) fn close_all(&mut self) -> Vec<ResponseDelta> {
-        for block in self.blocks.iter_mut().filter(|block| !block.closed) {
+        for block in self.pending.iter_mut().filter(|block| !block.closed) {
             block.push_forced_end();
         }
+        self.open.clear();
         let mut out = Vec::new();
         self.pump(&mut out);
         out
@@ -176,12 +189,6 @@ impl Normalizer {
         out.push(self.update(ResponseMetadataUpdate::new().with_provider_response_id(id)));
     }
 
-    fn open_position(&self, key: &str) -> Option<usize> {
-        self.blocks
-            .iter()
-            .rposition(|block| block.key == key && !block.closed)
-    }
-
     fn start(
         &mut self,
         key: String,
@@ -189,12 +196,14 @@ impl Normalizer {
         out: &mut Vec<ResponseDelta>,
     ) -> Result<(), ClientError> {
         self.check_not_stopped()?;
-        if self.open_position(&key).is_some() {
+        if self.open.contains_key(&key) {
             return Err(malformed("a block was started for a key that is open"));
         }
         let kind = kind_of(block)?;
         self.begin(out);
-        self.blocks.push(Block::new(key, kind));
+        let index = self.settled.len().saturating_add(self.pending.len());
+        self.open.insert(key.clone(), index);
+        self.pending.push_back(Block::new(kind));
         self.pump(out);
         Ok(())
     }
@@ -207,17 +216,22 @@ impl Normalizer {
     ) -> Result<(), ClientError> {
         self.check_not_stopped()?;
         let position = self
-            .open_position(key)
+            .open
+            .get(key)
+            .map(|index| index.saturating_sub(self.settled.len()))
             .ok_or_else(|| malformed("an event came for a key that is not open"))?;
         let fits = self
-            .blocks
+            .pending
             .get(position)
             .is_some_and(|block| matches!(op, Op::End) || block.accepts(&op));
         if !fits {
             return Err(malformed("a delta does not fit the block of its key"));
         }
         self.begin(out);
-        if let Some(block) = self.blocks.get_mut(position) {
+        if matches!(op, Op::End) {
+            self.open.remove(key);
+        }
+        if let Some(block) = self.pending.get_mut(position) {
             block.push(op);
         }
         self.pump(out);
@@ -238,12 +252,13 @@ impl Normalizer {
             entry: self.entry,
             out,
         };
-        while let Some(block) = self.blocks.get_mut(self.head) {
+        while let Some(block) = self.pending.front_mut() {
             block.drain(&mut cx);
             if !block.is_finished() {
                 break;
             }
-            self.head = self.head.saturating_add(1);
+            self.settled.push(block.held());
+            self.pending.pop_front();
         }
     }
 }
