@@ -26,7 +26,7 @@ br-llm-clients-api-openai-chat-completions = { git = "https://github.com/BotReso
 br-llm-clients-common-http = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-common-http", tag = "br-llm-clients-common-http/v0.2.0", version = "0.2.0" }
 ```
 
-`br-llm-clients-common-call` (0.1.0) re-exports types of `br-llm-clients-common-http` 0.1.0 (`Authorizer`, `Endpoint`, `Headers`, `HttpClient`, `Secret`), so a project that uses it pins `br-llm-clients-common-http` at `v0.1.0` too until `br-llm-clients-common-call` moves to 0.2.0: with the 0.2.0 pin shown, those types would be two copies. The three `br-llm-clients-api-*` libraries (0.1.0) use `br-llm-clients-common-http` 0.1.0 only in their tests and do not re-export it.
+`br-llm-clients-common-call` (0.1.0) re-exports types of `br-llm-clients-common-http` 0.1.0 (`Authorizer`, `Endpoint`, `Headers`, `HttpClient`, `Secret`), and the three `br-llm-clients-api-*` libraries (0.1.0) take `Headers` in their public `Dialect::request_id`; so a project that uses any of them pins `br-llm-clients-common-http` at `v0.1.0` too, until they move to 0.2.0: with the 0.2.0 pin shown, those types would be two copies.
 
 ## Provider keys for real calls
 
