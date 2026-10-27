@@ -77,7 +77,7 @@ fn secret_sets(pool: &[String]) -> Vec<Vec<String>> {
 #[test]
 fn given_every_small_body_and_secret_set_when_cut_at_every_position_then_no_part_of_a_crossing_secret_stays()
  {
-    let pool = words(2, 3);
+    let pool = words(2, 4);
     let bodies = words(0, 7);
     let mut checked = 0_usize;
     for set in secret_sets(&pool) {

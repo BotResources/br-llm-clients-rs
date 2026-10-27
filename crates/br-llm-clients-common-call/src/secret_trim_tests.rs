@@ -119,3 +119,15 @@ fn given_a_whole_secret_that_starts_a_longer_one_when_trimmed_then_it_goes_with_
     assert_eq!(trimmed(&["QZXV", "QZXVQ"], b"aaaaQZXV"), b"aaaa");
     assert_eq!(trimmed(&["QZXVQ", "QZXV"], b"aaaaQZXV"), b"aaaa");
 }
+
+#[test]
+fn given_a_whole_secret_that_starts_a_longer_one_when_the_rest_continues_past_the_cut_then_no_byte_of_the_longer_one_stays()
+ {
+    let secrets = secrets(&["xy", "xyzw"]);
+    let mut bytes = b"aaaaxyz".to_vec();
+    secrets.trim_cut(&mut bytes);
+    assert_eq!(
+        secrets.replace(&String::from_utf8(bytes).expect("utf8")),
+        "aaaa"
+    );
+}

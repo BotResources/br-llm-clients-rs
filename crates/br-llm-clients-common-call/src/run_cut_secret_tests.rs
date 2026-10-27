@@ -191,3 +191,13 @@ async fn given_a_whole_secret_ending_at_the_cut_that_only_the_log_holds_then_it_
     let expected = format!("{}[redacted]", "a".repeat(CAP - 15));
     assert_eq!(seen.dialect_text, expected);
 }
+
+#[tokio::test]
+async fn given_a_whole_secret_that_starts_a_longer_one_when_the_longer_crosses_the_cut_then_no_byte_of_it_stays()
+ {
+    let longer = "xyzw";
+    let shorter = "xy";
+    let seen = refused(&[shorter, longer], &[], crossing(longer, 3, CAP + 500)).await;
+    assert_eq!(seen.dialect_text, "a".repeat(CAP - 3));
+    assert_eq!(seen.error_body, "a".repeat(CAP - 3));
+}
