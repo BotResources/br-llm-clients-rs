@@ -32,6 +32,10 @@ impl Response {
         retry_after::parse(self.headers.get("retry-after")?, SystemTime::now())
     }
 
+    pub fn retry_after_ms(&self) -> Option<Duration> {
+        retry_after::parse_millis(self.headers.get("retry-after-ms")?)
+    }
+
     pub fn body_mut(&mut self) -> &mut BodyStream {
         &mut self.body
     }

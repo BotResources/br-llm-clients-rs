@@ -1,6 +1,6 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use crate::retry_after::parse;
+use crate::retry_after::{parse, parse_millis};
 
 const NOV_6_1994_084937: u64 = 784_111_777;
 
@@ -95,8 +95,96 @@ fn given_anything_else_when_parsing_then_there_is_nothing() {
         "Sun, 32 Nov 1994 08:49:37 GMT",
         "Sun, 06 Nov 1994 08:49:37 PST",
         "5,6",
+        "\n250",
+        "\x0b250",
+        "\u{a0}250",
+        "٢٥٠",
+        "２５０",
+        "²",
     ] {
         assert_eq!(secs(value), None, "{value:?}");
     }
     assert_eq!(parse(&[0xff, 0xfe], at(0)), None);
+}
+
+fn millis(value: &str) -> Option<Duration> {
+    parse_millis(value.as_bytes())
+}
+
+#[test]
+fn given_decimal_digits_when_parsing_milliseconds_then_they_are_milliseconds() {
+    assert_eq!(millis("1500"), Some(Duration::from_millis(1500)));
+    assert_eq!(millis("0"), Some(Duration::ZERO));
+    assert_eq!(millis("007"), Some(Duration::from_millis(7)));
+    assert_eq!(millis("120"), Some(Duration::from_millis(120)));
+}
+
+#[test]
+fn given_a_space_or_a_tab_around_the_digits_when_parsing_milliseconds_then_it_is_ignored() {
+    assert_eq!(millis(" 250"), Some(Duration::from_millis(250)));
+    assert_eq!(millis("250 "), Some(Duration::from_millis(250)));
+    assert_eq!(millis("\t250\t"), Some(Duration::from_millis(250)));
+    assert_eq!(millis(" \t 250 \t "), Some(Duration::from_millis(250)));
+}
+
+#[test]
+fn given_a_number_too_large_for_a_duration_when_parsing_milliseconds_then_it_saturates() {
+    assert_eq!(
+        millis("99999999999999999999999999999999999999999999"),
+        Some(Duration::MAX)
+    );
+    assert_eq!(millis("18446744073709551616000"), Some(Duration::MAX));
+}
+
+#[test]
+fn given_a_number_that_fits_a_duration_when_parsing_milliseconds_then_it_is_exact() {
+    assert_eq!(
+        millis("18446744073709551615"),
+        Some(Duration::from_millis(u64::MAX))
+    );
+    assert_eq!(
+        millis("18446744073709551616"),
+        Some(Duration::new(18_446_744_073_709_551, 616_000_000))
+    );
+    assert_eq!(
+        millis("18446744073709551615999"),
+        Some(Duration::new(u64::MAX, 999_000_000))
+    );
+    assert_eq!(millis("999"), Some(Duration::from_millis(999)));
+    assert_eq!(millis("1000"), Some(Duration::from_secs(1)));
+}
+
+#[test]
+fn given_anything_else_when_parsing_milliseconds_then_there_is_nothing() {
+    for value in [
+        "",
+        " ",
+        "\t",
+        "soon",
+        "-5",
+        "+5",
+        "1.5",
+        ".5",
+        "5.",
+        "1,5",
+        "\n250",
+        "250\r",
+        "\x0b250",
+        "\x0c250",
+        "\u{a0}250",
+        "\u{3000}250",
+        "٢٥٠",
+        "２５０",
+        "²",
+        "5 ms",
+        "2 5",
+        "1e3",
+        "0x10",
+        "Sun, 06 Nov 1994 08:49:37 GMT",
+        "5,6",
+    ] {
+        assert_eq!(millis(value), None, "{value:?}");
+    }
+    assert_eq!(parse_millis(&[0xff, 0xfe]), None);
+    assert_eq!(parse_millis(b"1\xff"), None);
 }

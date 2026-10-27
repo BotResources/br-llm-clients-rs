@@ -98,23 +98,24 @@ impl Endpoint {
         Ok(self)
     }
 
-    pub(crate) fn is_https(&self) -> bool {
+    pub fn is_https(&self) -> bool {
         self.scheme == Scheme::Https
     }
 
-    #[cfg(test)]
-    pub(crate) fn host(&self) -> &str {
+    pub fn host(&self) -> &str {
         &self.host
     }
 
-    #[cfg(test)]
-    pub(crate) fn port(&self) -> Option<u16> {
-        self.port
+    pub fn port(&self) -> u16 {
+        self.port.unwrap_or_else(|| self.scheme.default_port())
     }
 
-    #[cfg(test)]
-    pub(crate) fn path(&self) -> &str {
+    pub fn path(&self) -> &str {
         &self.path
+    }
+
+    pub fn query(&self) -> Option<&str> {
+        self.query.as_deref()
     }
 
     pub(crate) fn path_and_query(&self) -> String {
@@ -122,10 +123,6 @@ impl Endpoint {
             Some(query) => format!("{}?{}", self.path, query),
             None => self.path.clone(),
         }
-    }
-
-    pub(crate) fn effective_port(&self) -> u16 {
-        self.port.unwrap_or_else(|| self.scheme.default_port())
     }
 
     pub(crate) fn host_header(&self) -> String {
