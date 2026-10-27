@@ -79,7 +79,7 @@ name = "br-llm-clients-api-anthropic-messages"
 version = "0.1.0"
 dependencies = [
  "br-llm-clients-common-call",
- "br-llm-clients-common-http",
+ "br-llm-clients-common-http 0.1.0",
  "br-llm-clients-core 0.4.1",
  "br-llm-messages 0.5.0",
  "serde_json",
@@ -91,7 +91,7 @@ name = "br-llm-clients-api-openai-chat-completions"
 version = "0.1.0"
 dependencies = [
  "br-llm-clients-common-call",
- "br-llm-clients-common-http",
+ "br-llm-clients-common-http 0.1.0",
  "br-llm-clients-core 0.4.1",
  "br-llm-messages 0.5.0",
  "serde_json",
@@ -103,7 +103,7 @@ name = "br-llm-clients-api-openai-responses"
 version = "0.1.0"
 dependencies = [
  "br-llm-clients-common-call",
- "br-llm-clients-common-http",
+ "br-llm-clients-common-http 0.1.0",
  "br-llm-clients-common-sse",
  "br-llm-clients-core 0.4.1",
  "br-llm-messages 0.5.0",
@@ -115,7 +115,7 @@ dependencies = [
 name = "br-llm-clients-common-call"
 version = "0.1.0"
 dependencies = [
- "br-llm-clients-common-http",
+ "br-llm-clients-common-http 0.1.0",
  "br-llm-clients-common-sse",
  "br-llm-clients-core 0.4.1",
  "br-llm-messages 0.5.0",
@@ -127,6 +127,25 @@ dependencies = [
 [[package]]
 name = "br-llm-clients-common-http"
 version = "0.1.0"
+source = "git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-common-http%2Fv0.1.0#474999b432f09ced4baa49a07b248e935fdfaf72"
+dependencies = [
+ "bytes",
+ "h2",
+ "http",
+ "httpdate",
+ "hyper",
+ "hyper-util",
+ "rustls",
+ "rustls-pki-types",
+ "thiserror",
+ "tokio",
+ "tokio-rustls",
+ "webpki-roots",
+]
+
+[[package]]
+name = "br-llm-clients-common-http"
+version = "0.2.0"
 dependencies = [
  "bytes",
  "h2",
