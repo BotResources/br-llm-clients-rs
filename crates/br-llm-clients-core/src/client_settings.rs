@@ -5,8 +5,8 @@ use crate::max_output_tokens::MaxOutputTokens;
 use crate::reasoning::ReasoningLevel;
 use crate::schema::{self, LoadError};
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(try_from = "StoredClientSettings", into = "StoredClientSettings")]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(into = "StoredClientSettings")]
 pub struct ClientSettings {
     model: ModelName,
     reasoning: ReasoningLevel,
@@ -35,6 +35,15 @@ impl TryFrom<StoredClientSettings> for ClientSettings {
             cache: stored.cache,
             max_output_tokens: stored.max_output_tokens,
         })
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ClientSettings {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error;
+        let raw = schema::checked_first(deserializer)?;
+        let stored = StoredClientSettings::deserialize(raw).map_err(D::Error::custom)?;
+        Self::try_from(stored).map_err(D::Error::custom)
     }
 }
 

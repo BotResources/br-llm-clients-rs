@@ -17,6 +17,7 @@ mod client_settings;
 mod id_source;
 mod max_output_tokens;
 mod output_mode;
+mod raw;
 mod reasoning;
 mod render;
 mod schema;
@@ -63,6 +64,8 @@ mod client_settings_tests;
 mod client_trait_tests;
 #[cfg(test)]
 mod id_source_tests;
+#[cfg(test)]
+mod stored_schema_first_tests;
 #[cfg(test)]
 mod test_support;
 #[cfg(test)]

@@ -170,10 +170,12 @@ fn set_once<'de, T: Deserialize<'de>, A: MapAccess<'de>>(
 
 impl<'de> Deserialize<'de> for CallOutcome {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        deserializer.deserialize_struct(
-            "CallOutcome",
-            &["schema", "report", "result"],
-            OutcomeVisitor,
-        )
+        schema::checked_first(deserializer)?
+            .deserialize_struct(
+                "CallOutcome",
+                &["schema", "report", "result"],
+                OutcomeVisitor,
+            )
+            .map_err(de::Error::custom)
     }
 }
