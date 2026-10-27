@@ -64,9 +64,13 @@ mod chunking_tests;
 #[cfg(test)]
 mod collision_tests;
 #[cfg(test)]
+mod derive_tests;
+#[cfg(test)]
 mod first_poll_tests;
 #[cfg(test)]
 mod fixtures;
+#[cfg(test)]
+mod fold_tests;
 #[cfg(test)]
 mod gate_state_tests;
 #[cfg(test)]
@@ -111,6 +115,8 @@ mod send_sync_tests;
 mod sequential_id_source_tests;
 #[cfg(test)]
 mod sketch_tests;
+#[cfg(test)]
+mod strictness_details_tests;
 #[cfg(test)]
 mod strictness_tests;
 #[cfg(test)]

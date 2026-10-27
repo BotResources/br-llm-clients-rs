@@ -59,5 +59,5 @@ pub(crate) fn serve(
     let client: MockClient = mock();
     client.push_reply(Reply::success(response).build().unwrap());
     let (outcome, _) = run(&client, request);
-    outcome.result().map(Clone::clone).map_err(Clone::clone)
+    outcome.result().cloned().map_err(Clone::clone)
 }

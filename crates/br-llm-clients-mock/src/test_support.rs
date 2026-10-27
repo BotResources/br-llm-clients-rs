@@ -10,8 +10,8 @@ use br_llm_clients_core::{
     StructuredShape, ToolSpec,
 };
 use br_llm_messages::{
-    ContentBlock, DeltaOp, MediaType, ModelName, ModelResponse, OpaqueJson, PlainBlock,
-    ResponseDelta, ResponseEnding, ResponseMetadata, TextBlock, ToolName, Usage,
+    ContentBlock, DeltaOp, ModelName, ModelResponse, OpaqueJson, PlainBlock, ResponseDelta,
+    ResponseEnding, ResponseMetadata, TextBlock, ToolName, Usage,
 };
 
 use crate::chunking::Chunking;
@@ -226,14 +226,6 @@ pub(crate) fn bad_request() -> ClientRequest {
         OutputMode::Plain,
     )
     .unwrap()
-}
-
-pub(crate) fn image_request(media_type: MediaType) -> ClientRequest {
-    request_of(
-        vec![text_block("look"), crate::fixtures::plain_image(media_type)],
-        vec![],
-        OutputMode::Plain,
-    )
 }
 
 pub(crate) fn everything_caps() -> Capabilities {
