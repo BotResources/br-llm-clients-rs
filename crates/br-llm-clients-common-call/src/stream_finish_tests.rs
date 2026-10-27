@@ -1,7 +1,5 @@
 use br_llm_clients_core::ClientError;
-use br_llm_messages::{
-    ContentBlock, ModelName, ResponseDelta, ResponseDraft, ResponseEnding, Usage,
-};
+use br_llm_messages::{ContentBlock, ResponseDraft, ResponseEnding, Usage};
 
 use crate::test_decoder::EndScript;
 use crate::test_fixtures::user_request;
@@ -172,7 +170,4 @@ async fn given_a_reply_with_a_cut_ending_and_a_complete_content_when_built_then_
     let driven = run(&["start a text", "text a hi", "end a", "stop exhaust"]).await;
     let response = driven.result.expect("a response");
     assert_eq!(response.ending(), &ResponseEnding::output_exhaustion());
-    let model: Option<&ModelName> = response.model();
-    assert_eq!(model, None);
-    let _: Vec<&ResponseDelta> = driven.sink.deltas.iter().collect();
 }

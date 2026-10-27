@@ -265,3 +265,25 @@ async fn given_json_nested_deeper_than_the_draft_accepts_when_the_provider_close
         Err(ClientError::MalformedResponse { .. })
     ));
 }
+
+#[tokio::test]
+async fn given_a_closing_the_draft_refuses_after_earlier_blocks_close_when_the_stream_ends_then_none_of_the_held_deltas_is_released()
+ {
+    let driven = run(&[
+        "start a text",
+        "text a hello",
+        "start b text",
+        "text b held",
+        "start c redacted",
+        "stop finished",
+    ])
+    .await;
+    assert!(matches!(
+        driven.result,
+        Err(ClientError::MalformedResponse { .. })
+    ));
+    assert_eq!(
+        kinds(&driven.sink.deltas),
+        vec!["started", "start 1 text", "text 1 \"hello\""]
+    );
+}
