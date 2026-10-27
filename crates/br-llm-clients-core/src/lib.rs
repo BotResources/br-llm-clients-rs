@@ -54,6 +54,8 @@ mod capabilities_test_support;
 #[cfg(test)]
 mod capabilities_tests;
 #[cfg(test)]
+mod client_error_mirror_tests;
+#[cfg(test)]
 mod client_error_stored_tests;
 #[cfg(test)]
 mod client_error_tests;

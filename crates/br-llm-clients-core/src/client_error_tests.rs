@@ -5,7 +5,7 @@ use br_llm_messages::{MediaType, ResponseEnding, ToolName};
 use crate::client_error::{ClientError, LimitKind};
 use crate::reasoning::ReasoningLevel;
 
-fn every_case() -> Vec<ClientError> {
+pub(crate) fn every_case() -> Vec<ClientError> {
     vec![
         ClientError::ModelNotFound,
         ClientError::ModelNotAccessible,
