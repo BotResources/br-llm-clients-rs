@@ -120,6 +120,23 @@ fn given_a_structured_request_when_there_is_no_structured_block_and_no_call_and_
 }
 
 #[test]
+fn given_a_structured_request_when_the_response_holds_no_content_then_the_missing_content_comes_before_the_shape()
+ {
+    let unusable = response_ending(vec![thinking_content()], ResponseEnding::finished());
+    assert_eq!(
+        serve(&structured_request(), unusable).unwrap_err(),
+        ClientError::ReplyUnusable {
+            ending: ResponseEnding::finished()
+        }
+    );
+    let blocked = response_ending(vec![image_content()], ResponseEnding::refusal());
+    assert_eq!(
+        serve(&structured_request(), blocked).unwrap_err(),
+        ClientError::ContentBlocked
+    );
+}
+
+#[test]
 fn given_a_structured_request_when_a_structured_block_or_a_call_is_present_then_a_blocking_ending_does_not_block()
  {
     let value = response_ending(vec![structured_content("1")], ResponseEnding::refusal());
