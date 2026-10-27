@@ -151,7 +151,7 @@ version = "0.1.0"
 name = "br-llm-clients-core"
 version = "0.4.1"
 dependencies = [
- "br-llm-messages 2.0.0",
+ "br-llm-messages 2.1.0",
  "serde",
  "serde_json",
  "thiserror",
@@ -179,8 +179,8 @@ dependencies = [
 
 [[package]]
 name = "br-llm-messages"
-version = "2.0.0"
-source = "git+https://github.com/BotResources/br-llm-messages-rs?tag=br-llm-messages%2Fv2.0.0#8a138424862646ba5c9f55fc3efc4c147a871e5d"
+version = "2.1.0"
+source = "git+https://github.com/BotResources/br-llm-messages-rs?tag=br-llm-messages%2Fv2.1.0#639e011b5b925a86195a69dc52fe1f07e50da154"
 dependencies = [
  "serde",
  "serde_json",
