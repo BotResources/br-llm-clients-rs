@@ -1,7 +1,7 @@
 use crate::test_normalize::{fed, fresh, steps};
 
 #[test]
-fn given_a_later_block_when_an_earlier_one_is_open_then_its_events_wait_for_the_close() {
+fn given_a_later_block_when_an_earlier_one_is_open_then_its_deltas_wait_for_the_close() {
     let mut normalizer = fresh();
     let out = steps(
         &mut normalizer,
@@ -20,32 +20,32 @@ fn given_a_later_block_when_an_earlier_one_is_open_then_its_events_wait_for_the_
             vec![],
             vec![],
             vec![],
-            vec!["start 0 Text".to_owned(), "text 0 \"A\"".to_owned()],
+            vec!["start 1 text".to_owned(), "text 1 \"A\"".to_owned()],
             vec![],
             vec![
-                "end 0".to_owned(),
-                "start 1 Thinking".to_owned(),
-                "think 1 \"x\"".to_owned(),
-                "end 1".to_owned()
+                "final 1".to_owned(),
+                "start 2 thinking".to_owned(),
+                "think 2 \"x\"".to_owned(),
+                "final 2".to_owned()
             ],
         ]
     );
 }
 
 #[test]
-fn given_the_first_open_block_when_it_gets_events_then_they_go_on_at_once() {
+fn given_the_first_open_block_when_it_gets_deltas_then_they_go_on_at_once() {
     let mut normalizer = fresh();
     let out = steps(
         &mut normalizer,
-        &["start a thinking", "think a one", "sig a s1", "end a"],
+        &["start a thinking", "think a one", "sig a fmt/1 s1", "end a"],
     );
     assert_eq!(
         out,
         vec![
-            vec!["start 0 Thinking".to_owned()],
-            vec!["think 0 \"one\"".to_owned()],
-            vec!["sig 0 \"s1\"".to_owned()],
-            vec!["end 0".to_owned()],
+            vec![],
+            vec!["start 1 thinking".to_owned(), "think 1 \"one\"".to_owned()],
+            vec!["replay 1 fmt/1 \"s1\"".to_owned()],
+            vec!["final 1".to_owned()],
         ]
     );
 }
@@ -57,7 +57,7 @@ fn given_blocks_that_start_in_one_order_when_the_later_one_closes_first_then_the
         "start a text",
         "start b structured",
         "start c redacted",
-        "redact c zz",
+        "redact c fmt/1 zz",
         "struct b {}",
         "end c",
         "end b",
@@ -67,23 +67,24 @@ fn given_blocks_that_start_in_one_order_when_the_later_one_closes_first_then_the
     assert_eq!(
         out,
         vec![
-            "start 0 Text",
-            "text 0 \"hi\"",
-            "end 0",
-            "start 1 Structured",
-            "struct 1 \"{}\"",
-            "end 1",
-            "start 2 RedactedThinking",
-            "redact 2 \"zz\"",
-            "end 2",
+            "start 1 text",
+            "text 1 \"hi\"",
+            "final 1",
+            "start 2 structured",
+            "json 2 \"{}\"",
+            "final 2",
+            "start 3 redacted",
+            "replay 3 fmt/1 \"zz\"",
+            "final 3",
         ]
     );
 }
 
 #[test]
-fn given_a_closed_key_when_it_starts_again_then_it_is_a_new_block_with_the_next_index() {
+fn given_a_closed_key_when_it_starts_again_then_it_is_a_new_block_with_a_new_id() {
     let out = fed(&[
         "start a thinking",
+        "think a first",
         "end a",
         "start a thinking",
         "think a again",
@@ -92,17 +93,18 @@ fn given_a_closed_key_when_it_starts_again_then_it_is_a_new_block_with_the_next_
     assert_eq!(
         out,
         vec![
-            "start 0 Thinking",
-            "end 0",
-            "start 1 Thinking",
-            "think 1 \"again\"",
-            "end 1"
+            "start 1 thinking",
+            "think 1 \"first\"",
+            "final 1",
+            "start 2 thinking",
+            "think 2 \"again\"",
+            "final 2"
         ]
     );
 }
 
 #[test]
-fn given_a_tool_call_block_when_it_starts_then_the_start_event_carries_its_id_and_name() {
+fn given_a_tool_call_block_when_it_starts_then_the_start_carries_its_name_and_external_id() {
     let out = fed(&[
         "start t tool search call_9",
         "args t {\"q\"",
@@ -112,21 +114,22 @@ fn given_a_tool_call_block_when_it_starts_then_the_start_event_carries_its_id_an
     assert_eq!(
         out,
         vec![
-            "call 0 call_9 search",
-            "args 0 \"{\\\"q\\\"\"",
-            "args 0 \":1}\"",
-            "end 0"
+            "start 1 call search call_9",
+            "json 1 \"{\\\"q\\\"\"",
+            "json 1 \":1}\"",
+            "final 1"
         ]
     );
 }
 
 #[test]
-fn given_every_block_kind_when_started_then_the_start_event_names_that_kind() {
+fn given_every_block_kind_when_started_then_the_start_names_that_kind() {
     let out = fed(&[
         "start a text",
         "text a x",
         "end a",
         "start b thinking",
+        "think b y",
         "end b",
         "start c redacted",
         "end c",
@@ -136,15 +139,15 @@ fn given_every_block_kind_when_started_then_the_start_event_names_that_kind() {
     assert_eq!(
         out,
         vec![
-            "start 0 Text",
-            "text 0 \"x\"",
-            "end 0",
-            "start 1 Thinking",
-            "end 1",
-            "start 2 RedactedThinking",
-            "end 2",
-            "start 3 Structured",
-            "end 3",
+            "start 1 text",
+            "text 1 \"x\"",
+            "final 1",
+            "start 2 thinking",
+            "think 2 \"y\"",
+            "final 2",
+            "start 3 redacted",
+            "final 3",
+            "start 4 structured",
         ]
     );
 }

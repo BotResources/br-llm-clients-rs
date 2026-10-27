@@ -4,7 +4,7 @@ use br_llm_clients_common_http::Secret;
 use br_llm_clients_core::{ClientError, ReasoningLevel};
 
 use crate::test_dialect::ScriptedDialect;
-use crate::test_fixtures::{assistant_first_request, failure_of, run_call, spec_for, user_request};
+use crate::test_fixtures::{failure_of, run_call, spec_for, unrenderable_request, user_request};
 use crate::test_server::{TestServer, http};
 
 async fn server() -> TestServer {
@@ -16,7 +16,7 @@ async fn given_a_list_of_messages_that_breaks_a_rule_when_run_then_nothing_is_en
     let server = server().await;
     let dialect = Arc::new(ScriptedDialect::default());
     let spec = spec_for(&dialect, server.endpoint("/v1/test"));
-    let error = failure_of(&spec, &assistant_first_request()).await;
+    let error = failure_of(&spec, &unrenderable_request()).await;
     assert!(
         matches!(error, ClientError::InvalidMessages { .. }),
         "{error:?}"

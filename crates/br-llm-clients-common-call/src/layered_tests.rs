@@ -11,7 +11,7 @@ use crate::payload::Payload;
 use crate::payload_decoder::{End, PayloadDecoder};
 use crate::test_decoder::EndScript;
 use crate::test_dialect::ScriptedDialect;
-use crate::test_fixtures::user_request;
+use crate::test_fixtures::{rendered_of, user_request};
 
 struct Tracing {
     inner: Arc<ScriptedDialect>,
@@ -72,7 +72,7 @@ fn given_a_request_when_layered_encodes_then_check_comes_before_the_inner_encode
     let inner = Arc::new(ScriptedDialect::default());
     let hooks = Arc::new(Tracing::new(&inner));
     let encoded = layered(&inner, &hooks)
-        .encode(&user_request())
+        .encode(&user_request(), &rendered_of(&user_request()))
         .expect("encoded");
     assert_eq!(
         hooks.trace(),
@@ -87,6 +87,10 @@ fn given_a_request_when_layered_encodes_then_check_comes_before_the_inner_encode
             .contains(&("x-after".to_owned(), "1".to_owned()))
     );
     assert_eq!(encoded.body(), inner.body.as_slice());
+    assert_eq!(
+        inner.seen_histories(),
+        vec![(user_request(), rendered_of(&user_request()))]
+    );
 }
 
 #[test]
@@ -95,7 +99,7 @@ fn given_a_check_error_when_layered_encodes_then_the_inner_dialect_is_not_asked(
     let mut tracing = Tracing::new(&inner);
     tracing.check_error = Some(ClientError::StructuredOutputWithToolsNotSupported);
     let hooks = Arc::new(tracing);
-    let error = layered(&inner, &hooks).encode(&user_request());
+    let error = layered(&inner, &hooks).encode(&user_request(), &rendered_of(&user_request()));
     assert_eq!(
         error,
         Err(ClientError::StructuredOutputWithToolsNotSupported)
@@ -116,7 +120,7 @@ fn given_an_inner_error_when_layered_encodes_then_it_is_returned_unchanged_and_a
         ..ScriptedDialect::default()
     });
     let hooks = Arc::new(Tracing::new(&inner));
-    let error = layered(&inner, &hooks).encode(&user_request());
+    let error = layered(&inner, &hooks).encode(&user_request(), &rendered_of(&user_request()));
     assert_eq!(error, Err(failure));
     assert_eq!(hooks.trace(), vec!["check after 0 inner encodes"]);
 }
@@ -127,7 +131,7 @@ fn given_an_after_encode_error_when_layered_encodes_then_that_error_is_the_answe
     let mut tracing = Tracing::new(&inner);
     tracing.after_error = Some(ClientError::StructuredOutputWithToolsNotSupported);
     let hooks = Arc::new(tracing);
-    let error = layered(&inner, &hooks).encode(&user_request());
+    let error = layered(&inner, &hooks).encode(&user_request(), &rendered_of(&user_request()));
     assert_eq!(
         error,
         Err(ClientError::StructuredOutputWithToolsNotSupported)
@@ -238,7 +242,7 @@ impl DialectHooks for Plain {}
 
 fn drain(decoder: &mut Box<dyn PayloadDecoder>) -> (Vec<String>, End) {
     let mut seen = Vec::new();
-    for data in ["start a text\ntext a hi", "end a\nstop end_turn"] {
+    for data in ["start a text\ntext a hi", "end a\nstop finished"] {
         let events = decoder.payload(Payload::new(None, data)).expect("events");
         seen.extend(events.iter().map(|event| format!("{event:?}")));
     }
@@ -254,7 +258,11 @@ fn given_hooks_with_every_default_when_layered_answers_then_every_answer_is_the_
     });
     let layered = Layered::new(inner.clone(), Plain);
     let request = user_request();
-    assert_eq!(layered.encode(&request), inner.encode(&request));
+    let history = rendered_of(&request);
+    assert_eq!(
+        layered.encode(&request, &history),
+        inner.encode(&request, &history)
+    );
     let body = r#"{"code":"c9"}"#;
     assert_eq!(layered.error_code(body), inner.error_code(body));
     assert_eq!(layered.error_code("{}"), inner.error_code("{}"));

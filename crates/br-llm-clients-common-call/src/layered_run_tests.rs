@@ -12,11 +12,11 @@ use crate::payload_decoder::{End, PayloadDecoder};
 use crate::provider_event::ProviderEvent;
 use crate::test_decoder::EndScript;
 use crate::test_dialect::ScriptedDialect;
-use crate::test_fixtures::{http_client, model, run_call, user_request};
+use crate::test_fixtures::{http_client, run_call, user_request};
 use crate::test_server::{TestServer, http};
 use crate::test_stream::body;
 
-const GOOD: &[&str] = &["start a text", "text a hi", "end a", "stop end_turn"];
+const GOOD: &[&str] = &["start a text", "text a hi", "end a", "stop finished"];
 
 fn inner() -> Arc<ScriptedDialect> {
     Arc::new(ScriptedDialect {
@@ -37,7 +37,6 @@ fn spec<H: DialectHooks + 'static>(hooks: H, server: &TestServer) -> crate::call
         server.endpoint("/v1/test"),
         Arc::new(br_llm_clients_common_http::NoAuthorizer),
         http_client(),
-        model(),
     )
 }
 
@@ -191,7 +190,6 @@ async fn given_hooks_with_every_default_when_run_then_the_request_id_and_the_mod
         server.endpoint("/v1/test"),
         Arc::new(br_llm_clients_common_http::NoAuthorizer),
         http_client(),
-        model(),
     );
     let (direct_report, direct_step) = run_call(&direct, &user_request()).await.into_parts();
     let (layered_report, layered_step) = run_call(&spec(Untouched, &server), &user_request())

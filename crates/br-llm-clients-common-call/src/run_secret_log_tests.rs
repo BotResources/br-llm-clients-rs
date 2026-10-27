@@ -8,7 +8,7 @@ use crate::secret_log::SecretLog;
 use crate::test_authorizer::RecordingAuthorizer;
 use crate::test_decoder::EndScript;
 use crate::test_dialect::ScriptedDialect;
-use crate::test_fixtures::{http_client, model, run_call, spec_for, user_request};
+use crate::test_fixtures::{http_client, run_call, spec_for, user_request};
 use crate::test_server::{TestServer, http};
 use crate::test_stream::{body, dialect_ending};
 
@@ -27,7 +27,6 @@ fn recording_spec(
             token: TOKEN,
         }),
         http_client(),
-        model(),
     )
     .with_secret_log(log.clone())
 }
@@ -159,7 +158,7 @@ struct RecordingSink {
 impl br_llm_clients_core::StreamSink for RecordingSink {
     fn send<'a>(
         &'a mut self,
-        _event: br_llm_messages::StreamEvent,
+        _delta: br_llm_messages::ResponseDelta,
     ) -> br_llm_clients_core::BoxFuture<'a, ()> {
         Box::pin(async move {
             self.log.record(&Secret::new(self.token).expect("token"));

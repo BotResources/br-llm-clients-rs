@@ -25,8 +25,10 @@ pub(crate) enum Op {
     Start,
     Text(String),
     Thinking(String),
-    Replay { format: ReplayFormat, text: String },
-    Json(String),
+    Signature { format: ReplayFormat, text: String },
+    RedactedData { format: ReplayFormat, text: String },
+    Structured(String),
+    Arguments(String),
     End,
 }
 
@@ -81,17 +83,17 @@ impl Block {
         matches!(
             (&self.kind, op),
             (Kind::Text, Op::Text(_))
-                | (Kind::Thinking, Op::Thinking(_) | Op::Replay { .. })
-                | (Kind::Redacted, Op::Replay { .. })
-                | (Kind::Structured, Op::Json(_))
-                | (Kind::ToolCall { .. }, Op::Json(_))
+                | (Kind::Thinking, Op::Thinking(_) | Op::Signature { .. })
+                | (Kind::Redacted, Op::RedactedData { .. })
+                | (Kind::Structured, Op::Structured(_))
+                | (Kind::ToolCall { .. }, Op::Arguments(_))
         )
     }
 
     pub(crate) fn push(&mut self, op: Op) {
         match &op {
             Op::Text(text) => self.nonblank = self.nonblank || !is_blank(text),
-            Op::Json(json) => self.json.push_str(json),
+            Op::Structured(json) | Op::Arguments(json) => self.json.push_str(json),
             Op::End => {
                 self.closed = true;
                 self.provider_closed = true;
@@ -177,7 +179,7 @@ impl Block {
         match (&self.kind, op) {
             (Kind::Text, Op::Text(text)) => !is_blank(text),
             (Kind::Thinking, Op::Thinking(text)) => !text.is_empty(),
-            (Kind::Thinking, Op::Replay { text, .. }) => !text.is_empty(),
+            (Kind::Thinking, Op::Signature { text, .. }) => !text.is_empty(),
             _ => true,
         }
     }
@@ -218,10 +220,12 @@ impl Block {
         match op {
             Op::Text(text) => cx.push(DeltaOp::text_appended(block, text)),
             Op::Thinking(text) => cx.push(DeltaOp::thinking_appended(block, text)),
-            Op::Replay { format, text } => {
+            Op::Signature { format, text } | Op::RedactedData { format, text } => {
                 cx.push(DeltaOp::replay_fragment_appended(block, format, text));
             }
-            Op::Json(fragment) => cx.push(DeltaOp::json_appended(block, fragment)),
+            Op::Structured(fragment) | Op::Arguments(fragment) => {
+                cx.push(DeltaOp::json_appended(block, fragment))
+            }
             Op::Start | Op::End => {}
         }
     }

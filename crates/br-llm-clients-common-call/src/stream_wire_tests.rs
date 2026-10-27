@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use br_llm_clients_core::ClientError;
-use br_llm_messages::StopReason;
+use br_llm_messages::ResponseEnding;
 
 use crate::test_decoder::EndScript;
 use crate::test_dialect::ScriptedDialect;
@@ -17,7 +17,7 @@ const REPLY: [&str; 6] = [
     "start a text",
     "text a hi",
     "end a",
-    "stop end_turn",
+    "stop finished",
 ];
 
 fn calm() -> Arc<ScriptedDialect> {
@@ -37,17 +37,20 @@ async fn given_a_reply_over_the_wire_when_run_then_the_outcome_holds_the_step_an
     let called = call_with(&dialect, &user_request(), body(&[&REPLY])).await;
     let (report, result) = called.outcome.into_parts();
     let step = result.expect("a step");
-    assert_eq!(step.stop_reason(), &StopReason::EndTurn);
+    assert_eq!(step.ending(), &ResponseEnding::finished());
     assert_eq!(called.requests, 1);
     assert_eq!(report.usage(), step.usage());
     assert_eq!(report.model().map(|model| model.as_str()), Some("m-1"));
     assert_eq!(
-        kinds(&called.sink.events),
+        kinds(&called.sink.deltas),
         vec![
-            "start 0 Text",
-            "text 0 \"hi\"",
-            "end 0",
-            "finish end_turn true"
+            "started",
+            "meta usage=Some(3)/Some(4)",
+            "meta model=m-1",
+            "start 1 text",
+            "text 1 \"hi\"",
+            "final 1",
+            "done Finished"
         ]
     );
 }
@@ -80,8 +83,20 @@ async fn given_a_body_that_breaks_mid_stream_when_run_then_it_is_truncated_and_t
         .into_parts();
     assert_eq!(result, Err(ClientError::StreamTruncated));
     assert_eq!(server.count(), 1);
-    assert_eq!(kinds(&sink.events), vec!["start 0 Text", "text 0 \"hi\""]);
-    assert_eq!(report.usage().map(|usage| usage.input_tokens), Some(3));
+    assert_eq!(
+        kinds(&sink.deltas),
+        vec![
+            "started",
+            "meta usage=Some(3)/Some(4)",
+            "meta model=m-1",
+            "start 1 text",
+            "text 1 \"hi\""
+        ]
+    );
+    assert_eq!(
+        report.usage().map(|usage| usage.input_tokens()),
+        Some(Some(3))
+    );
     assert_eq!(report.model().map(|model| model.as_str()), Some("m-1"));
     assert_eq!(dialect.log.ends(), 0);
 }

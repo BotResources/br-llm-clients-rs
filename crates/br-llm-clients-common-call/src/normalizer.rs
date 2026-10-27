@@ -99,18 +99,20 @@ impl Normalizer {
                 signature,
             } => self.route(
                 &key,
-                Op::Replay {
+                Op::Signature {
                     format,
                     text: signature,
                 },
                 &mut out,
             )?,
-            ProviderEvent::StructuredDelta { key, json }
-            | ProviderEvent::ToolArgumentsDelta { key, json } => {
-                self.route(&key, Op::Json(json), &mut out)?;
+            ProviderEvent::StructuredDelta { key, json } => {
+                self.route(&key, Op::Structured(json), &mut out)?;
+            }
+            ProviderEvent::ToolArgumentsDelta { key, json } => {
+                self.route(&key, Op::Arguments(json), &mut out)?;
             }
             ProviderEvent::RedactedThinkingData { key, format, data } => {
-                self.route(&key, Op::Replay { format, text: data }, &mut out)?;
+                self.route(&key, Op::RedactedData { format, text: data }, &mut out)?;
             }
         }
         Ok(out)

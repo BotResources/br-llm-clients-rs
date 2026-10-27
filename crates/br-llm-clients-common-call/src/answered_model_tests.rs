@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use br_llm_clients_common_http::{Headers, Secret};
-use br_llm_clients_core::{CallOutcome, ClientError, ClientRequest, OutputMode};
+use br_llm_clients_core::{CallOutcome, ClientError, ClientRequest, OutputMode, RenderedHistory};
 
 use crate::dialect::Dialect;
 use crate::encoded_request::EncodedRequest;
@@ -14,7 +14,7 @@ use crate::test_fixtures::{run_call, spec_for, user_request};
 use crate::test_server::{TestServer, http};
 use crate::test_stream::{body, dialect_ending};
 
-const GOOD: &[&str] = &["start a text", "text a hi", "end a", "stop end_turn"];
+const GOOD: &[&str] = &["start a text", "text a hi", "end a", "stop finished"];
 
 fn answering(header: &'static str) -> Arc<ScriptedDialect> {
     Arc::new(ScriptedDialect {
@@ -38,7 +38,6 @@ async fn call(
         server.endpoint("/v1/test"),
         Arc::new(br_llm_clients_common_http::NoAuthorizer),
         crate::test_fixtures::http_client(),
-        crate::test_fixtures::model(),
     );
     if let Some(secret) = secret {
         spec = spec.with_secrets(vec![Secret::new(secret).expect("secret")]);
@@ -48,7 +47,7 @@ async fn call(
 
 fn model_of(outcome: CallOutcome) -> (Option<String>, Option<String>) {
     let (report, result) = outcome.into_parts();
-    let step = result.ok().and_then(|step| step.model().cloned());
+    let step = result.ok().and_then(|response| response.model().cloned());
     (
         step.map(|model| model.as_str().to_owned()),
         report.model().map(|model| model.as_str().to_owned()),
@@ -56,7 +55,7 @@ fn model_of(outcome: CallOutcome) -> (Option<String>, Option<String>) {
 }
 
 #[tokio::test]
-async fn given_a_valid_answered_model_when_the_reply_has_no_model_event_then_step_and_report_hold_it()
+async fn given_a_valid_answered_model_when_the_reply_has_no_model_event_then_response_and_report_hold_it()
  {
     let outcome = call(
         answering("x-model"),
@@ -109,7 +108,7 @@ async fn given_an_answered_model_and_a_model_event_when_the_reply_ends_then_the_
         "start a text",
         "text a hi",
         "end a",
-        "stop end_turn",
+        "stop finished",
     ];
     let outcome = call(
         answering("x-model"),
@@ -137,7 +136,7 @@ async fn given_an_answered_model_that_is_not_valid_when_run_then_it_is_absent_an
         ..ScriptedDialect::default()
     });
     let outcome = call(dialect, "200 OK", &[], GOOD, None).await;
-    assert_eq!(model_of(outcome), (Some("test-model".to_owned()), None));
+    assert_eq!(model_of(outcome), (None, None));
 }
 
 #[tokio::test]
@@ -152,7 +151,7 @@ async fn given_an_answered_model_with_a_secret_in_it_when_run_then_it_is_absent_
         Some("sk-live-9"),
     )
     .await;
-    assert_eq!(model_of(outcome), (Some("test-model".to_owned()), None));
+    assert_eq!(model_of(outcome), (None, None));
     let refused = call(
         answering("x-model"),
         "500 Bad",
@@ -175,14 +174,18 @@ async fn given_an_answered_model_equal_to_a_secret_recorded_in_the_log_when_run_
     log.record(&Secret::new("tok-logged").expect("secret"));
     let spec = spec_for(&dialect, server.endpoint("/v1/test")).with_secret_log(log);
     let outcome = run_call(&spec, &user_request()).await;
-    assert_eq!(model_of(outcome), (Some("test-model".to_owned()), None));
+    assert_eq!(model_of(outcome), (None, None));
 }
 
 struct Bare(Arc<ScriptedDialect>);
 
 impl Dialect for Bare {
-    fn encode(&self, request: &ClientRequest) -> Result<EncodedRequest, ClientError> {
-        self.0.encode(request)
+    fn encode(
+        &self,
+        request: &ClientRequest,
+        history: &RenderedHistory,
+    ) -> Result<EncodedRequest, ClientError> {
+        self.0.encode(request, history)
     }
 
     fn decoder(&self, output: &OutputMode) -> Box<dyn PayloadDecoder> {
@@ -207,5 +210,5 @@ async fn given_a_dialect_that_does_not_implement_the_method_when_run_then_the_mo
 {
     let bare = Arc::new(Bare(dialect_ending(EndScript::Events(Vec::new()))));
     let outcome = call(bare, "200 OK", &[("x-model", "gw-model")], GOOD, None).await;
-    assert_eq!(model_of(outcome), (Some("test-model".to_owned()), None));
+    assert_eq!(model_of(outcome), (None, None));
 }

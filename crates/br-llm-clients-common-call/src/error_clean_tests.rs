@@ -1,6 +1,6 @@
 use br_llm_clients_common_http::Secret;
 use br_llm_clients_core::{ClientError, LimitKind, ReasoningLevel};
-use br_llm_messages::{ImageMime, ToolName};
+use br_llm_messages::{MediaType, ToolName};
 
 use crate::error_clean::clean_error;
 use crate::text_clean::Secrets;
@@ -106,7 +106,7 @@ fn given_cases_without_a_text_when_cleaned_then_they_are_unchanged() {
             retry_after: Some(std::time::Duration::from_secs(3)),
         },
         ClientError::ImageMediaTypeNotSupported {
-            media_type: ImageMime::Gif,
+            media_type: MediaType::Gif,
         },
     ];
     for error in errors {

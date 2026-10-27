@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use br_llm_clients_common_http::Headers;
-use br_llm_clients_core::{ClientError, ClientRequest, OutputMode};
+use br_llm_clients_core::{ClientError, ClientRequest, OutputMode, RenderedHistory};
 
 use crate::dialect::Dialect;
 use crate::encoded_request::EncodedRequest;
@@ -25,6 +25,7 @@ pub(crate) struct ScriptedDialect {
     pub(crate) seen_infos: Mutex<Vec<ErrorInfo>>,
     pub(crate) log: Arc<DecoderLog>,
     pub(crate) seen_modes: Mutex<Vec<OutputMode>>,
+    pub(crate) seen_histories: Mutex<Vec<(ClientRequest, RenderedHistory)>>,
     pub(crate) end: EndScript,
 }
 
@@ -42,6 +43,7 @@ impl Default for ScriptedDialect {
             seen_infos: Mutex::new(Vec::new()),
             log: Arc::new(DecoderLog::default()),
             seen_modes: Mutex::new(Vec::new()),
+            seen_histories: Mutex::new(Vec::new()),
             end: EndScript::Events(Vec::new()),
         }
     }
@@ -60,14 +62,26 @@ impl ScriptedDialect {
         self.seen_modes.lock().expect("seen").clone()
     }
 
+    pub(crate) fn seen_histories(&self) -> Vec<(ClientRequest, RenderedHistory)> {
+        self.seen_histories.lock().expect("seen").clone()
+    }
+
     pub(crate) fn seen_infos(&self) -> Vec<ErrorInfo> {
         self.seen_infos.lock().expect("seen").clone()
     }
 }
 
 impl Dialect for ScriptedDialect {
-    fn encode(&self, _request: &ClientRequest) -> Result<EncodedRequest, ClientError> {
+    fn encode(
+        &self,
+        request: &ClientRequest,
+        history: &RenderedHistory,
+    ) -> Result<EncodedRequest, ClientError> {
         self.encode_calls.fetch_add(1, Ordering::SeqCst);
+        self.seen_histories
+            .lock()
+            .expect("seen")
+            .push((request.clone(), history.clone()));
         if let Some(error) = &self.encode_error {
             return Err(error.clone());
         }

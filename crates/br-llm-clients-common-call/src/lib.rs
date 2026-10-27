@@ -49,7 +49,6 @@ pub use payload_decoder::{End, PayloadDecoder};
 pub use provider_event::{ProviderBlock, ProviderEvent};
 pub use run::run;
 pub use secret_log::SecretLog;
-
 #[cfg(test)]
 mod answered_model_tests;
 #[cfg(test)]
@@ -78,6 +77,8 @@ mod normalizer_ids_tests;
 mod normalizer_order_tests;
 #[cfg(test)]
 mod normalizer_rules_tests;
+#[cfg(test)]
+mod normalizer_thinking_tests;
 #[cfg(test)]
 mod outcome_tests;
 #[cfg(test)]
@@ -111,6 +112,8 @@ mod stream_failure_tests;
 #[cfg(test)]
 mod stream_finish_tests;
 #[cfg(test)]
+mod stream_ids_tests;
+#[cfg(test)]
 mod stream_report_tests;
 #[cfg(test)]
 mod stream_split_tests;
@@ -124,6 +127,8 @@ mod test_decoder;
 mod test_dialect;
 #[cfg(test)]
 mod test_fixtures;
+#[cfg(test)]
+mod test_ids;
 #[cfg(test)]
 mod test_normalize;
 #[cfg(test)]
