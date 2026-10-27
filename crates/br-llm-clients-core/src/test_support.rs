@@ -1,8 +1,11 @@
 use std::future::Future;
 use std::task::{Context, Poll, Waker};
 
-use br_llm_messages::{AssistantBlock, Step, StopReason, Text, ToolCallId, ToolName, Usage};
+use br_llm_messages::{
+    ContentBlock, ModelResponse, PlainText, ResponseEnding, ResponseMetadata, ToolName, Usage,
+};
 
+use crate::thread_fixtures::{block_id, entry_id};
 use crate::{Parameter, ParameterKind, Parameters, ToolSpec};
 
 pub(crate) fn block_on<F: Future>(future: F) -> F::Output {
@@ -27,28 +30,25 @@ pub(crate) fn tool(name: &str) -> ToolSpec {
     ToolSpec::new(ToolName::new(name).unwrap(), "", Parameters::default()).unwrap()
 }
 
-pub(crate) fn text(value: &str) -> Text {
-    Text::new(value).unwrap()
+pub(crate) fn plain_text(value: &str) -> PlainText {
+    PlainText::new(value).unwrap()
 }
 
-pub(crate) fn call_id(value: &str) -> ToolCallId {
-    ToolCallId::new(value).unwrap()
-}
-
-pub(crate) fn text_step(value: &str, usage: Option<Usage>) -> Step {
-    Step::new(
-        vec![AssistantBlock::Text { text: text(value) }],
-        StopReason::EndTurn,
-        usage,
-        None,
+pub(crate) fn text_response(value: &str, usage: Option<Usage>) -> ModelResponse {
+    let block = br_llm_messages::TextBlock::new(block_id(), value).unwrap();
+    let metadata = match usage {
+        Some(usage) => ResponseMetadata::new().with_usage(usage),
+        None => ResponseMetadata::new(),
+    };
+    ModelResponse::new(
+        entry_id(),
+        vec![ContentBlock::Text(block)],
+        ResponseEnding::finished(),
+        metadata,
     )
     .unwrap()
 }
 
 pub(crate) fn usage(input: u64, output: u64) -> Usage {
-    Usage {
-        input_tokens: input,
-        output_tokens: output,
-        ..Usage::default()
-    }
+    Usage::of_input_tokens(input).with_output_tokens(output)
 }

@@ -6,7 +6,7 @@
     clippy::panic
 )]
 
-use br_llm_messages::ImageMime;
+use br_llm_messages::MediaType;
 
 use crate::accepted::Accepted;
 use crate::capabilities_error::CapabilitiesError;
@@ -50,7 +50,7 @@ impl Capabilities {
         &self.spec.reasoning_levels
     }
 
-    pub fn image_media_types(&self) -> &Accepted<ImageMime> {
+    pub fn image_media_types(&self) -> &Accepted<MediaType> {
         &self.spec.image_media_types
     }
 

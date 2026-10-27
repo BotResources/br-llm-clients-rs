@@ -1,19 +1,35 @@
-use br_llm_messages::Text;
+use br_llm_messages::PlainText;
 
 use crate::build_error::BuildError;
 use crate::tool::{Parameters, check_depth};
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+#[serde(tag = "type", rename_all = "snake_case", from = "RawOutputMode")]
 pub enum OutputMode {
     Plain,
     Structured(StructuredShape),
 }
 
+#[derive(serde::Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+enum RawOutputMode {
+    Plain {},
+    Structured(StructuredShape),
+}
+
+impl From<RawOutputMode> for OutputMode {
+    fn from(raw: RawOutputMode) -> Self {
+        match raw {
+            RawOutputMode::Plain {} => OutputMode::Plain,
+            RawOutputMode::Structured(shape) => OutputMode::Structured(shape),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(try_from = "RawStructuredShape")]
 pub struct StructuredShape {
-    name: Text,
+    name: PlainText,
     #[serde(skip_serializing_if = "Option::is_none")]
     description: Option<String>,
     parameters: Parameters,
@@ -42,7 +58,7 @@ impl StructuredShape {
         description: Option<String>,
         parameters: Parameters,
     ) -> Result<Self, BuildError> {
-        let name = Text::new(name).map_err(|_| BuildError::BlankShapeName)?;
+        let name = PlainText::new(name).map_err(|_| BuildError::BlankShapeName)?;
         check_depth(&parameters)?;
         Ok(Self {
             name,

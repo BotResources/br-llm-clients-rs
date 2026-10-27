@@ -1,7 +1,7 @@
-use br_llm_messages::StreamEvent;
+use br_llm_messages::ResponseDelta;
 
 use crate::client::BoxFuture;
 
 pub trait StreamSink: Send {
-    fn send<'a>(&'a mut self, event: StreamEvent) -> BoxFuture<'a, ()>;
+    fn send<'a>(&'a mut self, delta: ResponseDelta) -> BoxFuture<'a, ()>;
 }

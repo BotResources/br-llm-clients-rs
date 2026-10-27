@@ -2,7 +2,7 @@ use br_llm_messages::ToolName;
 
 use super::*;
 use crate::build_error::BuildError;
-use crate::test_support::{parameters, scalar};
+use crate::test_support::{parameters, scalar, tool};
 
 #[test]
 fn given_a_tool_without_parameters_when_built_then_accepted() {
@@ -68,4 +68,13 @@ fn given_a_stored_tool_whose_name_br_llm_messages_refuses_when_loaded_then_refus
             "{name} loaded"
         );
     }
+}
+
+#[test]
+fn given_a_tool_when_stored_then_the_name_is_a_bare_string() {
+    let json = serde_json::to_value(tool("search")).unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!({ "name": "search", "description": "", "parameters": [] })
+    );
 }

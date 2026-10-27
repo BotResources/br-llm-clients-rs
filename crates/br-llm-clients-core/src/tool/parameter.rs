@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use br_llm_messages::Text;
+use br_llm_messages::PlainText;
 
 use super::{Parameters, check_kind_depth, is_blank};
 use crate::build_error::BuildError;
@@ -28,10 +28,10 @@ pub enum ParameterKind {
 #[derive(serde::Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 enum RawParameterKind {
-    String,
-    Number,
-    Integer,
-    Boolean,
+    String {},
+    Number {},
+    Integer {},
+    Boolean {},
     Enum { values: Vec<String> },
     Array { items: Box<ParameterKind> },
     Object { parameters: Parameters },
@@ -42,10 +42,10 @@ impl TryFrom<RawParameterKind> for ParameterKind {
 
     fn try_from(raw: RawParameterKind) -> Result<Self, Self::Error> {
         let kind = match raw {
-            RawParameterKind::String => ParameterKind::String,
-            RawParameterKind::Number => ParameterKind::Number,
-            RawParameterKind::Integer => ParameterKind::Integer,
-            RawParameterKind::Boolean => ParameterKind::Boolean,
+            RawParameterKind::String {} => ParameterKind::String,
+            RawParameterKind::Number {} => ParameterKind::Number,
+            RawParameterKind::Integer {} => ParameterKind::Integer,
+            RawParameterKind::Boolean {} => ParameterKind::Boolean,
             RawParameterKind::Enum { values } => ParameterKind::Enum { values },
             RawParameterKind::Array { items } => ParameterKind::Array { items },
             RawParameterKind::Object { parameters } => ParameterKind::Object { parameters },
@@ -59,7 +59,7 @@ impl TryFrom<RawParameterKind> for ParameterKind {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(try_from = "RawParameter")]
 pub struct Parameter {
-    name: Text,
+    name: PlainText,
     description: String,
     required: bool,
     kind: ParameterKind,
@@ -91,7 +91,7 @@ impl Parameter {
         required: bool,
         kind: ParameterKind,
     ) -> Result<Self, BuildError> {
-        let name = Text::new(name).map_err(|_| BuildError::BlankParameterName)?;
+        let name = PlainText::new(name).map_err(|_| BuildError::BlankParameterName)?;
         check_kind(name.as_str(), &kind)?;
         Ok(Self {
             name,

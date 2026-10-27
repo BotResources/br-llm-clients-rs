@@ -1,4 +1,4 @@
-use br_llm_messages::ImageMime;
+use br_llm_messages::MediaType;
 
 use crate::capabilities_test_support::{AmbiguousIfDefault, assert_plain_data};
 use crate::{Accepted, ReasoningLevel};
@@ -47,7 +47,7 @@ fn given_the_forms_when_asked_if_empty_then_only_an_empty_only_is_an_empty_set()
 fn given_an_accepted_when_compiled_then_it_is_plain_data() {
     assert_plain_data::<Accepted<Colour>>();
     assert_plain_data::<Accepted<ReasoningLevel>>();
-    assert_plain_data::<Accepted<ImageMime>>();
+    assert_plain_data::<Accepted<MediaType>>();
 }
 
 #[test]

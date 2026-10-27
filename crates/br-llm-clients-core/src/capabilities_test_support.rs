@@ -1,9 +1,7 @@
-use br_llm_messages::{
-    AssistantBlock, Base64Data, Image, ImageMime, ModelId, ToolCallId, ToolName, ToolResult,
-    ToolResultBlock, WireMessage, WireUserBlock,
-};
+use br_llm_messages::{MediaType, ModelName, ProjectedThread};
 
-use crate::test_support::{text, tool};
+use crate::test_support::tool;
+use crate::thread_fixtures::{entry_id, human_thread, plain_images, text_block, turn_id};
 use crate::{
     CacheRequirement, Capabilities, CapabilitiesSpec, ClientError, ClientRequest, ClientSettings,
     MaxOutputTokens, OutputMode, Parameters, ReasoningLevel, StructuredShape, ToolSpec,
@@ -36,11 +34,11 @@ fn given_every_reasoning_level_when_listed_then_all_levels_holds_it_at_its_posit
     }
 }
 
-pub(crate) const ALL_MIMES: [ImageMime; 4] = [
-    ImageMime::Jpeg,
-    ImageMime::Png,
-    ImageMime::Gif,
-    ImageMime::Webp,
+pub(crate) const ALL_MEDIA_TYPES: [MediaType; 4] = [
+    MediaType::Jpeg,
+    MediaType::Png,
+    MediaType::Gif,
+    MediaType::Webp,
 ];
 
 pub(crate) const MODEL_NAME: &str = "model-x";
@@ -51,7 +49,7 @@ pub(crate) fn settings(
     tokens: u32,
 ) -> ClientSettings {
     ClientSettings::new(
-        ModelId::new(MODEL_NAME).unwrap(),
+        ModelName::new(MODEL_NAME).unwrap(),
         level,
         cache,
         MaxOutputTokens::new(tokens).unwrap(),
@@ -60,42 +58,6 @@ pub(crate) fn settings(
 
 pub(crate) fn plain_settings() -> ClientSettings {
     settings(ReasoningLevel::Off, CacheRequirement::NotRequired, 1000)
-}
-
-pub(crate) fn user_text(value: &str) -> WireMessage {
-    WireMessage::User {
-        content: vec![WireUserBlock::Text { text: text(value) }],
-    }
-}
-
-pub(crate) fn assistant_text(value: &str) -> WireMessage {
-    WireMessage::Assistant {
-        content: vec![AssistantBlock::Text { text: text(value) }],
-    }
-}
-
-pub(crate) fn image_block(mime: ImageMime) -> WireUserBlock {
-    WireUserBlock::Image(Image {
-        mime,
-        data: Base64Data::new("aGVsbG8=").unwrap(),
-    })
-}
-
-pub(crate) fn user_images(mimes: &[ImageMime]) -> WireMessage {
-    WireMessage::User {
-        content: mimes.iter().map(|mime| image_block(*mime)).collect(),
-    }
-}
-
-pub(crate) fn user_result_message(id: &str) -> WireMessage {
-    WireMessage::User {
-        content: vec![WireUserBlock::ToolResult(ToolResult::new(
-            ToolCallId::new(id).unwrap(),
-            ToolName::new("search").unwrap(),
-            vec![ToolResultBlock::text(text("found"))],
-            false,
-        ))],
-    }
 }
 
 pub(crate) fn shape() -> OutputMode {
@@ -107,19 +69,25 @@ pub(crate) fn one_tool() -> Vec<ToolSpec> {
 }
 
 pub(crate) fn request_of(
-    messages: Vec<WireMessage>,
+    history: ProjectedThread,
     tools: Vec<ToolSpec>,
     output: OutputMode,
 ) -> ClientRequest {
-    ClientRequest::new(None, messages, tools, output).unwrap()
+    ClientRequest::new(None, history, turn_id(), entry_id(), tools, output).unwrap()
+}
+
+pub(crate) fn hi_request(tools: Vec<ToolSpec>, output: OutputMode) -> ClientRequest {
+    request_of(human_thread(vec![text_block("hi")]), tools, output)
 }
 
 pub(crate) fn plain_request() -> ClientRequest {
-    request_of(vec![user_text("hello")], vec![], OutputMode::Plain)
+    hi_request(vec![], OutputMode::Plain)
 }
 
-pub(crate) fn image_request(mimes: &[ImageMime]) -> ClientRequest {
-    request_of(vec![user_images(mimes)], vec![], OutputMode::Plain)
+pub(crate) fn image_request(media_types: &[MediaType]) -> ClientRequest {
+    let mut content = vec![text_block("see")];
+    content.extend(plain_images(media_types));
+    request_of(human_thread(content), vec![], OutputMode::Plain)
 }
 
 pub(crate) fn caps_with(change: impl FnOnce(&mut CapabilitiesSpec)) -> Capabilities {
@@ -182,7 +150,7 @@ pub(crate) struct CallShape {
     pub(crate) tokens: u32,
     pub(crate) tools: bool,
     pub(crate) structured: bool,
-    pub(crate) image: Option<ImageMime>,
+    pub(crate) image: Option<MediaType>,
 }
 
 impl CallShape {
@@ -208,10 +176,14 @@ impl CallShape {
             OutputMode::Plain
         };
         let tools = if self.tools { one_tool() } else { vec![] };
-        let messages = match self.image {
-            Some(mime) => vec![user_text("see"), user_images(&[mime])],
-            None => vec![user_text("hello")],
+        let thread = match self.image {
+            Some(media_type) => human_thread({
+                let mut content = vec![text_block("see")];
+                content.extend(plain_images(&[media_type]));
+                content
+            }),
+            None => human_thread(vec![text_block("hello")]),
         };
-        request_of(messages, tools, output)
+        request_of(thread, tools, output)
     }
 }

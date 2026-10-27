@@ -1,7 +1,8 @@
-use br_llm_messages::ImageMime;
+use br_llm_messages::MediaType;
 
 use crate::capabilities_test_support::{
-    ALL_MIMES, AmbiguousIfDefault, assert_plain_data, caps_with, image_request, plain_settings,
+    ALL_MEDIA_TYPES, AmbiguousIfDefault, assert_plain_data, caps_with, image_request,
+    plain_settings,
 };
 use crate::{
     Accepted, Capabilities, CapabilitiesError, CapabilitiesSpec, ClientError, MaxOutputTokens,
@@ -21,12 +22,12 @@ fn level_sets() -> Vec<Accepted<ReasoningLevel>> {
     ]
 }
 
-fn media_sets() -> Vec<Accepted<ImageMime>> {
+fn media_sets() -> Vec<Accepted<MediaType>> {
     vec![
         Accepted::Any,
         Accepted::Only(Vec::new()),
-        Accepted::Only(vec![ImageMime::Png]),
-        Accepted::Only(vec![ImageMime::Png, ImageMime::Gif]),
+        Accepted::Only(vec![MediaType::Png]),
+        Accepted::Only(vec![MediaType::Png, MediaType::Gif]),
     ]
 }
 
@@ -120,10 +121,10 @@ fn given_the_three_images_cases_when_normalized_then_only_images_with_an_empty_o
     let cases = [
         (true, Accepted::Any, true),
         (true, Accepted::Only(Vec::new()), false),
-        (true, Accepted::Only(vec![ImageMime::Png]), true),
+        (true, Accepted::Only(vec![MediaType::Png]), true),
         (false, Accepted::Any, false),
         (false, Accepted::Only(Vec::new()), false),
-        (false, Accepted::Only(vec![ImageMime::Png]), false),
+        (false, Accepted::Only(vec![MediaType::Png]), false),
     ];
     for (images, media, expected_images) in cases {
         let capabilities = Capabilities::normalized(CapabilitiesSpec {
@@ -141,7 +142,7 @@ fn given_a_normalized_inconsistent_spec_when_a_call_holds_an_image_then_it_is_re
  {
     let capabilities = caps_with(|spec| spec.image_media_types = Accepted::Only(Vec::new()));
     assert_eq!(
-        capabilities.check(&plain_settings(), &image_request(&[ImageMime::Png])),
+        capabilities.check(&plain_settings(), &image_request(&[MediaType::Png])),
         Err(ClientError::ImageNotSupported)
     );
 }
@@ -237,7 +238,7 @@ fn given_a_capabilities_when_compiled_then_it_has_no_default_value() {
 #[test]
 fn given_the_image_media_types_when_all_are_listed_then_new_accepts_a_spec_that_takes_images() {
     let spec = CapabilitiesSpec {
-        image_media_types: Accepted::Only(ALL_MIMES.to_vec()),
+        image_media_types: Accepted::Only(ALL_MEDIA_TYPES.to_vec()),
         ..CapabilitiesSpec::everything()
     };
     assert!(Capabilities::new(spec).is_ok());

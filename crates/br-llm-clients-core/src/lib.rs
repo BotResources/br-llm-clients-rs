@@ -2,6 +2,7 @@ mod accepted;
 mod build_error;
 mod cache;
 mod call_outcome;
+mod call_outcome_stored;
 mod call_report;
 mod capabilities;
 mod capabilities_check;
@@ -10,12 +11,16 @@ mod capabilities_error;
 mod capabilities_spec;
 mod client;
 mod client_error;
+mod client_error_raw;
 mod client_request;
 mod client_settings;
+mod duration;
+mod id_source;
 mod max_output_tokens;
-mod message_rules;
 mod output_mode;
+mod raw;
 mod reasoning;
+mod render;
 mod schema;
 mod sink;
 mod tool;
@@ -23,13 +28,23 @@ mod tool;
 #[cfg(test)]
 mod accepted_tests;
 #[cfg(test)]
+mod call_outcome_refusal_tests;
+#[cfg(test)]
+mod call_outcome_stored_tests;
+#[cfg(test)]
 mod call_outcome_tests;
 #[cfg(test)]
 mod capabilities_check_grid_tests;
 #[cfg(test)]
 mod capabilities_check_images_tests;
 #[cfg(test)]
+mod capabilities_check_incoming_in_ai_turn_tests;
+#[cfg(test)]
+mod capabilities_check_notice_tests;
+#[cfg(test)]
 mod capabilities_check_order_tests;
+#[cfg(test)]
+mod capabilities_check_reading_tests;
 #[cfg(test)]
 mod capabilities_check_tests;
 #[cfg(test)]
@@ -41,6 +56,10 @@ mod capabilities_test_support;
 #[cfg(test)]
 mod capabilities_tests;
 #[cfg(test)]
+mod client_error_mirror_tests;
+#[cfg(test)]
+mod client_error_stored_tests;
+#[cfg(test)]
 mod client_error_tests;
 #[cfg(test)]
 mod client_request_tests;
@@ -49,9 +68,17 @@ mod client_settings_tests;
 #[cfg(test)]
 mod client_trait_tests;
 #[cfg(test)]
-mod message_rules_tests;
+mod duration_tests;
+#[cfg(test)]
+mod id_source_tests;
+#[cfg(test)]
+mod stored_schema_first_tests;
 #[cfg(test)]
 mod test_support;
+#[cfg(test)]
+mod thread_fixtures;
+#[cfg(test)]
+mod trait_set_tests;
 
 pub use accepted::Accepted;
 pub use build_error::BuildError;
@@ -65,9 +92,14 @@ pub use client::{BoxFuture, Client};
 pub use client_error::{ClientError, LimitKind};
 pub use client_request::ClientRequest;
 pub use client_settings::ClientSettings;
+pub use id_source::{DefaultIdSource, IdSource};
 pub use max_output_tokens::MaxOutputTokens;
 pub use output_mode::{OutputMode, StructuredShape};
 pub use reasoning::ReasoningLevel;
+pub use render::{
+    RenderedHistory, RenderedMessage, RenderedPart, RenderedResultPart, RenderedRole,
+    render_history,
+};
 pub use schema::SCHEMA_VERSION;
 pub use sink::StreamSink;
 pub use tool::{MAX_NESTING_DEPTH, Parameter, ParameterKind, Parameters, ToolSpec};

@@ -1,14 +1,14 @@
-use br_llm_messages::ModelId;
+use br_llm_messages::ModelName;
 
 use crate::cache::CacheRequirement;
 use crate::max_output_tokens::MaxOutputTokens;
 use crate::reasoning::ReasoningLevel;
 use crate::schema::{self, LoadError};
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(try_from = "StoredClientSettings", into = "StoredClientSettings")]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(into = "StoredClientSettings")]
 pub struct ClientSettings {
-    model: ModelId,
+    model: ModelName,
     reasoning: ReasoningLevel,
     cache: CacheRequirement,
     max_output_tokens: MaxOutputTokens,
@@ -18,7 +18,7 @@ pub struct ClientSettings {
 #[serde(deny_unknown_fields)]
 struct StoredClientSettings {
     schema: String,
-    model: ModelId,
+    model: ModelName,
     reasoning: ReasoningLevel,
     cache: CacheRequirement,
     max_output_tokens: MaxOutputTokens,
@@ -38,10 +38,19 @@ impl TryFrom<StoredClientSettings> for ClientSettings {
     }
 }
 
+impl<'de> serde::Deserialize<'de> for ClientSettings {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error;
+        let raw = schema::checked_first(deserializer)?;
+        let stored = StoredClientSettings::deserialize(raw).map_err(D::Error::custom)?;
+        Self::try_from(stored).map_err(D::Error::custom)
+    }
+}
+
 impl From<ClientSettings> for StoredClientSettings {
     fn from(settings: ClientSettings) -> Self {
         Self {
-            schema: schema::current(),
+            schema: schema::SCHEMA_VERSION.to_owned(),
             model: settings.model,
             reasoning: settings.reasoning,
             cache: settings.cache,
@@ -52,7 +61,7 @@ impl From<ClientSettings> for StoredClientSettings {
 
 impl ClientSettings {
     pub fn new(
-        model: ModelId,
+        model: ModelName,
         reasoning: ReasoningLevel,
         cache: CacheRequirement,
         max_output_tokens: MaxOutputTokens,
@@ -65,7 +74,7 @@ impl ClientSettings {
         }
     }
 
-    pub fn model(&self) -> &ModelId {
+    pub fn model(&self) -> &ModelName {
         &self.model
     }
 
