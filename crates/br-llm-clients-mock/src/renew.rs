@@ -1,20 +1,32 @@
 use br_llm_clients_core::IdSource;
 use br_llm_messages::{
-    BlockId, Citation, CitationId, ContentBlock, EntryId, ImageBlock, ModelResponse, PlainBlock,
-    ProviderToolCall, ProviderToolExecutionRecord, ProviderToolResult, RedactedThinkingBlock,
-    RuntimeToolCall, StructuredBlock, TextBlock, ThinkingBlock,
+    BlockId, Citation, CitationId, ContentBlock, EntryId, Error, ErrorCode, ImageBlock,
+    ModelResponse, PlainBlock, ProviderToolCall, ProviderToolExecutionRecord, ProviderToolResult,
+    RedactedThinkingBlock, RuntimeToolCall, StructuredBlock, TextBlock, ThinkingBlock,
 };
 
 use crate::derive_deltas::corrected_ending;
 use crate::renew_calls::Calls;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Collision;
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum RenewError {
+    Collision,
+    Inconsistent(Error),
+}
 
-pub(crate) type Renewed<T> = Result<T, Collision>;
+impl From<Error> for RenewError {
+    fn from(error: Error) -> Self {
+        match error.code() {
+            ErrorCode::ReusedIdentity => RenewError::Collision,
+            _ => RenewError::Inconsistent(error),
+        }
+    }
+}
 
-pub(crate) fn collide<T, E>(result: Result<T, E>) -> Renewed<T> {
-    result.map_err(|_| Collision)
+pub(crate) type Renewed<T> = Result<T, RenewError>;
+
+pub(crate) fn collide<T>(result: Result<T, Error>) -> Renewed<T> {
+    result.map_err(RenewError::from)
 }
 
 pub(crate) fn renew(

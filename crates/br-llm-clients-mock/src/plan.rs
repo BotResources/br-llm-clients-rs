@@ -7,7 +7,7 @@ use crate::codes;
 use crate::derive_deltas::derive_response_deltas;
 use crate::gate::Gate;
 use crate::outcomes;
-use crate::renew::renew;
+use crate::renew::{RenewError, renew};
 use crate::reply::{Reply, Shape};
 use crate::report_values::ReportValues;
 use crate::response_check;
@@ -40,7 +40,10 @@ fn renewed(
         call.request.reply_entry(),
         response,
     )
-    .map_err(|_| collision())
+    .map_err(|error| match error {
+        RenewError::Collision => collision(),
+        RenewError::Inconsistent(cause) => internal(&cause),
+    })
 }
 
 fn derived(
