@@ -94,6 +94,8 @@ fn given_a_source_at_the_last_distinct_number_when_asked_then_it_gives_it_and_th
     let source = SequentialIdSource::starting_at(LAST_NUMBER - 1);
     let last = source.next_block_id();
     assert_eq!(uuid_of(last), identity_uuid(LAST_NUMBER - 1));
+    assert_eq!(uuid_of(last).get_version_num(), 7);
+    assert_eq!(uuid_of(last).as_bytes()[8] & 0xC0, 0x80);
     let again = std::panic::catch_unwind(|| source.next_block_id());
     assert!(again.is_err());
     assert_eq!(source.given(), 1);
