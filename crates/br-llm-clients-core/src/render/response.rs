@@ -1,6 +1,7 @@
 use br_llm_messages::{ContentBlock, ModelResponse, RuntimeToolCall};
 
 use super::calls::CallTable;
+use super::content;
 use super::refusal::invalid;
 use super::types::RenderedPart;
 use crate::client_error::ClientError;
@@ -22,13 +23,7 @@ pub(super) fn parts(
             }
             ContentBlock::Image(image) => parts.push(RenderedPart::Image(image.clone())),
             ContentBlock::StructuredContent(structured) => {
-                let json = structured.value().to_json_string().map_err(|_| {
-                    invalid(format!(
-                        "structured block {} cannot be written as JSON",
-                        structured.id()
-                    ))
-                })?;
-                parts.push(RenderedPart::Text(json));
+                parts.push(RenderedPart::Text(content::structured_json(structured)?));
             }
             ContentBlock::Thinking(_)
             | ContentBlock::RedactedThinking(_)
