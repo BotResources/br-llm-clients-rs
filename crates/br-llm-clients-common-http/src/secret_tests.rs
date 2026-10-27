@@ -86,3 +86,28 @@ fn given_a_text_cleaned_by_the_second_barrier_when_asked_then_the_secret_no_long
     assert!(secret.appears_in(text));
     assert!(!secret.appears_in(&cleaned));
 }
+
+#[test]
+fn given_any_text_when_asked_then_the_secret_appears_exactly_when_the_second_barrier_changes_it() {
+    let secret = Secret::new("sk-abc+/=").expect("secret");
+    let redactor = crate::redact::Redactor::new([secret.expose()]);
+    let texts = [
+        "sk-abc+/=",
+        "bad header sk-abc+/= here",
+        "sk-abc+/=sk-abc+/=",
+        "sk-abc",
+        "k-abc+/=",
+        "SK-ABC+/=",
+        "sk-abc%2B%2F%3D",
+        "c2stYWJjKy89",
+        "sk- abc+/=",
+        "",
+    ];
+    for text in texts {
+        assert_eq!(
+            secret.appears_in(text),
+            redactor.clean(text) != text,
+            "{text:?}"
+        );
+    }
+}

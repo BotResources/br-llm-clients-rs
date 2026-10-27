@@ -172,3 +172,21 @@ fn given_a_query_when_formatting_then_display_and_debug_still_hide_it() {
     assert!(!format!("{endpoint:?}").contains("secret"));
     assert_eq!(format!("{endpoint}"), "https://h:8443/p");
 }
+
+#[test]
+fn given_an_endpoint_with_a_port_when_debugging_then_the_text_is_the_fixed_one_without_the_query() {
+    let endpoint = https("https://Api.Example.COM:8443/v1/p?secret=1");
+    assert_eq!(
+        format!("{endpoint:?}"),
+        r#"Endpoint { scheme: "https", host: "Api.Example.COM", port: Some(8443), path: "/v1/p" }"#
+    );
+}
+
+#[test]
+fn given_an_endpoint_without_a_port_when_debugging_then_the_port_is_the_raw_none() {
+    let endpoint = plain("http://h/p?secret=1");
+    assert_eq!(
+        format!("{endpoint:?}"),
+        r#"Endpoint { scheme: "http", host: "h", port: None, path: "/p" }"#
+    );
+}
