@@ -14,6 +14,7 @@ mod client_error;
 mod client_error_raw;
 mod client_request;
 mod client_settings;
+mod duration;
 mod id_source;
 mod max_output_tokens;
 mod output_mode;
@@ -62,6 +63,8 @@ mod client_request_tests;
 mod client_settings_tests;
 #[cfg(test)]
 mod client_trait_tests;
+#[cfg(test)]
+mod duration_tests;
 #[cfg(test)]
 mod id_source_tests;
 #[cfg(test)]

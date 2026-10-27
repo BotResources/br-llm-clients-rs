@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use br_llm_messages::{ModelName, Usage};
 
+use crate::duration::{duration, present_duration};
 use crate::schema::present;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -28,9 +29,10 @@ pub struct CallReport {
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
+        deserialize_with = "present_duration"
     )]
     time_to_first_event: Option<Duration>,
+    #[serde(deserialize_with = "duration")]
     total_duration: Duration,
 }
 
