@@ -18,6 +18,7 @@ mod id_source;
 mod max_output_tokens;
 mod output_mode;
 mod reasoning;
+mod render;
 mod schema;
 mod sink;
 mod tool;
@@ -83,6 +84,10 @@ pub use id_source::{DefaultIdSource, IdSource};
 pub use max_output_tokens::MaxOutputTokens;
 pub use output_mode::{OutputMode, StructuredShape};
 pub use reasoning::ReasoningLevel;
+pub use render::{
+    RenderedHistory, RenderedMessage, RenderedPart, RenderedResultPart, RenderedRole,
+    render_history,
+};
 pub use schema::SCHEMA_VERSION;
 pub use sink::StreamSink;
 pub use tool::{MAX_NESTING_DEPTH, Parameter, ParameterKind, Parameters, ToolSpec};

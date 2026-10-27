@@ -4,7 +4,8 @@ use br_llm_messages::MediaType;
 
 use crate::{
     Accepted, BuildError, CallOutcome, CallReport, Capabilities, CapabilitiesSpec, ClientError,
-    ClientRequest, ClientSettings, OutputMode, ReasoningLevel, ToolSpec,
+    ClientRequest, ClientSettings, OutputMode, ReasoningLevel, RenderedHistory, RenderedMessage,
+    RenderedPart, RenderedResultPart, RenderedRole, ToolSpec,
 };
 
 trait AmbiguousIfEq<Marker> {
@@ -37,6 +38,10 @@ fn given_the_types_that_hold_a_usage_or_a_block_when_compiled_then_they_have_no_
     <CallOutcome as AmbiguousIfEq<_>>::proof();
     <ClientError as AmbiguousIfEq<_>>::proof();
     <ClientRequest as AmbiguousIfEq<_>>::proof();
+    <RenderedHistory as AmbiguousIfEq<_>>::proof();
+    <RenderedMessage as AmbiguousIfEq<_>>::proof();
+    <RenderedPart as AmbiguousIfEq<_>>::proof();
+    <RenderedResultPart as AmbiguousIfEq<_>>::proof();
 }
 
 #[test]
@@ -48,6 +53,11 @@ fn given_the_data_types_when_compiled_then_they_have_debug_clone_and_partial_eq(
     assert_data::<ClientError>();
     assert_data::<ToolSpec>();
     assert_data::<OutputMode>();
+    assert_data::<RenderedHistory>();
+    assert_data::<RenderedMessage>();
+    assert_data::<RenderedPart>();
+    assert_data::<RenderedResultPart>();
+    assert_data::<RenderedRole>();
 }
 
 #[test]
@@ -57,6 +67,11 @@ fn given_the_call_types_when_compiled_then_they_are_send_sync_and_static() {
     assert_send_sync::<CallReport>();
     assert_send_sync::<ClientError>();
     assert_send_sync::<ClientSettings>();
+    assert_send_sync::<RenderedHistory>();
+    assert_send_sync::<RenderedMessage>();
+    assert_send_sync::<RenderedPart>();
+    assert_send_sync::<RenderedResultPart>();
+    assert_send_sync::<RenderedRole>();
 }
 
 #[test]
