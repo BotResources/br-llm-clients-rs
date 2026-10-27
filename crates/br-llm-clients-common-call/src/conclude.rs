@@ -1,51 +1,42 @@
 use br_llm_clients_core::{ClientError, ClientRequest};
-use br_llm_messages::{ModelId, Step, StepDraft, StreamEvent};
+use br_llm_messages::{ResponseDraft, ResponseEnding};
 
 use crate::failure_map::message_failure;
 use crate::judge::judge;
 use crate::normalizer::Normalizer;
 
-pub(crate) struct Conclusion {
-    pub(crate) tail: Vec<StreamEvent>,
-    pub(crate) step: Step,
-}
-
-pub(crate) fn conclude(
-    normalizer: &mut Normalizer,
-    sent: &[StreamEvent],
+pub(crate) fn decide(
+    normalizer: &Normalizer,
+    draft: &ResponseDraft,
     request: &ClientRequest,
-    default_model: &ModelId,
-) -> Result<Conclusion, ClientError> {
-    let Some(stop) = normalizer.stop().cloned() else {
+) -> Result<ResponseEnding, ClientError> {
+    let Some(stop) = normalizer.stop() else {
         return Err(ClientError::StreamTruncated);
     };
-    let corrected = judge(
+    let ending = judge(
         &normalizer.held(),
-        &stop,
+        stop,
         request.output(),
         !request.tools().is_empty(),
     )?;
-    let mut tail = normalizer.close_all();
-    tail.push(StreamEvent::Finish {
-        stop_reason: corrected,
-        usage: normalizer.usage().cloned(),
-    });
-    let model = normalizer
-        .model()
-        .cloned()
-        .unwrap_or_else(|| default_model.clone());
-    let step = replay(sent, &tail, model)?;
-    Ok(Conclusion { tail, step })
+    rehearse(normalizer, draft, &ending)?;
+    Ok(ending)
 }
 
-fn replay(sent: &[StreamEvent], tail: &[StreamEvent], model: ModelId) -> Result<Step, ClientError> {
-    let mut draft = StepDraft::new();
-    for event in sent.iter().chain(tail) {
+fn rehearse(
+    normalizer: &Normalizer,
+    draft: &ResponseDraft,
+    ending: &ResponseEnding,
+) -> Result<(), ClientError> {
+    let mut draft = draft.clone();
+    let mut normalizer = normalizer.rehearsal();
+    for delta in normalizer.close_all() {
         draft
-            .apply(event.clone())
+            .apply(&delta)
             .map_err(|error| message_failure(&error))?;
     }
     draft
-        .finish(Some(model))
+        .apply(&normalizer.completed(ending.clone()))
+        .map(drop)
         .map_err(|error| message_failure(&error))
 }

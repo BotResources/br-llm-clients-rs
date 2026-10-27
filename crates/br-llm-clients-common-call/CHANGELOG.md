@@ -9,6 +9,84 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.2.0
+
+No type, method or text of 0.1.0 is removed or renamed, but the line of
+`br-llm-clients-common-http` moves from 0.1 to 0.2, and so do the types that
+this crate re-exports. A dialect that compiles against 0.1.0 compiles against
+0.2.0 once it uses the types of `common-http` 0.2.
+
+### Added
+
+- `SecretLog`: the secrets that are made while a call runs, such as a token that
+  an authorizer fetches inside `send`. `SecretLog::new` (and `Default`) makes an
+  empty log; a clone shares the same list; `record` takes a `Secret` by
+  reference, keeps a clone, cannot fail, and keeps a secret that equals one it
+  holds only once. The log holds at most 1024 secrets and drops the one recorded
+  first when a new one comes. It is `Send` and `Sync`, and its `Debug` text is
+  its type name only. The library never records into a log and never empties one.
+- `CallSpec::with_secret_log` sets the log and replaces an earlier one. A
+  `CallSpec` made with `new` holds a log that is empty and that no one else
+  holds. The secrets in effect are the list of `with_secrets` and what the log
+  holds at the moment a text is cleaned, so a secret recorded while `send` runs
+  is removed from the texts of the outcome as the secrets of the list.
+- `Dialect::answered_model`: takes the response headers and gives the model that
+  the provider says answered, as text, or nothing. It has a default body that
+  gives nothing, so a dialect that does not implement it behaves as in 0.1.0.
+  When it gives a text that is a valid `ModelId` and in which no secret in
+  effect appears, that model stands as the model of the `Step` of a reply with no
+  `Model` event, and as the model of the `CallReport` of a reply and of a
+  refusal; a later `Model` event replaces it. Any other text is read as absent
+  and never makes a call fail.
+- `Layered<H>` and `DialectHooks`: a `Dialect` that puts a few changes over an
+  inner `Dialect`. `Layered::new(inner, hooks)` takes an `Arc<dyn Dialect>` and
+  an `H: DialectHooks`. The order is fixed: `check` of the hooks, then the inner
+  `encode`, then `after_encode`, and a `check` error means the inner dialect is
+  not asked; `decoder` wraps the decoder of the inner dialect with
+  `wrap_decoder`; `refine_error` asks the hooks first and the inner dialect
+  second; `error_code`, `request_id` and `answered_model` ask the inner dialect
+  first and give its answer to the hooks, whose answer is the answer. Every
+  method of `DialectHooks` has a default body that changes nothing, and
+  `Layered` adds no refusal, no table and no header of its own.
+
+### Changed
+
+- The line of `br-llm-clients-common-http` is 0.2, because `Secret::appears_in`
+  and `Response::retry_after_ms` are new in that line. `Secret`, `Endpoint`,
+  `Headers`, `HttpClient` and `Authorizer`, which this crate re-exports, are
+  now the types of `common-http` 0.2 and not the types of `common-http` 0.1:
+  cargo keeps two copies and a value of one is not accepted as a value of the
+  other. Every library that imports this crate in its line 0.2 and names one of
+  these types must import `common-http` in its line 0.2 in the same release:
+  today `br-llm-clients-api-anthropic-messages`,
+  `br-llm-clients-api-openai-chat-completions` and
+  `br-llm-clients-api-openai-responses`, which name `common-http` for their
+  tests. Every crate of the repository that pins `common-call` or `common-http`
+  in its line 0.1 moves in the same change; a library released on a tag of line
+  0.1 stays valid on that tag and is not changed. No `Debug` text of a type of
+  0.1 changes.
+- A refusal body longer than 64 KiB is trimmed at its end before the secrets are
+  replaced: the longest suffix of the collected bytes that equals the start of a
+  secret in effect (at least one byte, fewer than the whole secret) is removed.
+  In 0.1.0 the body was cut first and the secrets were replaced after, so a
+  secret that crossed the cut left its first part in the text of the
+  `ClientError` and in the text that `error_code` and `refine_error` read. Such a
+  refusal now gives a text shorter by the trimmed bytes, and nothing is trimmed
+  when the collection is not cut.
+- A secret recorded in the `SecretLog` is removed from every text of the outcome
+  before the cut to 64 KiB, as the secrets of the list. In 0.1.0 a secret that an
+  authorizer made inside `send` was not known to `run`, and a provider library
+  removed it only after the cut. The code and the text of an `Error` event are
+  cleaned with the secrets in effect too. A `CallSpec` whose log stays empty
+  behaves as in 0.1.0.
+- The delay of a refusal is read from `retry-after-ms` first, as
+  `Response::retry_after_ms` reads it, and from `Retry-After` when the first
+  gives nothing. In 0.1.0 only `Retry-After` was read. The delay of an error
+  inside a stream is not changed.
+- The request id of the `CallReport` is absent when a secret in effect appears in
+  it, at any place in the text, tested when the outcome is ready with
+  `Secret::appears_in`. In 0.1.0 it was never tested.
+
 ## 0.1.0
 
 ### Added

@@ -1,14 +1,16 @@
+use std::sync::Arc;
+
 use br_llm_clients_common_sse::{Decoder, Frame};
 use br_llm_clients_core::{ClientError, ClientRequest, StreamSink};
-use br_llm_messages::Step;
+use br_llm_messages::ModelResponse;
 
 use crate::call_record::CallRecord;
 use crate::call_spec::CallSpec;
 use crate::classify::classify_stream_error;
-use crate::conclude::conclude;
+use crate::conclude::decide;
 use crate::emitter::Emitter;
 use crate::error_info::ErrorInfo;
-use crate::failure_map::{decode_failure, payload_failure};
+use crate::failure_map::{decode_failure, malformed, payload_failure};
 use crate::normalizer::Normalizer;
 use crate::payload::Payload;
 use crate::payload_decoder::{End, PayloadDecoder};
@@ -36,14 +38,15 @@ impl<'a> Reader<'a> {
         sink: &'a mut dyn StreamSink,
         record: &'a mut CallRecord,
     ) -> Self {
+        let answered = record.answered_model.clone();
         Self {
             spec,
             request,
             record,
             sse: Decoder::default(),
             payloads: spec.dialect.decoder(request.output()),
-            normalizer: Normalizer::new(request),
-            emitter: Emitter::new(sink),
+            normalizer: Normalizer::new(request, Arc::clone(&spec.ids), answered),
+            emitter: Emitter::new(request, sink),
         }
     }
 
@@ -66,17 +69,16 @@ impl<'a> Reader<'a> {
         }
     }
 
-    pub(crate) async fn conclude(mut self) -> Result<Step, ClientError> {
-        let conclusion = conclude(
-            &mut self.normalizer,
-            self.emitter.log(),
-            self.request,
-            &self.spec.model,
-        )?;
-        for event in conclusion.tail {
-            self.emitter.emit(event, self.record).await?;
+    pub(crate) async fn conclude(mut self) -> Result<ModelResponse, ClientError> {
+        let ending = decide(&self.normalizer, self.emitter.draft(), self.request)?;
+        for delta in self.normalizer.close_all() {
+            self.emitter.emit(delta, self.record).await?;
         }
-        Ok(conclusion.step)
+        let completed = self.normalizer.completed(ending);
+        self.emitter.emit(completed, self.record).await?;
+        self.emitter
+            .into_response()
+            .ok_or_else(|| malformed("the reply could not be built"))
     }
 
     async fn frames(&mut self, frames: Vec<Frame>) -> Result<Flow, ClientError> {
@@ -120,15 +122,15 @@ impl<'a> Reader<'a> {
     }
 
     fn classify(&self, info: ErrorInfo) -> ClientError {
-        classify_stream_error(&*self.spec.dialect, &self.spec.secrets, info)
+        classify_stream_error(&*self.spec.dialect, &self.spec.secrets_in_effect(), info)
     }
 
     async fn apply(&mut self, event: ProviderEvent) -> Result<(), ClientError> {
         let produced = self.normalizer.accept(event)?;
         self.record.usage = self.normalizer.usage().cloned();
         self.record.model = self.normalizer.model().cloned();
-        for event in produced {
-            self.emitter.emit(event, self.record).await?;
+        for delta in produced {
+            self.emitter.emit(delta, self.record).await?;
         }
         Ok(())
     }

@@ -1,6 +1,6 @@
 use br_llm_clients_common_http::Response;
 use br_llm_clients_core::{ClientError, ClientRequest, StreamSink};
-use br_llm_messages::Step;
+use br_llm_messages::ModelResponse;
 
 use crate::call_record::CallRecord;
 use crate::call_spec::CallSpec;
@@ -13,7 +13,7 @@ pub(crate) async fn read_reply(
     response: Response,
     sink: &mut dyn StreamSink,
     record: &mut CallRecord,
-) -> Result<Step, ClientError> {
+) -> Result<ModelResponse, ClientError> {
     let (_, _, mut body) = response.into_parts();
     let mut reader = Reader::new(spec, request, sink, record);
     loop {
