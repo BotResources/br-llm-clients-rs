@@ -1,10 +1,10 @@
-use br_llm_messages::{ClosureReason, RuntimeNotice, TurnEntry};
+use br_llm_messages::{ClosureReason, TurnEntry};
 
 use super::test_support::{
     blocks_response, call, calls_response, closure, fixed_turn, human_entry, human_turn_of,
-    invalid_reason, render, render_ok, result, results, strs, target_turn, text, view,
+    render_ok, result, results, strs, target_turn, text, view,
 };
-use crate::thread_fixtures::{Fixture, as_turn_entry, entry_id, input_turn, text_block};
+use crate::thread_fixtures::{Fixture, as_turn_entry, input_turn, text_block};
 
 const FIRST: &str = "call_01890a5dac96774bbcceb00000000001";
 const SECOND: &str = "call_01890a5dac96774bbcceb00000000002";
@@ -17,33 +17,6 @@ fn incoming(value: &str) -> TurnEntry {
 
 fn reply(value: &str) -> TurnEntry {
     blocks_response(vec![text(value)])
-}
-
-fn notice() -> RuntimeNotice {
-    RuntimeNotice::new(entry_id(), "the runtime says so").unwrap()
-}
-
-#[test]
-fn given_a_runtime_notice_in_an_input_turn_when_rendered_then_invalid_messages_names_its_kind() {
-    let fixture = Fixture::new();
-    let turns = vec![input_turn(vec![human_entry("hello"), notice().into()])];
-    let reason = invalid_reason(render(&fixture, turns, fixed_turn(9)));
-    assert_eq!(reason, "unknown incoming entry kind runtime_notice");
-}
-
-#[test]
-fn given_a_runtime_notice_in_an_ai_turn_when_rendered_then_invalid_messages_names_its_kind() {
-    let fixture = Fixture::new();
-    let turns = vec![
-        human_turn_of("hello"),
-        target_turn(
-            &fixture,
-            fixed_turn(1),
-            vec![reply("hi"), TurnEntry::RuntimeNotice(notice())],
-        ),
-    ];
-    let reason = invalid_reason(render(&fixture, turns, fixed_turn(9)));
-    assert_eq!(reason, "unknown entry kind runtime_notice");
 }
 
 #[test]

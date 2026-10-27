@@ -91,8 +91,10 @@ form to decide whether a version ships.
   system-role carrier of notices are replaced by the rendering of a history.
   The rules that an adapter must apply on the first message and the last
   message of the rendering stay with the client library.
-- `render_history` refuses a `RuntimeNotice` entry with `InvalidMessages`; the
-  reason names `runtime_notice`.
+- `render_history` renders a `RuntimeNotice` entry as a user entry of one text
+  part: `<notice>`, the text with `&`, `<` and `>` escaped, `</notice>`. It is
+  rendered the same in an input turn and in an AI turn, and it merges with the
+  neighbouring user entries.
 
 ### Removed
 

@@ -1,6 +1,6 @@
 use br_llm_messages::{
-    ClosureReason, QueuePosition, RequestAccepted, TaskCompleted, TaskFailed, TaskStarted,
-    TurnClosure,
+    ClosureReason, QueuePosition, RequestAccepted, RuntimeNotice, TaskCompleted, TaskFailed,
+    TaskStarted, TurnClosure,
 };
 
 use super::escape;
@@ -10,6 +10,10 @@ use crate::client_error::ClientError;
 
 fn notice(sentence: String) -> Vec<RenderedPart> {
     vec![RenderedPart::Text(format!("<notice>{sentence}</notice>"))]
+}
+
+pub(super) fn runtime_notice(entry: &RuntimeNotice) -> Vec<RenderedPart> {
+    notice(escape::text(entry.text()))
 }
 
 pub(super) fn request_accepted(entry: &RequestAccepted) -> Vec<RenderedPart> {

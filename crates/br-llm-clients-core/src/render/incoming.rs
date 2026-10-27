@@ -18,6 +18,7 @@ pub(super) fn of_incoming(entry: &IncomingEntry) -> Result<Vec<RenderedPart>, Cl
         IncomingEntry::PartialAgentOutput(output) => {
             frames::framed(PARTIAL_AGENT_OUTPUT, output.author(), output.content())
         }
+        IncomingEntry::RuntimeNotice(entry) => Ok(notices::runtime_notice(entry)),
         IncomingEntry::RequestAccepted(entry) => Ok(notices::request_accepted(entry)),
         IncomingEntry::QueuePosition(entry) => Ok(notices::queue_position(entry)),
         IncomingEntry::TaskStarted(entry) => Ok(notices::task_started(entry)),
@@ -35,6 +36,7 @@ pub(super) fn of_turn_entry(entry: &TurnEntry) -> Result<Option<Vec<RenderedPart
         TurnEntry::HumanMessage(message) => human_message(message)?,
         TurnEntry::AgentRequest(request) => agent_request(request)?,
         TurnEntry::AgentMail(mail) => agent_mail(mail)?,
+        TurnEntry::RuntimeNotice(entry) => notices::runtime_notice(entry),
         TurnEntry::RequestAccepted(entry) => notices::request_accepted(entry),
         TurnEntry::QueuePosition(entry) => notices::queue_position(entry),
         TurnEntry::TaskStarted(entry) => notices::task_started(entry),

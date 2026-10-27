@@ -20,6 +20,8 @@ mod free_order_tests;
 #[cfg(test)]
 mod merge_tests;
 #[cfg(test)]
+mod notices_runtime_tests;
+#[cfg(test)]
 mod notices_tests;
 #[cfg(test)]
 mod outstanding_tests;
