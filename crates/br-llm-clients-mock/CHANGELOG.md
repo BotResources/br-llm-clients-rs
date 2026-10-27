@@ -9,6 +9,36 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.6.0
+
+Prepared on 2026-10-27.
+
+### Changed
+
+- Breaking, the types of a reply. A reply holds a `ModelResponse` where it held a `Step`. A hang and a cut count deltas. A broken stream holds `ResponseDelta` values. The sink receives `ResponseDelta` values, and `RecordingSink` keeps them. The types `Step`, `StreamEvent` and `WireMessage` no longer exist for the mock.
+- Breaking, the events. `derive_events` is replaced by `derive_deltas`, which takes a turn, a response and a chunking. `DerivedEvents` becomes `DerivedDeltas` and `before_finish` becomes `before_completed`. The names `EventCountOutOfRange` and `StepSettingWithoutStep` become `DeltaCountOutOfRange` and `ChunkingWithoutResponse`. The text cut applies to the same four kinds. The signature has no separate delta: it is replay material, sent whole. `RecordingSink::events` and `wait_for_events` become `deltas` and `wait_for_deltas`, and `WaitForEvents` becomes `WaitForDeltas`.
+- Breaking, the identities. The call gives the response the entry of the request and block identities from a source, citations included. A mock built with no source makes its own `SequentialIdSource`, which starts at `DEFAULT_ID_START`. A source that repeats an identity inside one response gives `ProviderRejected` with the code `mock.identity_collision`.
+- Breaking, the model. The mock no longer gives the response the model of the settings when the response holds none. The model of the report of a success is the model of the response, and a reply no longer sets the two models apart: `model` is removed from the builder of a success, and the builders of a failure, a cut and a broken stream take a `ModelName`.
+- Breaking, the ending. A response that holds a runtime tool call ends with `tool_use` in the deltas and in the response the call gives, whatever ending the reply gave. This replaces the other endings.
+- Breaking, the history. The check of the history is `render_history` of core. The rule about a tool call answered by id in the next `User` message, and the examples of it, are gone. The rules are those of core.
+- Breaking, the count of deltas. `ResponseStarted` is a new first delta, and the usage moves from the finish event to a metadata update. For the same content, the number N of a cut and of a hang and the gate positions shift.
+- Breaking, the images. The image checks read the images in the order that core states.
+- Breaking, the broken stream. Its deltas keep the identities they hold, unless the test asks for the identities of the request with `with_request_identities`.
+- Breaking, the history may start with an `Assistant` message. The mock 0.5 refused it. Core judges neither the first message nor the last of a rendering.
+- Breaking, the usage. `UsageBreaksCounting` also covers a cache count with no input count and a thinking count with no output count.
+- Breaking, the reply checks. The refusal of a response that holds a tool call whose id is the id of a tool call of the request is gone, with the renaming of tool call ids (`rename_tool_call_ids`) and the helper `tool_call_id`. Identities come from a source and never repeat within one source. An external id that repeats is a matter of core, which makes the wire ids distinct.
+- Breaking, the fold of `RecordingSink`. The helper takes no model id, because the model comes from the deltas.
+- Breaking, the types inside the capabilities and the errors. `ModelId` becomes `ModelName`, `ImageMime` becomes `MediaType` (so a set of image media types is an `Accepted<MediaType>`), and `ReplyUnusable` carries a `ResponseEnding`. The capabilities are still the types of `br-llm-clients-core`, re-exported at the same paths.
+- Breaking, the dependencies. The mock needs `br-llm-clients-core` 0.5.0, pinned by path and version `0.5.0`, and `br-llm-messages` 2.1.0, pinned by the tag `br-llm-messages/v2.1.0`. An importer moves its own pins of core and messages to the same versions together with the mock.
+
+### Added
+
+- The response sketch `Sketch` and the short forms `Reply::text`, `Reply::tool_call` and `Reply::structured`. A reply takes a sketch wherever it takes a `ModelResponse`. `JsonInput` and `ResponseInput` are the types of their arguments.
+- `SequentialIdSource` and the constant `DEFAULT_ID_START`, with `MockBuilder::id_source`. A clone shares the count; `next_number` and `given` read it; `next_entry_id` and `next_turn_id` take from the same count. A source asked for an identity at or above the number 2^62 - 1 panics instead of repeating one.
+- The turn argument of the derivation, and `fold_deltas` and `fold_partial` with `PartialFold` and `Stop`. `RecordingSink::fold` folds the deltas it holds.
+- The code `CODE_IDENTITY_COLLISION`, `mock.identity_collision`.
+- `MockBuildError` cases `DeltaCountOutOfRange`, `ChunkingWithoutResponse` and `SketchInvalid`, and the case `DerivationFailed`, which no reply that passes the other checks reaches. The type stays `#[non_exhaustive]`.
+
 ## 0.5.0
 
 ### Changed
