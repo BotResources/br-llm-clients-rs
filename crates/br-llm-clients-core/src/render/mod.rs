@@ -26,6 +26,8 @@ mod notices_tests;
 #[cfg(test)]
 mod outstanding_tests;
 #[cfg(test)]
+mod placement_gap_tests;
+#[cfg(test)]
 mod placement_tests;
 #[cfg(test)]
 mod replay_tests;

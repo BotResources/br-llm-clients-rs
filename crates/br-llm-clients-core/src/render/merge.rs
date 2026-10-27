@@ -47,7 +47,7 @@ impl Item {
 #[derive(Default)]
 pub(super) struct Merge {
     messages: Vec<Open>,
-    holders: HashMap<usize, usize>,
+    result_slots: HashMap<usize, usize>,
 }
 
 struct Open {
@@ -84,21 +84,22 @@ impl Merge {
     }
 
     fn route(&mut self, index: usize, part: RenderedPart) -> Result<(), ClientError> {
-        let holder = *self
-            .holders
+        let slot = *self
+            .result_slots
             .get(&index)
             .ok_or_else(|| invalid("a tool result comes before its tool call"))?;
-        let target = holder.saturating_add(1);
-        if target >= self.messages.len() {
+        if slot >= self.messages.len() {
             self.messages.push(Open {
                 role: RenderedRole::User,
                 results: Vec::new(),
                 parts: Vec::new(),
             });
         }
-        if let Some(message) = self.messages.get_mut(target) {
-            message.results.push((index, part));
-        }
+        let message = self
+            .messages
+            .get_mut(slot)
+            .ok_or_else(|| invalid("a tool result has no message to go to"))?;
+        message.results.push((index, part));
         Ok(())
     }
 
@@ -111,9 +112,9 @@ impl Merge {
                 parts,
             }),
         }
-        let position = self.messages.len().saturating_sub(1);
+        let slot = self.messages.len();
         for call in calls {
-            self.holders.insert(*call, position);
+            self.result_slots.insert(*call, slot);
         }
     }
 }
