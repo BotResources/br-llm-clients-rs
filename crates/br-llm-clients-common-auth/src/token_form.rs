@@ -59,7 +59,7 @@ impl TokenForm {
     pub(crate) fn echoes(&self, text: &str) -> bool {
         self.fields.iter().any(|(_, value)| match value {
             FieldValue::Plain(plain) => plain == text,
-            FieldValue::Secret(secret) => secret.appears_in(text),
+            FieldValue::Secret(secret) => secret.appears_in(text) || secret.expose().contains(text),
         })
     }
 

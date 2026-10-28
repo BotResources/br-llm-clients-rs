@@ -121,3 +121,14 @@ async fn given_an_error_member_that_only_contains_a_plain_value_of_the_form_then
         AuthorizerError::unavailable("the token endpoint answered 400: invalid_refresh_token")
     );
 }
+
+#[tokio::test]
+async fn given_an_error_member_that_is_a_part_of_a_secret_of_the_form_then_the_text_drops_it() {
+    let secret = Secret::new("s".repeat(70)).expect("secret");
+    let form = TokenForm::client_credentials("app", secret).expect("form");
+    let echoed = format!(r#"{{"error":"{}"}}"#, "s".repeat(64));
+    assert_eq!(
+        status_text(&form, &echoed).await,
+        AuthorizerError::unavailable("the token endpoint answered 400")
+    );
+}
