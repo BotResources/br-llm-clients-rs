@@ -4,6 +4,7 @@ use br_llm_clients_common_http::{AuthorizerError, Secret};
 use tokio::time::Instant;
 
 use crate::access_token::AccessToken;
+use crate::flight::{FETCH_LIMIT, timed_out};
 use crate::state::{Settled, State};
 
 fn token(text: &str, valid_for: Option<Duration>) -> AccessToken {
@@ -82,18 +83,36 @@ fn given_an_ended_held_token_when_a_failure_is_settled_then_both_answers_are_the
 }
 
 #[test]
-fn given_a_flight_that_is_no_longer_current_when_it_settles_then_the_state_does_not_change() {
+fn given_a_result_at_or_after_the_limit_when_settled_then_it_is_the_timeout_and_nothing_is_kept() {
     let started = Instant::now();
     let mut state = State::default();
     let (stale, _old) = state.open_flight(started);
-    let (newer, _new) = state.open_flight(started);
+    let later = started + FETCH_LIMIT;
+    let (newer, _new) = state.open_flight(later);
     let settled = state.settle(
         stale,
         started,
-        started,
+        later,
         Ok(token("stale", Some(Duration::from_secs(60)))),
     );
-    assert_eq!(text(settled.leader), "stale");
+    assert_eq!(settled.leader.expect_err("leader"), timed_out());
+    assert_eq!(settled.waiters.expect_err("waiters"), timed_out());
     assert!(state.held.is_none());
     assert!(state.is_current(newer));
+}
+
+#[test]
+fn given_a_result_just_before_the_limit_when_settled_then_it_is_kept() {
+    let started = Instant::now();
+    let mut state = State::default();
+    let (id, _sender) = state.open_flight(started);
+    let just_before = started + FETCH_LIMIT - Duration::from_millis(1);
+    let settled = state.settle(
+        id,
+        started,
+        just_before,
+        Ok(token("t", Some(Duration::from_secs(60)))),
+    );
+    assert_eq!(text(settled.leader), "t");
+    assert!(state.held.is_some());
 }
