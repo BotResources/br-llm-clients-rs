@@ -189,3 +189,21 @@ fn given_a_source_that_panics_when_a_call_serves_a_response_then_the_panic_goes_
     assert_eq!(client.unused_entries(), 1);
     assert_eq!(text_of(&run(&client, &request()).0), "second");
 }
+
+#[test]
+fn given_a_source_that_gives_the_identity_of_the_entry_of_the_request_when_a_response_is_served_then_identity_collision()
+ {
+    let request_value = request();
+    let source = Constant {
+        id: BlockId::from_uuid(request_value.reply_entry().as_uuid()).unwrap(),
+        draws: Arc::new(AtomicUsize::new(0)),
+    };
+    let client = collision_mock(source);
+    client.push_reply(Reply::success(text_response("a")).build().unwrap());
+    let (outcome, sink) = run(&client, &request_value);
+    assert!(matches!(
+        error_of(&outcome),
+        ClientError::ProviderRejected { code: Some(code), .. } if code == CODE_IDENTITY_COLLISION
+    ));
+    assert!(sink.is_empty());
+}
