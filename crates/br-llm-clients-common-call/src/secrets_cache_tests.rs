@@ -61,3 +61,22 @@ async fn given_a_secret_recorded_between_the_two_cleanings_when_run_then_the_sec
     assert_eq!(body, "a [redacted] b [redacted] c");
     assert_eq!(cache.snapshots_taken(), 2);
 }
+
+#[tokio::test]
+async fn given_a_secret_the_log_holds_recorded_again_between_the_two_cleanings_when_run_then_the_secrets_are_reused()
+ {
+    let log = SecretLog::new();
+    log.record(&Secret::new(LATE).expect("secret"));
+    let recorder = log.clone();
+    let dialect = Arc::new(ScriptedDialect {
+        refine: Box::new(move |_| {
+            recorder.record(&Secret::new(LATE).expect("secret"));
+            None
+        }),
+        ..ScriptedDialect::default()
+    });
+    let cache = SecretsCache::default();
+    let body = refused_body(&dialect, &log, &cache).await;
+    assert_eq!(body, "a [redacted] b [redacted] c");
+    assert_eq!(cache.snapshots_taken(), 1);
+}

@@ -87,3 +87,16 @@ fn given_a_log_when_used_from_many_threads_then_it_is_send_sync_and_loses_nothin
     }
     assert_eq!(held(&log).len(), 400);
 }
+
+#[test]
+fn given_a_secret_the_log_holds_when_recorded_again_then_the_generation_stays() {
+    let log = SecretLog::new();
+    let empty = log.generation();
+    log.record(&secret("tok-1"));
+    let one = log.generation();
+    assert_ne!(one, empty);
+    log.record(&secret("tok-1"));
+    assert_eq!(log.generation(), one);
+    log.record(&secret("tok-2"));
+    assert_ne!(log.generation(), one);
+}
