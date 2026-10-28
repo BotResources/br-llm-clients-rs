@@ -7,7 +7,6 @@ use tokio::time::{Instant, timeout};
 
 use crate::flight::{FETCH_LIMIT, Waiting, timed_out};
 use crate::lead::Lead;
-use crate::pass::pass;
 use crate::state::{Outcome, State, lock};
 use crate::token_source::TokenSource;
 
@@ -36,17 +35,13 @@ impl TokenCache {
     }
 
     pub async fn token(&self) -> Result<Secret, AuthorizerError> {
-        let mut lost = None;
         loop {
             match self.step() {
                 Step::Ready(secret) => return Ok(secret),
                 Step::Wait(waiting) => {
-                    if lost == Some(waiting.id) {
-                        pass().await;
-                    }
-                    match timeout(waiting.time_left, wait(waiting.receiver)).await {
+                    match timeout(waiting.live_for, wait(waiting.receiver)).await {
                         Ok(Some(result)) => return result,
-                        Ok(None) => lost = Some(waiting.id),
+                        Ok(None) => {}
                         Err(_) => return Err(timed_out()),
                     }
                 }
@@ -62,10 +57,9 @@ impl TokenCache {
             return Step::Ready(held.secret().clone());
         }
         let live = state.flight.as_ref().and_then(|flight| {
-            flight.time_left(now).map(|time_left| Waiting {
-                id: flight.id,
+            flight.live_for(now).map(|live_for| Waiting {
                 receiver: flight.receiver.clone(),
-                time_left,
+                live_for,
             })
         });
         if let Some(waiting) = live {

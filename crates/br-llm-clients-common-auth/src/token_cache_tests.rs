@@ -30,8 +30,8 @@ fn given_a_live_flight_when_a_call_steps_then_it_waits_for_the_time_the_flight_h
     let (_, _sender) = lock(&cache.state).open_flight(started);
     match cache.step() {
         Step::Wait(waiting) => {
-            assert!(waiting.time_left <= Duration::from_secs(20));
-            assert!(waiting.time_left > Duration::from_secs(19));
+            assert!(waiting.live_for <= Duration::from_secs(20));
+            assert!(waiting.live_for > Duration::from_secs(19));
         }
         _ => panic!("the call did not wait"),
     }

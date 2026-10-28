@@ -20,7 +20,7 @@ pub(crate) struct Flight {
 }
 
 impl Flight {
-    pub(crate) fn time_left(&self, now: Instant) -> Option<Duration> {
+    pub(crate) fn live_for(&self, now: Instant) -> Option<Duration> {
         if self.receiver.has_changed().is_err() {
             return None;
         }
@@ -30,7 +30,6 @@ impl Flight {
 }
 
 pub(crate) struct Waiting {
-    pub(crate) id: u64,
     pub(crate) receiver: watch::Receiver<Outcome>,
-    pub(crate) time_left: Duration,
+    pub(crate) live_for: Duration,
 }
