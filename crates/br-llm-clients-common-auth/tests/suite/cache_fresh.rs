@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use br_llm_clients_common_auth::{AccessToken, StaticToken, TokenCache, TokenSource};
@@ -119,14 +120,37 @@ async fn given_a_validity_of_zero_when_called_again_then_the_source_is_asked_eac
     }
 }
 
+struct Counting {
+    inner: StaticToken,
+    fetched: AtomicUsize,
+}
+
+impl TokenSource for Counting {
+    fn fetch(&self) -> BoxFuture<'_, Result<AccessToken, AuthorizerError>> {
+        self.fetched.fetch_add(1, Ordering::SeqCst);
+        self.inner.fetch()
+    }
+
+    fn secrets(&self) -> Vec<Secret> {
+        self.inner.secrets()
+    }
+}
+
 #[tokio::test(start_paused = true)]
-async fn given_a_static_token_when_called_then_it_gives_that_token_and_its_secret() {
+async fn given_a_static_token_when_called_again_then_it_has_no_validity_and_is_fetched_each_time() {
     let token = Secret::new("static-token-value").expect("secret");
-    let cache = TokenCache::new(Arc::new(StaticToken::new(token)));
-    assert_eq!(
-        cache.token().await.expect("token").expose(),
-        "static-token-value"
-    );
+    let source = Arc::new(Counting {
+        inner: StaticToken::new(token),
+        fetched: AtomicUsize::new(0),
+    });
+    let cache = TokenCache::new(source.clone());
+    for expected in 1..=3 {
+        assert_eq!(
+            cache.token().await.expect("token").expose(),
+            "static-token-value"
+        );
+        assert_eq!(source.fetched.load(Ordering::SeqCst), expected);
+    }
     let secrets = cache.secrets();
     assert_eq!(secrets.len(), 1);
     assert_eq!(secrets[0].expose(), "static-token-value");
@@ -148,7 +172,7 @@ async fn given_a_cache_when_time_passes_then_no_fetch_starts_in_the_background()
     let cache = cache_of(&source);
     cache.token().await.expect("first");
     advance(Duration::from_secs(10_000)).await;
-    tokio::task::yield_now().await;
+    crate::support::settle().await;
     assert_eq!(source.calls(), 1);
 }
 

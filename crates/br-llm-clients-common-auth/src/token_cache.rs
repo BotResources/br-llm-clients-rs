@@ -6,13 +6,14 @@ use br_llm_clients_common_http::{AuthorizerError, Secret};
 use tokio::sync::watch;
 use tokio::time::{Instant, timeout};
 
-use crate::flight::{Lead, Outcome, State, lock};
+use crate::lead::Lead;
+use crate::state::{Outcome, State, lock};
 use crate::token_source::TokenSource;
 
 const FETCH_LIMIT: Duration = Duration::from_secs(30);
 const FETCH_TIMED_OUT: &str = "the token fetch timed out";
 
-enum Step {
+pub(crate) enum Step {
     Ready(Secret),
     Wait(watch::Receiver<Outcome>),
     Lead(Lead),
@@ -21,7 +22,7 @@ enum Step {
 #[derive(Clone)]
 pub struct TokenCache {
     source: Arc<dyn TokenSource>,
-    state: Arc<Mutex<State>>,
+    pub(crate) state: Arc<Mutex<State>>,
 }
 
 impl TokenCache {
@@ -50,13 +51,17 @@ impl TokenCache {
         }
     }
 
-    fn step(&self) -> Step {
+    pub(crate) fn step(&self) -> Step {
         let now = Instant::now();
         let mut state = lock(&self.state);
         if let Some(held) = state.held.as_ref().filter(|held| held.is_fresh(now)) {
             return Step::Ready(held.secret().clone());
         }
-        if let Some(receiver) = state.flight.clone() {
+        let live = state
+            .flight
+            .clone()
+            .filter(|receiver| receiver.has_changed().is_ok());
+        if let Some(receiver) = live {
             return match state.held.as_ref().filter(|held| held.is_usable(now)) {
                 Some(held) => Step::Ready(held.secret().clone()),
                 None => Step::Wait(receiver),

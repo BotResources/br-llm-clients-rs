@@ -110,10 +110,7 @@ async fn given_a_refusal_whose_body_cannot_be_read_then_the_status_decides() {
 
 #[tokio::test]
 async fn given_a_refusal_with_a_body_over_64_kib_then_the_error_member_is_not_read() {
-    let body = format!(
-        r#"{{"error":"invalid_grant","pad":"{}"}}"#,
-        "x".repeat(70_000)
-    );
+    let body = format!(r#"{{"error":"invalid_grant"}}{}"#, " ".repeat(70_000));
     assert_eq!(
         refused(400, &body).await,
         AuthorizerError::unavailable("the token endpoint answered 400")

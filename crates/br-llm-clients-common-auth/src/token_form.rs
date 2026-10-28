@@ -17,7 +17,7 @@ pub struct TokenForm {
 
 impl TokenForm {
     pub fn new() -> Self {
-        Self::default()
+        Self { fields: Vec::new() }
     }
 
     pub fn plain(self, name: &str, value: &str) -> Result<Self, AuthConfigError> {

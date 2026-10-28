@@ -5,7 +5,10 @@ use std::sync::Arc;
 
 use br_llm_clients_common_auth::TokenCache;
 use br_llm_clients_common_http::{AuthorizerError, Secret};
-use tokio::task::{JoinHandle, yield_now};
+use std::time::Duration;
+
+use tokio::task::{JoinError, JoinHandle};
+use tokio::time::{sleep, timeout};
 
 use source::Scripted;
 
@@ -19,13 +22,17 @@ pub fn spawn_call(cache: &TokenCache) -> JoinHandle<Result<Secret, AuthorizerErr
 }
 
 pub async fn settle() {
-    for _ in 0..16 {
-        yield_now().await;
-    }
+    sleep(Duration::from_millis(1)).await;
+}
+
+pub async fn bounded<T>(handle: JoinHandle<T>) -> Result<T, JoinError> {
+    timeout(Duration::from_secs(120), handle)
+        .await
+        .expect("the task did not end within 120 seconds")
 }
 
 pub async fn text_of(handle: JoinHandle<Result<Secret, AuthorizerError>>) -> String {
-    handle
+    bounded(handle)
         .await
         .expect("task")
         .expect("token")

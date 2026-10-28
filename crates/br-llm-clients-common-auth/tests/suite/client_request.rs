@@ -1,18 +1,11 @@
 use std::time::Duration;
 
 use br_llm_clients_common_auth::{FormTokenClient, TokenForm};
-use br_llm_clients_common_http::{AuthorizerError, Secret};
+use br_llm_clients_common_http::{AuthorizerError, NoAuthorizer, Request, Secret};
 
 use crate::support::server::{Server, http_client, json, response};
 
 const OK: &str = r#"{"access_token":"at"}"#;
-const MANAGED: [&str; 5] = [
-    "content-type",
-    "host",
-    "content-length",
-    "user-agent",
-    "accept-encoding",
-];
 
 fn client(server: &Server, path_and_query: &str) -> FormTokenClient {
     FormTokenClient::new(
@@ -42,22 +35,33 @@ async fn given_a_form_when_fetched_then_one_post_goes_to_the_endpoint_with_its_p
 }
 
 #[tokio::test]
-async fn given_a_form_when_fetched_then_the_library_sets_only_the_form_content_type() {
+async fn given_a_form_when_fetched_then_the_library_adds_only_the_form_content_type_to_a_bare_request()
+ {
     let server = Server::start(vec![json(200, OK)]).await;
     let form = TokenForm::refresh_token(secret("rt"));
     client(&server, "/token").fetch(&form).await.expect("reply");
+    let baseline = Request::new(server.endpoint("/token"), Vec::new())
+        .with_header("content-type", "application/x-www-form-urlencoded")
+        .expect("header");
+    http_client(Duration::from_secs(5))
+        .send(baseline, &NoAuthorizer)
+        .await
+        .expect("baseline");
     let captured = server.captured();
     assert_eq!(
         captured[0].header_values("content-type"),
         vec!["application/x-www-form-urlencoded"]
     );
-    assert!(captured[0].header_values("authorization").is_empty());
-    for (name, _) in &captured[0].headers {
-        assert!(
-            MANAGED.contains(&name.to_ascii_lowercase().as_str()),
-            "unexpected header {name}"
-        );
-    }
+    let names = |index: usize| -> Vec<String> {
+        let mut names: Vec<String> = captured[index]
+            .headers
+            .iter()
+            .map(|(name, _)| name.to_ascii_lowercase())
+            .collect();
+        names.sort();
+        names
+    };
+    assert_eq!(names(0), names(1));
 }
 
 #[tokio::test]

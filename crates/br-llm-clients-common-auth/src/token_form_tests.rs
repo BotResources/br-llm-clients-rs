@@ -42,17 +42,40 @@ fn given_names_that_differ_by_case_then_they_are_two_fields() {
     assert_eq!(encode(&form), "a=1&A=2");
 }
 
+fn duplicate_text(name: &str) -> String {
+    TokenForm::new()
+        .plain(name, "v")
+        .and_then(|form| form.plain(name, "w"))
+        .expect_err("duplicate")
+        .to_string()
+}
+
 #[test]
-fn given_a_long_name_with_control_characters_when_refused_then_the_text_is_escaped_and_cut() {
-    let name = format!("{}\n", "n".repeat(100));
-    let error = TokenForm::new()
-        .plain(&name, "v")
-        .and_then(|form| form.plain(&name, "w"))
-        .expect_err("duplicate");
-    let text = error.to_string();
-    assert!(text.contains("..."));
+fn given_a_name_with_control_characters_when_refused_then_the_text_shows_them_escaped() {
+    let text = duplicate_text(&format!("a\nb{}", "n".repeat(100)));
+    assert!(text.contains("a\\nb"));
     assert!(!text.contains('\n'));
-    assert!(text.len() < 140);
+}
+
+#[test]
+fn given_a_name_of_64_characters_when_refused_then_the_text_is_not_cut() {
+    let name = "n".repeat(64);
+    assert_eq!(
+        duplicate_text(&name),
+        format!("duplicate form field: the form field `{name}` is given twice")
+    );
+}
+
+#[test]
+fn given_a_name_of_65_characters_when_refused_then_the_text_is_cut_at_64() {
+    let name = "n".repeat(65);
+    assert_eq!(
+        duplicate_text(&name),
+        format!(
+            "duplicate form field: the form field `{}...` is given twice",
+            "n".repeat(64)
+        )
+    );
 }
 
 #[test]

@@ -107,7 +107,8 @@ async fn given_a_token_that_is_not_a_header_value_then_the_observer_is_called_an
 }
 
 #[tokio::test]
-async fn given_a_static_token_when_two_requests_are_sent_then_the_cache_is_asked_for_each_one() {
+async fn given_a_source_with_no_validity_when_requests_are_sent_then_the_cache_asks_it_for_each_one()
+ {
     let server = Server::start(vec![json(200, "{}")]).await;
     let token = Secret::new("static-key").expect("secret");
     let source = Scripted::new(vec![Step::token("static-key", None)]);

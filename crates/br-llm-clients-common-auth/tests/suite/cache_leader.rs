@@ -6,7 +6,7 @@ use br_llm_clients_common_http::{AuthorizerError, BoxFuture, Secret};
 use tokio::sync::Notify;
 
 use crate::support::source::{Scripted, Step};
-use crate::support::{cache_of, settle, spawn_call, text_of};
+use crate::support::{bounded, cache_of, settle, spawn_call, text_of};
 
 struct PanicsBeforeTheFuture {
     calls: AtomicUsize,
@@ -35,11 +35,12 @@ async fn given_a_dropped_leader_when_calls_wait_then_one_waiter_leads_and_none_f
     ]);
     let cache = cache_of(&source);
     let leader = spawn_call(&cache);
+    settle().await;
     let waiters: Vec<_> = (0..3).map(|_| spawn_call(&cache)).collect();
     settle().await;
     assert_eq!(source.calls(), 1);
     leader.abort();
-    assert!(leader.await.expect_err("aborted").is_cancelled());
+    assert!(bounded(leader).await.expect_err("aborted").is_cancelled());
     for waiter in waiters {
         assert_eq!(text_of(waiter).await, "second");
     }
@@ -57,8 +58,15 @@ async fn given_a_dropped_leader_and_no_waiter_when_called_again_then_no_lock_is_
     let leader = spawn_call(&cache);
     settle().await;
     leader.abort();
-    let _ = leader.await;
-    assert_eq!(cache.token().await.expect("token").expose(), "second");
+    let _ = bounded(leader).await;
+    assert_eq!(
+        bounded(spawn_call(&cache))
+            .await
+            .expect("task")
+            .expect("token")
+            .expose(),
+        "second"
+    );
     assert_eq!(source.calls(), 2);
 }
 
@@ -72,7 +80,7 @@ async fn given_a_source_that_panics_when_calls_wait_then_the_panic_reaches_the_l
     let waiters: Vec<_> = (0..3).map(|_| spawn_call(&cache)).collect();
     settle().await;
     gate.notify_one();
-    assert!(leader.await.expect_err("panicked").is_panic());
+    assert!(bounded(leader).await.expect_err("panicked").is_panic());
     for waiter in waiters {
         assert_eq!(text_of(waiter).await, "second");
     }
@@ -87,6 +95,13 @@ async fn given_a_source_that_panics_before_its_future_when_called_again_then_the
     });
     let cache = TokenCache::new(source);
     let leader = spawn_call(&cache);
-    assert!(leader.await.expect_err("panicked").is_panic());
-    assert_eq!(cache.token().await.expect("token").expose(), "again");
+    assert!(bounded(leader).await.expect_err("panicked").is_panic());
+    assert_eq!(
+        bounded(spawn_call(&cache))
+            .await
+            .expect("task")
+            .expect("token")
+            .expose(),
+        "again"
+    );
 }

@@ -5,7 +5,6 @@ use br_llm_clients_common_http::{AuthorizerError, BoxFuture, Secret};
 use crate::access_token::AccessToken;
 use crate::token_source::TokenSource;
 
-#[derive(Clone)]
 pub struct StaticToken {
     token: Secret,
 }

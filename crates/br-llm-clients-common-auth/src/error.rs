@@ -1,6 +1,6 @@
 const MAX_NAME_CHARS: usize = 64;
 
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum AuthConfigError {
     #[error("invalid form field: {text}")]

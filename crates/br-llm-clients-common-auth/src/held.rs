@@ -3,7 +3,7 @@ use std::time::Duration;
 use br_llm_clients_common_http::Secret;
 use tokio::time::Instant;
 
-pub(crate) const MAX_VALIDITY: Duration = Duration::from_secs(24 * 60 * 60);
+const MAX_VALIDITY: Duration = Duration::from_secs(24 * 60 * 60);
 const FULL_SKEW: Duration = Duration::from_secs(300);
 const SHORT_VALIDITY: Duration = Duration::from_secs(600);
 
