@@ -47,7 +47,7 @@ fn given_a_static_token_then_debug_shows_no_value() {
     assert!(!secret().appears_in(&format!("{source:?}")));
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn given_a_cache_that_holds_a_token_then_debug_of_the_cache_and_the_authorizer_show_no_token()
 {
     let source = Scripted::new(vec![Step::token(VALUE, Some(Duration::from_secs(1000)))]);

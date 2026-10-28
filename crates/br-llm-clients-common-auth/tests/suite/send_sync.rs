@@ -35,7 +35,7 @@ fn given_the_types_the_library_says_can_be_cloned_then_they_are_clone() {
     clone::<AuthConfigError>();
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn given_the_futures_of_the_library_then_they_are_send() {
     let cache = TokenCache::new(Arc::new(StaticToken::new(
         br_llm_clients_common_http::Secret::new("t").expect("secret"),

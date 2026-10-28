@@ -50,9 +50,9 @@ Released on 2026-10-28.
   `token_type` equal to `Bearer` in any case, an optional `expires_in` (an integer
   that `as_u64` reads, or a text of digits, which saturates at the largest `u64`)
   and an optional non-empty `refresh_token`. A 429 or 5xx is `FetchFailed`; any
-  other status outside 2xx is `Unavailable`. Error texts are fixed: they name the
-  status, and add the `error` member only when it is 1 to 64 characters from `a`
+  other status outside 2xx is `Unavailable`. The texts of a refused status are
+  fixed: they name the status, and add the `error` member only when it is 1 to 64 characters from `a`
   to `z` and `_`, is not equal to a plain value of the form, holds no secret of
   the form and is no part of one.
-- `Debug` and the texts of every type never show a token, a secret or a form
-  value.
+- `Debug` and the texts of every type never show a token or a secret, and show a
+  form value only inside an added `error` code.

@@ -15,30 +15,29 @@ fn cache() -> TokenCache {
     )))
 }
 
-#[test]
-fn given_a_flight_whose_leader_is_gone_when_a_call_steps_then_it_leads_and_does_not_wait() {
+#[tokio::test(start_paused = true)]
+async fn given_a_flight_whose_leader_is_gone_when_a_call_steps_then_it_leads_and_does_not_wait() {
     let cache = cache();
     let (_, sender) = lock(&cache.state).open_flight(Instant::now());
     drop(sender);
     assert!(matches!(cache.step(), Step::Lead(_)));
 }
 
-#[test]
-fn given_a_live_flight_when_a_call_steps_then_it_waits_for_the_time_the_flight_has_left() {
+#[tokio::test(start_paused = true)]
+async fn given_a_live_flight_when_a_call_steps_then_it_waits_for_the_time_the_flight_has_left() {
     let cache = cache();
     let started = Instant::now() - Duration::from_secs(10);
     let (_, _sender) = lock(&cache.state).open_flight(started);
     match cache.step() {
         Step::Wait(waiting) => {
-            assert!(waiting.live_for <= Duration::from_secs(20));
-            assert!(waiting.live_for > Duration::from_secs(19));
+            assert_eq!(waiting.live_for, Duration::from_secs(20));
         }
         _ => panic!("the call did not wait"),
     }
 }
 
-#[test]
-fn given_a_flight_past_its_limit_when_a_call_steps_then_it_leads_a_new_flight() {
+#[tokio::test(start_paused = true)]
+async fn given_a_flight_past_its_limit_when_a_call_steps_then_it_leads_a_new_flight() {
     let cache = cache();
     let started = Instant::now() - FETCH_LIMIT;
     let (old, _sender) = lock(&cache.state).open_flight(started);
@@ -46,7 +45,7 @@ fn given_a_flight_past_its_limit_when_a_call_steps_then_it_leads_a_new_flight() 
     assert!(!lock(&cache.state).is_current(old));
 }
 
-#[test]
-fn given_no_flight_when_a_call_steps_then_it_leads() {
+#[tokio::test(start_paused = true)]
+async fn given_no_flight_when_a_call_steps_then_it_leads() {
     assert!(matches!(cache().step(), Step::Lead(_)));
 }
