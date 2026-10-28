@@ -42,3 +42,28 @@ fn given_a_level_not_in_the_capabilities_when_called_then_the_reason_names_the_m
     assert!(reason.contains("settings-model"));
     assert!(!reason.to_lowercase().contains("mock"));
 }
+
+#[test]
+fn given_a_history_ending_with_an_assistant_message_when_called_then_the_mock_accepts_it() {
+    let agent = crate::fixtures::agent_id();
+    let history = crate::fixtures::project(
+        agent,
+        vec![
+            crate::fixtures::human_turn(vec![crate::fixtures::text_block("first")]),
+            crate::fixtures::answered_turn(agent, "last"),
+        ],
+    );
+    let accepted = br_llm_clients_core::ClientRequest::new(
+        None,
+        history,
+        crate::fixtures::turn_id(),
+        crate::fixtures::entry_id(),
+        vec![],
+        OutputMode::Plain,
+    )
+    .unwrap();
+    let client = mock();
+    client.push_reply(crate::Reply::text("fine").build().unwrap());
+    let (outcome, _) = run(&client, &accepted);
+    assert_eq!(text_of(&outcome), "fine");
+}

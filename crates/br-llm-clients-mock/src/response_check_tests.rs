@@ -193,3 +193,28 @@ fn given_capabilities_that_refuse_structured_with_tools_when_the_check_runs_then
         Ok(())
     );
 }
+
+#[test]
+fn given_a_structured_request_when_a_structured_block_comes_beside_an_image_or_a_provider_block_then_it_is_given()
+ {
+    for beside in [image_content(), provider_content()] {
+        let response = response_ending(
+            vec![beside, structured_content(r#"{"a":1}"#)],
+            ResponseEnding::finished(),
+        );
+        assert!(serve(&structured_request(), response).is_ok());
+    }
+}
+
+#[test]
+fn given_runtime_tool_calls_when_they_come_beside_an_image_or_a_provider_block_then_they_are_given()
+{
+    for beside in [image_content(), provider_content()] {
+        let calls = response_ending(
+            vec![beside, call_content("search", "{}")],
+            ResponseEnding::tool_use(),
+        );
+        assert!(serve(&tools_request(), calls.clone()).is_ok());
+        assert!(serve(&structured_with_tools_request(), calls).is_ok());
+    }
+}

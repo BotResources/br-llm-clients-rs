@@ -158,3 +158,14 @@ fn given_a_size_of_zero_when_derived_then_chunk_size_zero() {
         );
     }
 }
+
+#[test]
+fn given_text_with_blank_pieces_when_cut_then_every_blank_piece_is_sent_in_the_order_of_the_text() {
+    let response = text_response("a \n b");
+    let ops = derived(&response, &Chunking::none().text(2));
+    assert_eq!(texts(&ops), ["a ", "\n ", "b"]);
+    let ops = derived(&response, &Chunking::none().text(1));
+    assert_eq!(texts(&ops), ["a", " ", "\n", " ", "b"]);
+    let blank_middle = derived(&text_response("a  \t b"), &Chunking::none().text(2));
+    assert_eq!(texts(&blank_middle), ["a ", " \t", " b"]);
+}

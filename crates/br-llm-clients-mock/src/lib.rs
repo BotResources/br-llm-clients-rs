@@ -120,6 +120,8 @@ mod sequential_id_source_tests;
 #[cfg(test)]
 mod sketch_tests;
 #[cfg(test)]
+mod source_tests;
+#[cfg(test)]
 mod strictness_details_tests;
 #[cfg(test)]
 mod strictness_tests;

@@ -147,6 +147,33 @@ fn given_a_response_without_tool_call_when_called_then_its_own_ending_is_kept() 
 }
 
 #[test]
+fn given_the_ending_provider_continuation_when_called_then_it_is_served_as_given_in_the_deltas_and_in_the_response()
+ {
+    for blocks in [
+        vec![crate::response_support::provider_content()],
+        vec![
+            text_content("a"),
+            crate::response_support::provider_content(),
+        ],
+    ] {
+        let response = response_of(
+            blocks,
+            ResponseEnding::provider_continuation(),
+            ResponseMetadata::new(),
+        );
+        let (outcome, deltas) = serve_one(Reply::success(response).build().unwrap());
+        assert_eq!(
+            response_from(&outcome).ending(),
+            &ResponseEnding::provider_continuation()
+        );
+        assert!(matches!(
+            deltas.last().unwrap().op(),
+            br_llm_messages::DeltaOp::ResponseCompleted { ending, .. } if *ending == ResponseEnding::provider_continuation()
+        ));
+    }
+}
+
+#[test]
 fn given_a_failure_when_called_then_no_delta_is_sent_and_the_call_gives_the_error() {
     let (outcome, deltas) = serve_one(
         Reply::failure(ClientError::RateLimited { retry_after: None })
