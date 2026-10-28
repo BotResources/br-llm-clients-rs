@@ -94,19 +94,20 @@ fn given_two_secrets_when_the_longest_start_is_the_longer_ones_then_it_is_remove
 }
 
 #[test]
-fn given_a_whole_secret_whose_last_byte_is_its_first_when_it_ends_the_bytes_then_it_stays_whole() {
+fn given_a_whole_secret_whose_last_byte_is_its_first_when_it_ends_the_bytes_then_it_goes_with_the_start()
+ {
     let secret = "QZXVsecret7788Q";
     let bytes = [b"aaaa".as_slice(), secret.as_bytes()].concat();
-    assert_eq!(trimmed(&[secret], &bytes), bytes);
+    assert_eq!(trimmed(&[secret], &bytes), b"aaaa");
 }
 
 #[test]
-fn given_a_whole_secret_whose_tail_starts_another_when_it_ends_the_bytes_then_it_stays_whole() {
+fn given_a_whole_secret_whose_tail_starts_another_when_it_ends_the_bytes_then_both_go() {
     let first = "abcdefXYZ123";
     let second = "cdefXYZ123ghij";
     let bytes = [b"zzzz".as_slice(), first.as_bytes()].concat();
-    assert_eq!(trimmed(&[first, second], &bytes), bytes);
-    assert_eq!(trimmed(&[second, first], &bytes), bytes);
+    assert_eq!(trimmed(&[first, second], &bytes), b"zzzz");
+    assert_eq!(trimmed(&[second, first], &bytes), b"zzzz");
 }
 
 #[test]
@@ -130,4 +131,36 @@ fn given_a_whole_secret_that_starts_a_longer_one_when_the_rest_continues_past_th
         secrets.replace(&String::from_utf8(bytes).expect("utf8")),
         "aaaa"
     );
+}
+
+#[test]
+fn given_a_whole_secret_that_overlaps_a_secret_crossing_the_cut_when_trimmed_then_no_byte_of_either_stays()
+ {
+    assert_eq!(trimmed(&["abc", "bcdz"], b"0000abcd"), b"0000");
+    assert_eq!(trimmed(&["bcdz", "abc"], b"0000abcd"), b"0000");
+}
+
+#[test]
+fn given_a_secret_that_overlaps_itself_at_the_cut_when_trimmed_then_no_byte_of_it_stays() {
+    assert_eq!(trimmed(&["aba"], b"abab"), b"");
+    assert_eq!(trimmed(&["aa", "aba"], b"aab"), b"");
+}
+
+#[test]
+fn given_short_secrets_that_cover_the_bytes_of_a_longer_one_when_trimmed_then_they_stay_for_the_replacement()
+ {
+    let secrets = secrets(&["x", "xxx"]);
+    let mut bytes = b"xxxx".to_vec();
+    secrets.trim_cut(&mut bytes);
+    assert_eq!(bytes, b"xx");
+    assert_eq!(
+        secrets.replace(&String::from_utf8(bytes).expect("utf8")),
+        "[redacted][redacted]"
+    );
+}
+
+#[test]
+fn given_one_byte_secrets_when_trimmed_then_nothing_is_removed() {
+    assert_eq!(trimmed(&["k"], b"kkkk"), b"kkkk");
+    assert_eq!(trimmed(&["k", "z"], b"akzk"), b"akzk");
 }

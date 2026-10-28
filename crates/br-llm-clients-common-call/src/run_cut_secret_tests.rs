@@ -163,32 +163,34 @@ fn ending_at_the_cut(secret: &str) -> Vec<u8> {
 }
 
 #[tokio::test]
-async fn given_a_whole_secret_ending_at_the_cut_whose_last_byte_is_its_first_then_it_is_replaced() {
+async fn given_a_whole_secret_ending_at_the_cut_whose_last_byte_is_its_first_then_it_goes_with_the_start()
+ {
     let secret = "QZXVsecret7788Q";
     let seen = refused(&[secret], &[], ending_at_the_cut(secret)).await;
-    let expected = format!("{}[redacted]", "a".repeat(CAP - 15));
+    let expected = "a".repeat(CAP - 15);
     assert_eq!(seen.dialect_text, expected);
     assert_eq!(seen.error_body, expected);
 }
 
 #[tokio::test]
-async fn given_a_whole_secret_ending_at_the_cut_and_a_second_that_starts_with_its_tail_then_it_is_replaced()
+async fn given_a_whole_secret_ending_at_the_cut_and_a_second_that_starts_with_its_tail_then_both_go()
  {
     let first = "abcdefXYZ123";
     let second = "cdefXYZ123ghij";
     for listed in [[first, second], [second, first]] {
         let seen = refused(&listed, &[], ending_at_the_cut(first)).await;
-        let expected = format!("{}[redacted]", "a".repeat(CAP - 12));
+        let expected = "a".repeat(CAP - 12);
         assert_eq!(seen.dialect_text, expected);
         assert_eq!(seen.error_body, expected);
     }
 }
 
 #[tokio::test]
-async fn given_a_whole_secret_ending_at_the_cut_that_only_the_log_holds_then_it_is_replaced() {
+async fn given_a_whole_secret_ending_at_the_cut_that_only_the_log_holds_then_it_goes_with_the_start()
+ {
     let secret = "QZXVsecret7788Q";
     let seen = refused(&[], &[secret], ending_at_the_cut(secret)).await;
-    let expected = format!("{}[redacted]", "a".repeat(CAP - 15));
+    let expected = "a".repeat(CAP - 15);
     assert_eq!(seen.dialect_text, expected);
 }
 

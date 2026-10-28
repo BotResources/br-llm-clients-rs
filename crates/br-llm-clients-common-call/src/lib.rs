@@ -34,7 +34,9 @@ mod reader;
 mod refusal;
 mod request_build;
 mod run;
+mod secret_automaton;
 mod secret_log;
+mod secret_ranges;
 mod text_clean;
 
 pub use br_llm_clients_common_http::{Authorizer, Endpoint, Headers, HttpClient, Secret};
@@ -141,6 +143,8 @@ mod test_ids;
 mod test_normalize;
 #[cfg(test)]
 mod test_requests;
+#[cfg(test)]
+mod test_secret_reference;
 #[cfg(test)]
 mod test_server;
 #[cfg(test)]

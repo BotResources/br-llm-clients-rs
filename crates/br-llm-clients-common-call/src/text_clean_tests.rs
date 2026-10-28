@@ -78,11 +78,31 @@ fn given_a_text_that_holds_the_placeholder_when_replaced_then_it_is_scanned_as_a
 }
 
 #[test]
-fn given_secrets_that_overlap_in_the_text_when_replaced_then_the_leftmost_goes_and_the_scan_goes_on_after_it()
- {
-    assert_eq!(secrets(&["xyx"]).replace("xyxyx"), "[redacted]yx");
-    assert_eq!(secrets(&["xyx", "yxy"]).replace("xyxy"), "[redacted]y");
+fn given_occurrences_that_share_a_byte_when_replaced_then_they_become_one_placeholder() {
+    assert_eq!(secrets(&["xyx"]).replace("xyxyx"), "[redacted]");
+    assert_eq!(secrets(&["xyx", "yxy"]).replace("xyxy"), "[redacted]");
     assert_eq!(secrets(&["xy", "xyzw"]).replace("xyzw"), "[redacted]");
+    assert_eq!(secrets(&["ab", "bcd"]).replace("abcd"), "[redacted]");
+    assert_eq!(secrets(&["aba"]).replace("ababa"), "[redacted]");
+    assert_eq!(secrets(&["b", "abc"]).replace("zabcz"), "z[redacted]z");
+    assert_eq!(
+        secrets(&["ab", "cd"]).replace("zabcdz"),
+        "z[redacted][redacted]z"
+    );
+}
+
+#[test]
+fn given_occurrences_that_only_touch_or_stand_apart_when_replaced_then_each_keeps_its_placeholder()
+{
+    assert_eq!(
+        secrets(&["ab", "cd"]).replace("abcd"),
+        "[redacted][redacted]"
+    );
+    assert_eq!(secrets(&["ab"]).replace("ab-ab"), "[redacted]-[redacted]");
+    assert_eq!(
+        secrets(&["ab", "bcd"]).replace("ab bcd"),
+        "[redacted] [redacted]"
+    );
 }
 
 #[test]
