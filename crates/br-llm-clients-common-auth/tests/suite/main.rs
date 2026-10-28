@@ -1,5 +1,6 @@
 mod authorizer;
 mod authorizer_timing;
+mod cache_deadline;
 mod cache_failure;
 mod cache_fresh;
 mod cache_leader;

@@ -1,21 +1,19 @@
 use std::fmt;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use br_llm_clients_common_http::{AuthorizerError, Secret};
 use tokio::sync::watch;
 use tokio::time::{Instant, timeout};
 
+use crate::flight::{FETCH_LIMIT, Waiting, timed_out};
 use crate::lead::Lead;
+use crate::pass::pass;
 use crate::state::{Outcome, State, lock};
 use crate::token_source::TokenSource;
 
-const FETCH_LIMIT: Duration = Duration::from_secs(30);
-const FETCH_TIMED_OUT: &str = "the token fetch timed out";
-
 pub(crate) enum Step {
     Ready(Secret),
-    Wait(watch::Receiver<Outcome>),
+    Wait(Waiting),
     Lead(Lead),
 }
 
@@ -38,12 +36,22 @@ impl TokenCache {
     }
 
     pub async fn token(&self) -> Result<Secret, AuthorizerError> {
+        let mut lost = None;
         loop {
             match self.step() {
                 Step::Ready(secret) => return Ok(secret),
-                Step::Wait(receiver) => {
-                    if let Some(result) = wait(receiver).await {
-                        return result;
+                Step::Wait(waiting) => {
+                    let id = waiting.id;
+                    if lost == Some(id) {
+                        pass().await;
+                    }
+                    match timeout(waiting.time_left, wait(waiting.receiver)).await {
+                        Ok(Some(result)) => return result,
+                        Ok(None) => lost = Some(id),
+                        Err(_) => {
+                            lock(&self.state).expire(id);
+                            return Err(timed_out());
+                        }
                     }
                 }
                 Step::Lead(lead) => return self.fetch(lead).await,
@@ -57,26 +65,27 @@ impl TokenCache {
         if let Some(held) = state.held.as_ref().filter(|held| held.is_fresh(now)) {
             return Step::Ready(held.secret().clone());
         }
-        let live = state
-            .flight
-            .clone()
-            .filter(|receiver| receiver.has_changed().is_ok());
-        if let Some(receiver) = live {
+        let live = state.flight.as_ref().and_then(|flight| {
+            flight.time_left(now).map(|time_left| Waiting {
+                id: flight.id,
+                receiver: flight.receiver.clone(),
+                time_left,
+            })
+        });
+        if let Some(waiting) = live {
             return match state.held.as_ref().filter(|held| held.is_usable(now)) {
                 Some(held) => Step::Ready(held.secret().clone()),
-                None => Step::Wait(receiver),
+                None => Step::Wait(waiting),
             };
         }
-        Step::Lead(Lead::start(&self.state, &mut state))
+        Step::Lead(Lead::start(&self.state, &mut state, now))
     }
 
     async fn fetch(&self, lead: Lead) -> Result<Secret, AuthorizerError> {
-        let started = Instant::now();
-        let result = match timeout(FETCH_LIMIT, self.source.fetch()).await {
-            Ok(result) => result,
-            Err(_) => Err(AuthorizerError::fetch_failed(FETCH_TIMED_OUT)),
-        };
-        lead.finish(started, result)
+        let result = timeout(FETCH_LIMIT, self.source.fetch())
+            .await
+            .unwrap_or_else(|_| Err(timed_out()));
+        lead.finish(result)
     }
 }
 
