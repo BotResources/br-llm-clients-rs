@@ -68,15 +68,21 @@ impl SequentialIdSource {
 
     fn take(&self) -> Uuid {
         let start = self.start;
-        let taken = self
-            .given
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |given| {
-                let number = start.checked_add(given)?;
-                (number < LAST_NUMBER).then(|| given.saturating_add(1))
-            });
-        match taken {
-            Ok(given) => identity_uuid(start.saturating_add(given)),
-            Err(_) => panic!("the sequential source of identities is exhausted"),
+        let mut given = self.given.load(Ordering::SeqCst);
+        loop {
+            let number = match start.checked_add(given) {
+                Some(number) if number < LAST_NUMBER => number,
+                _ => panic!("the sequential source of identities is exhausted"),
+            };
+            match self.given.compare_exchange_weak(
+                given,
+                given.saturating_add(1),
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(_) => return identity_uuid(number),
+                Err(current) => given = current,
+            }
         }
     }
 }
