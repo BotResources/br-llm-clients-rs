@@ -108,6 +108,8 @@ mod run_timing_tests;
 #[cfg(test)]
 mod secret_log_tests;
 #[cfg(test)]
+mod secret_trim_differential_tests;
+#[cfg(test)]
 mod secret_trim_exhaustive_tests;
 #[cfg(test)]
 mod secret_trim_tests;
@@ -151,5 +153,7 @@ mod test_server;
 mod test_sink;
 #[cfg(test)]
 mod test_stream;
+#[cfg(test)]
+mod text_clean_property_tests;
 #[cfg(test)]
 mod text_clean_tests;
