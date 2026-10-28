@@ -69,26 +69,55 @@ async fn given_any_answer_that_echoes_the_values_then_no_error_text_holds_one() 
     }
 }
 
-#[tokio::test]
-async fn given_an_error_member_that_is_a_value_of_the_form_then_it_is_kept_only_when_it_has_the_allowed_form()
- {
-    let error = error_for(400, r#"{"error":"FORM-SECRET-41"}"#).await;
-    assert_eq!(
-        error,
-        AuthorizerError::unavailable("the token endpoint answered 400")
-    );
-    let shaped = json(400, r#"{"error":"invalid_client"}"#);
-    let server = Server::start(vec![shaped]).await;
-    let form = TokenForm::refresh_token(Secret::new(FORM_SECRET).expect("secret"));
-    let error = FormTokenClient::new(
+async fn status_text(form: &TokenForm, body: &str) -> AuthorizerError {
+    let server = Server::start(vec![json(400, body)]).await;
+    FormTokenClient::new(
         http_client(Duration::from_secs(5)),
         server.endpoint("/token"),
     )
-    .fetch(&form)
+    .fetch(form)
     .await
-    .expect_err("error");
+    .expect_err("error")
+}
+
+#[tokio::test]
+async fn given_an_error_member_that_holds_a_secret_of_the_form_then_the_text_drops_it() {
+    let secret = Secret::new("hunter_two_lowercase").expect("secret");
+    let form = TokenForm::client_credentials("app", secret.clone()).expect("form");
+    for body in [
+        r#"{"error":"hunter_two_lowercase"}"#,
+        r#"{"error":"bad_hunter_two_lowercase_given"}"#,
+    ] {
+        let error = status_text(&form, body).await;
+        assert_eq!(
+            error,
+            AuthorizerError::unavailable("the token endpoint answered 400"),
+            "{body}"
+        );
+        assert!(!secret.appears_in(&error.to_string()));
+    }
+}
+
+#[tokio::test]
+async fn given_an_error_member_equal_to_a_plain_value_of_the_form_then_the_text_drops_it() {
+    let form =
+        TokenForm::client_credentials("my_app", Secret::new("X-1").expect("secret")).expect("form");
     assert_eq!(
-        error,
-        AuthorizerError::unavailable("the token endpoint answered 400: invalid_client")
+        status_text(&form, r#"{"error":"my_app"}"#).await,
+        AuthorizerError::unavailable("the token endpoint answered 400")
+    );
+    assert_eq!(
+        status_text(&form, r#"{"error":"client_credentials"}"#).await,
+        AuthorizerError::unavailable("the token endpoint answered 400")
+    );
+}
+
+#[tokio::test]
+async fn given_an_error_member_that_only_contains_a_plain_value_of_the_form_then_the_text_keeps_it()
+{
+    let form = TokenForm::refresh_token(Secret::new("RT-SECRET-1").expect("secret"));
+    assert_eq!(
+        status_text(&form, r#"{"error":"invalid_refresh_token"}"#).await,
+        AuthorizerError::unavailable("the token endpoint answered 400: invalid_refresh_token")
     );
 }

@@ -45,8 +45,9 @@ impl FormTokenClient {
         let code = body
             .ok()
             .filter(|collected| !collected.cut)
-            .and_then(|collected| error_code(&collected.bytes));
-        Err(refused(status, code))
+            .and_then(|collected| error_code(&collected.bytes))
+            .filter(|code| !form.echoes(code));
+        Err(status_error(status, code))
     }
 }
 
@@ -54,7 +55,7 @@ fn malformed(status: u16, flaw: &str) -> AuthorizerError {
     AuthorizerError::fetch_failed(format!("the token endpoint answered {status} with {flaw}"))
 }
 
-fn refused(status: u16, code: Option<String>) -> AuthorizerError {
+fn status_error(status: u16, code: Option<String>) -> AuthorizerError {
     let mut text = format!("the token endpoint answered {status}");
     if let Some(code) = code {
         text.push_str(": ");

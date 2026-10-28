@@ -56,6 +56,13 @@ impl TokenForm {
             .collect()
     }
 
+    pub(crate) fn echoes(&self, text: &str) -> bool {
+        self.fields.iter().any(|(_, value)| match value {
+            FieldValue::Plain(plain) => plain == text,
+            FieldValue::Secret(secret) => secret.appears_in(text),
+        })
+    }
+
     fn add(mut self, name: &str, value: FieldValue) -> Result<Self, AuthConfigError> {
         if name.is_empty() {
             return Err(AuthConfigError::empty_name());
