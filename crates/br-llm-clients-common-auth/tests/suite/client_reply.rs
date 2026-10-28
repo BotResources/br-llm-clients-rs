@@ -111,6 +111,32 @@ async fn given_a_body_of_exactly_64_kib_then_it_is_read_and_one_byte_more_is_a_f
     );
 }
 
+fn chunked(body: &[u8]) -> Answer {
+    let mut bytes =
+        b"HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\nconnection: close\r\n\r\n".to_vec();
+    for chunk in body.chunks(1000) {
+        bytes.extend_from_slice(format!("{:x}\r\n", chunk.len()).as_bytes());
+        bytes.extend_from_slice(chunk);
+        bytes.extend_from_slice(b"\r\n");
+    }
+    bytes.extend_from_slice(b"0\r\n\r\n");
+    Answer::Raw(bytes)
+}
+
+#[tokio::test]
+async fn given_a_chunked_body_with_no_length_then_the_64_kib_limit_still_holds() {
+    let exact = Server::start(vec![chunked(padded(LIMIT).as_bytes())]).await;
+    let reply = client(&exact).fetch(&form()).await.expect("reply");
+    assert_eq!(reply.access_token.secret().expose(), "at");
+    let over = Server::start(vec![chunked(padded(LIMIT + 1).as_bytes())]).await;
+    assert_eq!(
+        client(&over).fetch(&form()).await.expect_err("too long"),
+        AuthorizerError::fetch_failed(
+            "the token endpoint answered 200 with a body of more than 64 KiB"
+        )
+    );
+}
+
 #[tokio::test]
 async fn given_a_body_that_ends_early_then_it_is_a_fetch_failure_that_names_the_stage() {
     let server = Server::start(vec![short_body(200, 100, br#"{"access_to"#)]).await;

@@ -24,6 +24,7 @@ fn given_a_body_that_is_not_a_json_object_then_it_is_refused() {
         "{",
         "not json",
         "{\"access_token\":\"a\"} x",
+        "\u{feff}{\"access_token\":\"a\"}",
     ] {
         assert_eq!(flaw(body), Flaw::NotAnObject, "{body}");
     }
@@ -173,4 +174,20 @@ fn given_an_error_member_then_only_a_short_lowercase_code_is_read() {
     assert_eq!(error_code(br#"{"error_description":"x"}"#), None);
     assert_eq!(error_code(b"{\"error\":\"a\"} x"), None);
     assert_eq!(error_code(b"\xff"), None);
+}
+
+#[test]
+fn given_a_body_nested_deeper_than_the_json_reader_allows_then_it_is_refused_without_a_crash() {
+    let deep = format!(
+        r#"{{"access_token":"a","x":{}{}}}"#,
+        "[".repeat(30_000),
+        "]".repeat(30_000)
+    );
+    assert_eq!(flaw(&deep), Flaw::NotAnObject);
+    let deep_error = format!(
+        r#"{{"error":"invalid_grant","x":{}{}}}"#,
+        "[".repeat(30_000),
+        "]".repeat(30_000)
+    );
+    assert_eq!(error_code(deep_error.as_bytes()), None);
 }
