@@ -68,10 +68,10 @@ a tag of line 0.1 stays valid on that tag and is not changed.
   gives it to the `StreamSink` only after the draft accepts it; a refused delta is
   not given and makes the reply `MalformedResponse`. `ResponseStarted` is the
   first delta (sent when the first provider event other than `Error`, `Complete`
-  and an empty `ResponseId` is accepted) and `ResponseCompleted`, with the corrected ending, is
-  the last and only on success. `Model`, `Usage` and `ResponseId` events are sent
-  as metadata updates when they are applied. No `observed_at` is set. A `Usage`
-  event that holds one count is sent as it is.
+  and an empty `ResponseId` is accepted) and `ResponseCompleted`, with the
+  corrected ending, is the last and only on success. `Model`, `Usage` and
+  `ResponseId` events are sent as metadata updates when they are applied. No
+  `observed_at` is set. A `Usage` event that holds one count is sent as it is.
 - Blocks are given to the sink in the order of their `BlockStart`; the events of a
   later block are held until the earlier blocks close. A text block that is blank
   and a thinking block that holds no text and no replay fragment are held and are
@@ -101,9 +101,11 @@ a tag of line 0.1 stays valid on that tag and is not changed.
   `ResponseStarted` is the first sink call: the time to the first event of the
   `CallReport` stops there.
 - The crate pins `br-llm-clients-core` 0.5.0, `br-llm-clients-common-http` 0.2.0
-  and `br-llm-clients-common-sse` 0.1.0 by git tag, each as
-  `{crate}/v{version}` of this repository. A library that names the types of these
-  crates must pin the same tags, so that one copy of each is resolved.
+  and `br-llm-clients-common-sse` 0.1.0 by git tag, each as `{crate}/v{version}`
+  of this repository, and `br-llm-messages` 2.1.0 by the tag
+  `br-llm-messages/v2.1.0` of `br-llm-messages-rs`, whose types `ProviderEvent`
+  and the reply expose. A library that names the types of these crates must pin
+  the same tags, so that one copy of each is resolved.
 - The line of `br-llm-clients-common-http` is 0.2, because `Secret::appears_in`
   and `Response::retry_after_ms` are new in that line. `Secret`, `Endpoint`,
   `Headers`, `HttpClient` and `Authorizer`, which this crate re-exports, are now
@@ -117,14 +119,15 @@ a tag of line 0.1 stays valid on that tag and is not changed.
   secret). The trim removes at least the open start. When a secret that is whole
   in the collected bytes reaches into the removed part, the trim goes further
   back, to the last point where each kept byte of such a secret is also inside a
-  whole secret that is kept. So no byte of any secret, whole or crossing the
-  cut, stays in clear, whatever the rest of the body was. The trim never keeps a
-  byte that removing the open start removes, even when keeping it would be
-  safe: with the secrets `xxx`, `zxz` and `zzx`, the cut bytes `xxx` give an
-  empty text. Below that bound, it keeps the most bytes it can. In 0.1.0 the
-  body was cut first and the secrets were replaced after, so a secret that crossed the cut left its first part in the
-  text of the `ClientError` and in the text that `error_code` and
-  `refine_error` read. Nothing is trimmed when the collection is not cut.
+  whole secret that is kept. So no byte of any secret, whole or crossing the cut,
+  stays in clear, whatever the rest of the body was. The trim never keeps a byte
+  that removing the open start removes, even when keeping it would be safe: with
+  the secrets `xxx`, `zxz` and `zzx`, the cut bytes `xxx` give an empty text.
+  Below that bound, it keeps the most bytes it can. In 0.1.0 the body was cut
+  first and the secrets were replaced after, so a secret that crossed the cut left
+  its first part in the text of the `ClientError` and in the text that
+  `error_code` and `refine_error` read. Nothing is trimmed when the collection is
+  not cut.
 - The secrets are replaced in one pass over the text. Every occurrence of every
   secret in effect is found, also when occurrences overlap. Occurrences that
   share at least one byte make one range, and each range becomes one
@@ -145,26 +148,25 @@ a tag of line 0.1 stays valid on that tag and is not changed.
   `SecretLog`: the cleaning of a refusal or of an `Error` event and the cleaning
   of the outcome share it, and a secret recorded between the two makes the
   second cleaning build it again with that secret. If the secrets in effect
-  hold more than 2^30 - 1 bytes in total, no automaton is built: every
-  non-empty text is replaced by one `[redacted]`, and a cut refusal body keeps
-  no byte.
+  hold more than 2^30 - 1 bytes in total, or if the memory for the automaton
+  cannot be reserved, no automaton is built and nothing aborts: every non-empty
+  text is replaced by one `[redacted]`, and a cut refusal body keeps no byte.
 - The text of a refusal that `error_code` and `refine_error` get is cut to
   64 KiB at a character boundary after the replacement. In 0.1.0 it was given
   uncut, so a replacement that made it longer gave the dialect up to ten times
   64 KiB. The error text of the outcome is cut as before.
 - A secret recorded in the `SecretLog` is removed from every text of the outcome
-  before the cut to 64 KiB, as the secrets of the list. The code and the text of an
-  `Error` event are cleaned with the secrets in effect too, and so are the reason
-  of an `unclassified` ending and the matched sequence of a `stop_sequence`
-  ending inside a `ReplyUnusable`. The kind of the ending never changes: a
-  cleaned text is never empty, so the core always accepts it.
+  before the cut to 64 KiB, as the secrets of the list. The code and the text of
+  an `Error` event are cleaned with the secrets in effect too, and so are the
+  reason of an `unclassified` ending and the matched sequence of a `stop_sequence`
+  ending inside a `ReplyUnusable`. The kind of the ending never changes: a cleaned
+  text is never empty, so the core always accepts it.
 - The delay of a refusal is read from `retry-after-ms` first, as
   `Response::retry_after_ms` reads it, and from `Retry-After` when the first gives
   nothing. In 0.1.0 only `Retry-After` was read. The delay of an error inside a
   stream is not changed.
 - The request id of the `CallReport` is absent when a secret in effect appears in
   it, at any place in the text. In 0.1.0 it was never tested.
-
 - An open block is found by its key in constant time, and a block that finished
   is freed, so the cost of a reply no longer grows with the square of its number
   of blocks. The deltas sent do not change.
