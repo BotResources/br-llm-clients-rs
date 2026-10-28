@@ -16,7 +16,7 @@ pub(crate) async fn refuse(spec: &CallSpec, mut response: Response) -> ClientErr
             if collected.cut {
                 secrets.trim_cut(&mut collected.bytes);
             }
-            let text = secrets.replace(&String::from_utf8_lossy(&collected.bytes));
+            let text = secrets.clean(&String::from_utf8_lossy(&collected.bytes));
             let info = ErrorInfo::new(text.as_str()).with_status(status);
             match spec.dialect.error_code(&text) {
                 Some(code) => info.with_code(code),

@@ -96,6 +96,8 @@ mod run_ending_clean_tests;
 #[cfg(test)]
 mod run_guard_tests;
 #[cfg(test)]
+mod run_refusal_clean_tests;
+#[cfg(test)]
 mod run_refusal_tests;
 #[cfg(test)]
 mod run_retry_after_tests;
