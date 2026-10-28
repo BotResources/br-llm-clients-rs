@@ -112,24 +112,39 @@ a tag of line 0.1 stays valid on that tag and is not changed.
   Every library that imports this crate in its line 0.2 and names one of these
   types must use the same `common-http` in the same release.
 - A refusal body longer than 64 KiB is trimmed at its end before the secrets are
-  replaced: the longest suffix of the collected bytes that equals the start of a
-  secret in effect (at least one byte, fewer than the whole secret) is removed,
-  except that bytes belonging to a secret that is whole in the collected bytes
-  stay for the replacement, unless a longer secret could continue from them
-  past the cut.
-  In 0.1.0 the body was cut first and the secrets were replaced after, so a
-  secret that crossed the cut left its first part in the text of the
-  `ClientError` and in the text that `error_code` and `refine_error` read. Nothing
-  is trimmed when the collection is not cut.
-- The secrets are replaced in one pass over the text: at each position the longest
-  secret in effect that matches is replaced by `[redacted]` and the scan goes on
-  after the match, so the placeholder is never scanned again. In 0.1.0 each secret
-  was replaced in turn over the whole text, so a secret that is a part of
-  `[redacted]` rewrote the placeholders already written.
+  replaced. Let the open start be the longest suffix of the collected bytes that
+  equals the start of a secret in effect (at least one byte, fewer than the whole
+  secret). The trim removes at least the open start. When a secret that is whole
+  in the collected bytes reaches into the removed part, the trim goes further
+  back, to the last point where each kept byte of such a secret is also inside a
+  whole secret that is kept. So no byte of any secret, whole or crossing the
+  cut, stays in clear, whatever the rest of the body was. The trim keeps the
+  most bytes that this rule allows. In 0.1.0 the body was cut first and the secrets were
+  replaced after, so a secret that crossed the cut left its first part in the
+  text of the `ClientError` and in the text that `error_code` and
+  `refine_error` read. Nothing is trimmed when the collection is not cut.
+- The secrets are replaced in one pass over the text. Every occurrence of every
+  secret in effect is found, also when occurrences overlap. Occurrences that
+  share at least one byte make one range, and each range becomes one
+  `[redacted]`. Occurrences that only touch, or that stand apart, keep one
+  `[redacted]` each. So no byte of any occurrence stays in clear. Within one
+  cleaning a placeholder is never scanned. A text that is cleaned twice is
+  scanned again the second time, placeholders included: a refusal text and the
+  code and the text of an `Error` event are cleaned before the dialect gets them
+  and again before the outcome is returned. So with the secret `red` and the
+  body `red`, the dialect gets `[redacted]` and the error holds
+  `[[redacted]acted]`. In 0.1.0 each secret was replaced in turn over the whole
+  text, so a secret that is a part of `[redacted]` rewrote the placeholders
+  already written, and two secrets that overlapped kept a part of one of them.
+- The text of a refusal that `error_code` and `refine_error` get is cut to
+  64 KiB at a character boundary after the replacement. In 0.1.0 it was given
+  uncut, so a replacement that made it longer gave the dialect up to ten times
+  64 KiB. The error text of the outcome is cut as before.
 - A secret recorded in the `SecretLog` is removed from every text of the outcome
   before the cut to 64 KiB, as the secrets of the list. The code and the text of an
-  `Error` event are cleaned with the secrets in effect too, and so is the reason
-  of an `unclassified` ending inside a `ReplyUnusable`.
+  `Error` event are cleaned with the secrets in effect too, and so are the reason
+  of an `unclassified` ending and the matched sequence of a `stop_sequence`
+  ending inside a `ReplyUnusable`. The kind of the ending never changes.
 - The delay of a refusal is read from `retry-after-ms` first, as
   `Response::retry_after_ms` reads it, and from `Retry-After` when the first gives
   nothing. In 0.1.0 only `Retry-After` was read. The delay of an error inside a
