@@ -112,6 +112,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "br-llm-clients-common-auth"
+version = "0.1.0"
+dependencies = [
+ "br-llm-clients-common-http 0.2.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-common-http%2Fv0.2.0)",
+ "serde_json",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "br-llm-clients-common-call"
 version = "0.1.0"
 dependencies = [
@@ -154,6 +164,25 @@ dependencies = [
  "hyper",
  "hyper-util",
  "rcgen",
+ "rustls",
+ "rustls-pki-types",
+ "thiserror",
+ "tokio",
+ "tokio-rustls",
+ "webpki-roots",
+]
+
+[[package]]
+name = "br-llm-clients-common-http"
+version = "0.2.0"
+source = "git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-common-http%2Fv0.2.0#f16adaef1d12be8e0b33117e1deedef0f73bd282"
+dependencies = [
+ "bytes",
+ "h2",
+ "http",
+ "httpdate",
+ "hyper",
+ "hyper-util",
  "rustls",
  "rustls-pki-types",
  "thiserror",
