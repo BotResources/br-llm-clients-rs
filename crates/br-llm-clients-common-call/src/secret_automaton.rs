@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::VecDeque;
 
 pub(crate) const ROOT: u32 = 0;
 pub(crate) const MAX_NODES: usize = 1 << 30;
@@ -13,12 +13,18 @@ pub(crate) struct Automaton {
     links: Vec<u32>,
     longest: Vec<u32>,
     root: Vec<u32>,
-    branches: BTreeMap<(u32, u8), u32>,
+    branches: Vec<(u32, u8, u32)>,
     starts: Vec<(u32, u32)>,
 }
 
 fn slot(index: u32) -> usize {
     usize::try_from(index).unwrap_or(usize::MAX)
+}
+
+pub(crate) fn reserved<T>(length: usize) -> Option<Vec<T>> {
+    let mut reserved = Vec::new();
+    reserved.try_reserve_exact(length).ok()?;
+    Some(reserved)
 }
 
 impl Automaton {
@@ -31,17 +37,25 @@ impl Automaton {
             return None;
         }
         let mut automaton = Self {
-            bytes: Vec::with_capacity(nodes),
-            links: Vec::with_capacity(nodes),
-            longest: Vec::with_capacity(nodes),
+            bytes: reserved(nodes)?,
+            links: reserved(nodes)?,
+            longest: reserved(nodes)?,
             root: vec![NONE; 256],
-            branches: BTreeMap::new(),
+            branches: Vec::new(),
             starts: Vec::new(),
         };
         automaton.push_node(0)?;
-        for secret in secrets {
-            automaton.insert(secret)?;
+        let mut sorted = secrets.to_vec();
+        sorted.sort_unstable();
+        let mut path = vec![ROOT];
+        let mut previous: &[u8] = &[];
+        for secret in sorted {
+            automaton.insert(secret, previous, &mut path)?;
+            previous = secret;
         }
+        automaton
+            .branches
+            .sort_unstable_by_key(|(parent, byte, _)| (*parent, *byte));
         automaton.link();
         Some(automaton)
     }
@@ -82,7 +96,7 @@ impl Automaton {
             + self.links.capacity() * size_of::<u32>()
             + self.longest.capacity() * size_of::<u32>()
             + self.root.capacity() * size_of::<u32>()
-            + self.branches.len() * size_of::<((u32, u8), u32)>()
+            + self.branches.capacity() * size_of::<(u32, u8, u32)>()
             + self.starts.capacity() * size_of::<(u32, u32)>()
     }
 
@@ -127,7 +141,12 @@ impl Automaton {
             return Some(next);
         }
         if link & BRANCH != 0 {
-            return self.branches.get(&(node, byte)).copied();
+            return self
+                .branches
+                .binary_search_by_key(&(node, byte), |(parent, byte, _)| (*parent, *byte))
+                .ok()
+                .and_then(|at| self.branches.get(at))
+                .map(|(_, _, child)| *child);
         }
         None
     }
@@ -157,28 +176,27 @@ impl Automaton {
         } else if parent.checked_add(1) == Some(index) {
             self.mark(parent, CHAIN);
         } else {
-            self.branches.insert((parent, byte), index);
+            self.branches.push((parent, byte, index));
             self.mark(parent, BRANCH);
         }
         Some(index)
     }
 
-    fn insert(&mut self, secret: &[u8]) -> Option<()> {
-        let mut node = ROOT;
-        let mut fresh = false;
-        for (depth, byte) in (1_u32..).zip(secret) {
-            let existing = if fresh { None } else { self.child(node, *byte) };
-            node = match existing {
-                Some(next) => next,
-                None => {
-                    let created = self.add_child(node, *byte)?;
-                    if !fresh {
-                        self.starts.push((created, depth));
-                        fresh = true;
-                    }
-                    created
-                }
-            };
+    fn insert(&mut self, secret: &[u8], previous: &[u8], path: &mut Vec<u32>) -> Option<()> {
+        let shared = previous
+            .iter()
+            .zip(secret)
+            .take_while(|(before, now)| before == now)
+            .count();
+        path.truncate(shared.saturating_add(1));
+        let mut node = *path.last()?;
+        let first_depth = u32::try_from(shared).ok()?.checked_add(1)?;
+        for (depth, byte) in (first_depth..).zip(secret.get(shared..)?) {
+            node = self.add_child(node, *byte)?;
+            if depth == first_depth {
+                self.starts.push((node, depth));
+            }
+            path.push(node);
         }
         let length = u32::try_from(secret.len()).ok()?;
         if let Some(longest) = self.longest.get_mut(slot(node)).filter(|_| node != ROOT) {
@@ -207,10 +225,18 @@ impl Automaton {
                 self.link_child(node.saturating_add(1), fail, &mut queue);
             }
             if link & BRANCH != 0 {
+                let from = self
+                    .branches
+                    .partition_point(|(parent, _, _)| *parent < node);
+                let to = self
+                    .branches
+                    .partition_point(|(parent, _, _)| *parent <= node);
                 let branches: Vec<u32> = self
                     .branches
-                    .range((node, 0)..=(node, u8::MAX))
-                    .map(|(_, child)| *child)
+                    .get(from..to)
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|(_, _, child)| *child)
                     .collect();
                 for child in branches {
                     self.link_child(child, fail, &mut queue);

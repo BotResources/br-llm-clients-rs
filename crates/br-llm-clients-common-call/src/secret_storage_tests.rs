@@ -1,5 +1,6 @@
 use br_llm_clients_common_http::Secret;
 
+use crate::secret_automaton::reserved;
 use crate::text_clean::Secrets;
 
 const PREFIX: &str = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.";
@@ -45,7 +46,9 @@ fn given_1024_secrets_of_2_kib_with_a_shared_prefix_when_built_then_the_storage_
         format!("{PREFIX} and [redacted] and {PREFIX}")
     );
     let storage = secrets.built().expect("built").storage_bytes();
-    assert!(storage <= 9 * (total + 1) + 32_768, "{storage} for {total}");
+    let per_secret = 2 * (size_of::<(u32, u8, u32)>() + size_of::<(u32, u32)>());
+    let fixed = 256 * size_of::<u32>() + tokens.len() * per_secret;
+    assert!(storage <= 9 * (total + 1) + fixed, "{storage} for {total}");
     assert!(storage <= 12 * total, "{storage} for {total}");
 }
 
@@ -68,4 +71,10 @@ fn given_secrets_over_the_node_limit_when_cleaned_then_every_text_is_wholly_reda
     over.trim_cut(&mut bytes);
     assert!(bytes.is_empty());
     assert!(over.built().is_none());
+}
+
+#[test]
+fn given_a_reservation_that_cannot_be_made_when_reserved_then_it_is_refused_without_a_panic() {
+    assert!(reserved::<u32>(usize::MAX).is_none());
+    assert!(reserved::<u32>(4).is_some_and(|reserved| reserved.capacity() >= 4));
 }
