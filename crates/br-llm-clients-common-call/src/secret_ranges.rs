@@ -46,11 +46,18 @@ fn scan(automaton: &Automaton, bytes: &[u8]) -> Scan {
     }
 }
 
-pub(crate) fn secret_ranges(automaton: &Automaton, bytes: &[u8]) -> Vec<Range<usize>> {
-    scan(automaton, bytes).all.ranges
+pub(crate) fn secret_ranges(automaton: Option<&Automaton>, bytes: &[u8]) -> Vec<Range<usize>> {
+    match automaton {
+        Some(automaton) => scan(automaton, bytes).all.ranges,
+        None if bytes.is_empty() => Vec::new(),
+        None => std::iter::once(0..bytes.len()).collect(),
+    }
 }
 
-pub(crate) fn kept_before_cut(automaton: &Automaton, bytes: &[u8]) -> usize {
+pub(crate) fn kept_before_cut(automaton: Option<&Automaton>, bytes: &[u8]) -> usize {
+    let Some(automaton) = automaton else {
+        return 0;
+    };
     let scan = scan(automaton, bytes);
     let mut whole = scan.all.ranges.iter().peekable();
     let mut covered_below = 0_usize;

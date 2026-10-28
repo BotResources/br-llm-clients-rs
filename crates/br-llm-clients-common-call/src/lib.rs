@@ -110,6 +110,8 @@ mod run_timing_tests;
 #[cfg(test)]
 mod secret_log_tests;
 #[cfg(test)]
+mod secret_storage_tests;
+#[cfg(test)]
 mod secret_trim_differential_tests;
 #[cfg(test)]
 mod secret_trim_exhaustive_tests;

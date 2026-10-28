@@ -3,7 +3,7 @@ use std::sync::OnceLock;
 
 use br_llm_clients_common_http::Secret;
 
-use crate::secret_automaton::Automaton;
+use crate::secret_automaton::{Automaton, MAX_NODES};
 use crate::secret_ranges::{kept_before_cut, secret_ranges};
 
 pub(crate) const TEXT_CAP: usize = 65_536;
@@ -12,21 +12,39 @@ const PLACEHOLDER: &str = "[redacted]";
 
 pub(crate) struct Secrets {
     secrets: Vec<Secret>,
-    automaton: OnceLock<Automaton>,
+    node_limit: usize,
+    automaton: OnceLock<Option<Automaton>>,
 }
 
 impl Secrets {
     pub(crate) fn new(secrets: Vec<Secret>) -> Self {
+        Self::with_node_limit(secrets, MAX_NODES)
+    }
+
+    pub(crate) fn with_node_limit(secrets: Vec<Secret>, node_limit: usize) -> Self {
         Self {
             secrets,
+            node_limit,
             automaton: OnceLock::new(),
         }
     }
 
-    fn automaton(&self) -> &Automaton {
-        self.automaton.get_or_init(|| {
-            Automaton::new(self.secrets.iter().map(|secret| secret.expose().as_bytes()))
-        })
+    fn automaton(&self) -> Option<&Automaton> {
+        self.automaton
+            .get_or_init(|| {
+                let values: Vec<&[u8]> = self
+                    .secrets
+                    .iter()
+                    .map(|secret| secret.expose().as_bytes())
+                    .collect();
+                Automaton::new(&values, self.node_limit)
+            })
+            .as_ref()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn built(&self) -> Option<&Automaton> {
+        self.automaton.get().and_then(Option::as_ref)
     }
 
     pub(crate) fn ranges(&self, text: &str) -> Vec<Range<usize>> {
