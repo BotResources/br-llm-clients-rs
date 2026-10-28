@@ -50,9 +50,17 @@ pub(crate) fn clean_error(error: ClientError, secrets: &Secrets) -> ClientError 
 fn clean_ending(ending: ResponseEnding, secrets: &Secrets) -> ResponseEnding {
     match &ending {
         ResponseEnding::Unclassified { reason, .. } => {
-            ResponseEnding::unclassified(secrets.clean(reason))
-                .unwrap_or_else(|_| ResponseEnding::finished())
+            ResponseEnding::unclassified(secrets.clean(reason)).unwrap_or_else(|_| redacted())
         }
+        ResponseEnding::StopSequence {
+            sequence: Some(sequence),
+            ..
+        } => ResponseEnding::matched_stop_sequence(secrets.clean(sequence))
+            .unwrap_or_else(|_| ResponseEnding::stop_sequence()),
         _ => ending,
     }
+}
+
+fn redacted() -> ResponseEnding {
+    ResponseEnding::unclassified("[redacted]").unwrap_or_else(|_| ResponseEnding::finished())
 }

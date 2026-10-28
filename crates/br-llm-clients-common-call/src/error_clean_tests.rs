@@ -145,16 +145,43 @@ fn given_a_reason_over_the_cap_when_cleaned_then_the_replacement_comes_before_th
 }
 
 #[test]
-fn given_the_other_endings_in_a_reply_unusable_when_cleaned_then_they_are_unchanged() {
+fn given_the_endings_without_a_secret_in_a_reply_unusable_when_cleaned_then_they_are_unchanged() {
     let endings = [
         ResponseEnding::finished(),
         ResponseEnding::output_exhaustion(),
         ResponseEnding::stop_sequence(),
-        ResponseEnding::matched_stop_sequence("TOPSECRET").expect("ending"),
+        ResponseEnding::matched_stop_sequence("plain sequence").expect("ending"),
         unclassified("plain reason"),
     ];
     for ending in endings {
         let error = unusable(ending);
         assert_eq!(clean_error(error.clone(), &secrets()), error);
     }
+}
+
+fn matched(sequence: &str) -> ResponseEnding {
+    ResponseEnding::matched_stop_sequence(sequence).expect("ending")
+}
+
+#[test]
+fn given_a_secret_in_a_matched_stop_sequence_when_cleaned_then_it_is_replaced_and_the_kind_stays() {
+    assert_eq!(
+        clean_error(unusable(matched("TOPSECRET")), &secrets()),
+        unusable(matched("[redacted]"))
+    );
+    assert_eq!(
+        clean_error(unusable(matched("end TOPSECRET end")), &secrets()),
+        unusable(matched("end [redacted] end"))
+    );
+}
+
+#[test]
+fn given_a_matched_stop_sequence_over_the_cap_when_cleaned_then_the_replacement_comes_before_the_cut()
+ {
+    let at_the_cut = format!("{}TOPSECRET", "a".repeat(65_533));
+    let expected = format!("{}[re", "a".repeat(65_533));
+    assert_eq!(
+        clean_error(unusable(matched(&at_the_cut)), &secrets()),
+        unusable(matched(&expected))
+    );
 }

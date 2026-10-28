@@ -49,3 +49,37 @@ async fn given_an_unclassified_code_over_64_kib_with_a_secret_at_the_cut_when_ru
         format!("{}[redacted]", "a".repeat(65_530))[..65_536]
     );
 }
+
+async fn unusable_sequence(sequence: &str) -> ResponseEnding {
+    let dialect = dialect_ending(EndScript::Events(Vec::new()));
+    let line = format!("stop matched:{sequence}");
+    let server = TestServer::start(move |_| http("200 OK", &[], &body(&[&[line.as_str()]]))).await;
+    let log = SecretLog::new();
+    log.record(&Secret::new(LOGGED).expect("secret"));
+    let spec = spec_for(&dialect, server.endpoint("/v1/test"))
+        .with_secrets(vec![Secret::new(LISTED).expect("secret")])
+        .with_secret_log(log);
+    match failure_of(&spec, &user_request()).await {
+        ClientError::ReplyUnusable { ending } => ending,
+        other => panic!("not an unusable reply: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn given_a_matched_stop_sequence_that_holds_a_listed_and_a_logged_secret_when_run_then_both_are_replaced()
+ {
+    let ending = unusable_sequence(&format!("seq-{LISTED}-{LOGGED}-end")).await;
+    assert_eq!(
+        ending,
+        ResponseEnding::matched_stop_sequence("seq-[redacted]-[redacted]-end").expect("ending")
+    );
+}
+
+#[tokio::test]
+async fn given_a_matched_stop_sequence_without_a_secret_when_run_then_it_is_kept() {
+    let ending = unusable_sequence("plain-end").await;
+    assert_eq!(
+        ending,
+        ResponseEnding::matched_stop_sequence("plain-end").expect("ending")
+    );
+}
