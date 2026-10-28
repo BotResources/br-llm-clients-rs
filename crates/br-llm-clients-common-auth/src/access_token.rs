@@ -26,7 +26,7 @@ impl AccessToken {
 impl fmt::Debug for AccessToken {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AccessToken")
-            .field("secret", &"[redacted]")
+            .field("secret", &self.secret)
             .field("valid_for", &self.valid_for)
             .finish()
     }
