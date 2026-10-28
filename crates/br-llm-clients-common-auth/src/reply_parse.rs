@@ -90,9 +90,5 @@ fn digits(text: &str) -> Option<u64> {
     if text.is_empty() || !text.bytes().all(|byte| byte.is_ascii_digit()) {
         return None;
     }
-    Some(text.bytes().fold(0u64, |total, byte| {
-        total
-            .saturating_mul(10)
-            .saturating_add(u64::from(byte.saturating_sub(b'0')))
-    }))
+    Some(text.parse().unwrap_or(u64::MAX))
 }

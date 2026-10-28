@@ -24,7 +24,7 @@ impl TokenAuthorizer {
         }
     }
 
-    pub fn with_token_observer(mut self, observer: Observer) -> Self {
+    pub fn with_token_observer(mut self, observer: Arc<dyn Fn(&Secret) + Send + Sync>) -> Self {
         self.observer = Some(observer);
         self
     }
