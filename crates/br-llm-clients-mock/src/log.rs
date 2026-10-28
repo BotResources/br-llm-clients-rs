@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::task::Waker;
 
 use br_llm_clients_core::{ClientRequest, ClientSettings};
@@ -8,7 +9,7 @@ use crate::sync::Waiters;
 
 pub(crate) struct LogState {
     began: usize,
-    calls: Vec<LoggedCall>,
+    calls: Vec<Arc<LoggedCall>>,
     in_state: StateCounts,
     waiters: Waiters,
 }
@@ -31,7 +32,7 @@ impl LogState {
         self.began = self.began.saturating_add(1);
         if let Some((request, settings)) = copies {
             self.calls
-                .push(LoggedCall::new(sequence, request, settings));
+                .push(Arc::new(LoggedCall::new(sequence, request, settings)));
             self.in_state.enter(StateKind::Running);
         }
         (sequence, self.waiters.take())
@@ -43,7 +44,7 @@ impl LogState {
 
     pub(crate) fn set_served(&mut self, sequence: usize, served: Served) {
         if let Some(call) = self.calls.get_mut(sequence) {
-            call.set_served(served);
+            Arc::make_mut(call).set_served(served);
         }
     }
 
@@ -56,7 +57,7 @@ impl LogState {
         }
         self.in_state.leave(call.state().kind());
         self.in_state.enter(state.kind());
-        call.replace_state(state);
+        Arc::make_mut(call).replace_state(state);
         self.waiters.take()
     }
 
@@ -64,7 +65,7 @@ impl LogState {
         self.in_state.get(kind)
     }
 
-    pub(crate) fn snapshot(&self) -> Vec<LoggedCall> {
+    pub(crate) fn snapshot(&self) -> Vec<Arc<LoggedCall>> {
         self.calls.clone()
     }
 

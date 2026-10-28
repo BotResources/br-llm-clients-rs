@@ -12,13 +12,13 @@ use crate::rule::Rule;
 use crate::test_support::*;
 
 fn says(value: &str) -> Reply {
-    Reply::success(text_step(value)).build().unwrap()
+    Reply::success(text_response(value)).build().unwrap()
 }
 
 fn answer_of(client: &MockClient) -> String {
     let (outcome, _) = run(client, &request());
     match outcome.result() {
-        Ok(step_value) => step_value.text().next().unwrap().to_string(),
+        Ok(_) => text_of(&outcome),
         Err(error) => format!("{error:?}"),
     }
 }
@@ -110,8 +110,8 @@ fn given_a_matcher_when_called_then_it_gets_request_settings_and_sequence() {
     client.push_rule(Rule::new(
         move |call| {
             sink_of_seen.lock().unwrap().push((
-                call.request().messages().len(),
-                call.settings().model().to_string(),
+                call.request().history().turns().len(),
+                call.settings().model().as_str().to_owned(),
                 call.sequence(),
             ));
             false
@@ -170,10 +170,10 @@ fn given_a_handle_with_other_settings_when_used_then_it_shares_script_rules_fall
 fn given_a_reply_function_when_claimed_by_a_rule_then_it_counts_the_uses_of_that_rule_only() {
     let client = mock();
     let counting = ReplySource::function(|call| {
-        Reply::success(text_step(&format!("use {}", call.claimed_before()))).build()
+        Reply::success(text_response(&format!("use {}", call.claimed_before()))).build()
     });
     client.push_rule(Rule::new(
-        |call| call.request().messages().len() == 1,
+        |call| call.request().history().turns().len() == 1,
         counting,
     ));
     client.push_rule(Rule::new(|_| false, says("unused")));
@@ -185,7 +185,11 @@ fn given_replacing_the_fallback_when_a_function_counts_then_the_count_of_the_fal
 {
     let counting = || {
         ReplySource::function(|call| {
-            Reply::success(text_step(&format!("fallback {}", call.claimed_before()))).build()
+            Reply::success(text_response(&format!(
+                "fallback {}",
+                call.claimed_before()
+            )))
+            .build()
         })
     };
     let client = mock();
@@ -200,16 +204,12 @@ fn given_replacing_the_fallback_when_a_function_counts_then_the_count_of_the_fal
 fn given_entries_and_rules_mixed_when_calls_are_made_then_the_log_names_how_each_was_served() {
     let client = mock();
     client.push_rule(Rule::new(
-        |call| call.request().messages().len() > 1,
+        |call| call.request().history().turns().len() > 1,
         says("rule"),
     ));
     client.push_reply(says("entry"));
     client.set_fallback(says("fallback"));
-    let long = request_of(
-        vec![user_text("a"), assistant_text("b"), user_text("c")],
-        vec![],
-        br_llm_clients_core::OutputMode::Plain,
-    );
+    let long = long_request();
     run(&client, &request());
     run(&client, &long);
     run(&client, &request());

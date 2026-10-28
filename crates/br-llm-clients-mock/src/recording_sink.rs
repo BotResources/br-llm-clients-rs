@@ -4,14 +4,15 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::task::{Context, Poll};
 
 use br_llm_clients_core::{BoxFuture, StreamSink};
-use br_llm_messages::{ModelId, Step, StepDraft, StreamEvent};
+use br_llm_messages::{ModelResponse, ResponseDelta};
 
+use crate::fold::fold_deltas;
 use crate::fold_error::FoldError;
 use crate::sync::{Condition, Wait, Waiters, lock, wake_all};
 
 #[derive(Default)]
 struct Recorded {
-    events: Vec<StreamEvent>,
+    deltas: Vec<ResponseDelta>,
     waiters: Waiters,
 }
 
@@ -25,46 +26,37 @@ impl RecordingSink {
         Self::default()
     }
 
-    pub fn events(&self) -> Vec<StreamEvent> {
-        lock(&self.recorded).events.clone()
+    pub fn deltas(&self) -> Vec<ResponseDelta> {
+        lock(&self.recorded).deltas.clone()
     }
 
-    pub fn take(&self) -> Vec<StreamEvent> {
-        std::mem::take(&mut lock(&self.recorded).events)
+    pub fn take(&self) -> Vec<ResponseDelta> {
+        std::mem::take(&mut lock(&self.recorded).deltas)
     }
 
     pub fn len(&self) -> usize {
-        lock(&self.recorded).events.len()
+        lock(&self.recorded).deltas.len()
     }
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
-    pub fn wait_for_events(&self, count: usize) -> WaitForEvents {
-        WaitForEvents(Wait::new(EventsHeld {
+    pub fn wait_for_deltas(&self, count: usize) -> WaitForDeltas {
+        WaitForDeltas(Wait::new(DeltasHeld {
             sink: self.clone(),
             count,
         }))
     }
 
-    pub fn fold(&self, model: Option<ModelId>) -> Result<Step, FoldError> {
-        let events = self.events();
-        let mut draft = StepDraft::new();
-        for event in events {
-            draft
-                .apply(event)
-                .map_err(|error| FoldError::new(error.to_string()))?;
-        }
-        draft
-            .finish(model)
-            .map_err(|error| FoldError::new(error.to_string()))
+    pub fn fold(&self) -> Result<ModelResponse, FoldError> {
+        fold_deltas(&self.deltas())
     }
 
-    fn record(&self, event: StreamEvent) {
+    fn record(&self, delta: ResponseDelta) {
         let wakers = {
             let mut recorded = lock(&self.recorded);
-            recorded.events.push(event);
+            recorded.deltas.push(delta);
             recorded.waiters.take()
         };
         wake_all(wakers);
@@ -75,23 +67,23 @@ impl std::fmt::Debug for RecordingSink {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("RecordingSink")
-            .field("events", &self.len())
+            .field("deltas", &self.len())
             .finish()
     }
 }
 
 impl StreamSink for RecordingSink {
-    fn send<'a>(&'a mut self, event: StreamEvent) -> BoxFuture<'a, ()> {
-        Box::pin(async move { self.record(event) })
+    fn send<'a>(&'a mut self, delta: ResponseDelta) -> BoxFuture<'a, ()> {
+        Box::pin(async move { self.record(delta) })
     }
 }
 
-struct EventsHeld {
+struct DeltasHeld {
     sink: RecordingSink,
     count: usize,
 }
 
-impl Condition for EventsHeld {
+impl Condition for DeltasHeld {
     type State = Recorded;
 
     fn lock(&self) -> MutexGuard<'_, Recorded> {
@@ -99,7 +91,7 @@ impl Condition for EventsHeld {
     }
 
     fn holds(&self, state: &Recorded) -> bool {
-        state.events.len() >= self.count
+        state.deltas.len() >= self.count
     }
 
     fn waiters(state: &mut Recorded) -> &mut Waiters {
@@ -108,9 +100,9 @@ impl Condition for EventsHeld {
 }
 
 #[must_use = "futures do nothing unless awaited"]
-pub struct WaitForEvents(Wait<EventsHeld>);
+pub struct WaitForDeltas(Wait<DeltasHeld>);
 
-impl Future for WaitForEvents {
+impl Future for WaitForDeltas {
     type Output = ();
 
     fn poll(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<()> {

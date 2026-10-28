@@ -11,7 +11,7 @@ use crate::reply::Reply;
 use crate::test_support::*;
 
 fn gated(gates: &[(usize, &Gate)]) -> Reply {
-    let mut builder = Reply::success(text_step("gated"));
+    let mut builder = Reply::success(text_response("gated"));
     for (position, gate) in gates {
         builder = builder.gate_at(*position, gate);
     }
@@ -61,7 +61,7 @@ fn given_a_gate_at_the_last_position_of_a_success_when_called_then_the_call_wait
  {
     let gate = Gate::new();
     let client = mock();
-    let count_before_finish = 3;
+    let count_before_finish = 4;
     client.push_reply(gated(&[(count_before_finish, &gate)]));
     let request_value = request();
     let sink = RecordingSink::new();

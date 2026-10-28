@@ -13,7 +13,7 @@ use crate::reply::Reply;
 use crate::test_support::*;
 
 fn gated(gates: &[(usize, &Gate)]) -> Reply {
-    let mut builder = Reply::success(text_step("gated"));
+    let mut builder = Reply::success(text_response("gated"));
     for (position, gate) in gates {
         builder = builder.gate_at(*position, gate);
     }

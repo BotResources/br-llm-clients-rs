@@ -1,30 +1,24 @@
 use std::time::Duration;
 
-use br_llm_clients_core::{CacheRequirement, ClientError, OutputMode, ReasoningLevel};
-use br_llm_messages::{AssistantBlock, StopReason, StreamEvent};
-use serde_json::json;
+use br_llm_clients_core::{CacheRequirement, ClientError, ReasoningLevel};
+use br_llm_messages::{DeltaOp, ResponseEnding, ResponseMetadata};
 
 use crate::call_log::{CallState, Served};
-use crate::chunking::Chunking;
 use crate::codes::{CODE_INVALID_REPLY, CODE_SCRIPT_EXHAUSTED};
-use crate::derive_events::derive_events;
-use crate::mock_client::MockClient;
-use crate::reply::Reply;
-use crate::rule::Rule;
+use crate::response_support::*;
 use crate::test_support::*;
-use crate::{Accepted, CapabilitiesSpec};
+use crate::{MockClient, Reply, Rule};
 
-fn strict_mock(change: impl FnOnce(&mut CapabilitiesSpec)) -> MockClient {
-    MockClient::new(settings(), caps(change))
+fn no_tools_mock() -> MockClient {
+    MockClient::new(settings(), caps(|spec| spec.tools = false))
 }
 
 #[test]
 fn given_a_refused_call_when_made_then_the_outcome_has_the_error_and_a_report_of_zero_duration_only()
  {
-    let client = strict_mock(|spec| spec.tools = false);
-    client.push_reply(Reply::success(text_step("never")).build().unwrap());
-    let with_tool = request_of(vec![user_text("hi")], vec![tool()], OutputMode::Plain);
-    let (outcome, sink) = run(&client, &with_tool);
+    let client = no_tools_mock();
+    client.push_reply(Reply::text("never").build().unwrap());
+    let (outcome, sink) = run(&client, &tools_request());
     assert_eq!(error_of(&outcome), ClientError::ToolsNotSupported);
     let report = outcome.report();
     assert_eq!(report.total_duration(), Duration::ZERO);
@@ -37,24 +31,33 @@ fn given_a_refused_call_when_made_then_the_outcome_has_the_error_and_a_report_of
 
 #[test]
 fn given_a_refused_call_when_made_then_no_entry_and_no_use_is_taken() {
-    let client = strict_mock(|spec| spec.tools = false);
-    client.push_reply(Reply::success(text_step("kept")).build().unwrap());
+    let client = no_tools_mock();
+    client.push_reply(Reply::text("kept").build().unwrap());
     client.push_rule(
         always_rule(Reply::failure(ClientError::Transport).build().unwrap())
             .with_limit(2)
             .unwrap(),
     );
-    let with_tool = request_of(vec![user_text("hi")], vec![tool()], OutputMode::Plain);
-    run(&client, &with_tool);
+    run(&client, &tools_request());
     assert_eq!(client.unused_entries(), 1);
     assert_eq!(client.unused_uses(), 2);
 }
 
 #[test]
+fn given_a_refused_call_when_made_then_no_identity_is_drawn_from_the_source() {
+    let source = crate::SequentialIdSource::new();
+    let client = MockClient::builder(settings(), caps(|spec| spec.tools = false))
+        .id_source(source.clone())
+        .build();
+    run(&client, &tools_request());
+    assert_eq!(source.next_number(), 0);
+}
+
+#[test]
 fn given_a_refused_call_when_logged_then_it_shows_the_refusal_and_the_finished_outcome() {
-    let client = strict_mock(|spec| spec.caching = false);
-    let cached = settings_with(ReasoningLevel::Off, CacheRequirement::Required, 10);
-    let client = client.with_settings(cached);
+    let client = MockClient::new(settings(), caps(|spec| spec.caching = false)).with_settings(
+        settings_with(ReasoningLevel::Off, CacheRequirement::Required, 10),
+    );
     let (outcome, _) = run(&client, &request());
     let log = client.log();
     assert_eq!(
@@ -65,10 +68,10 @@ fn given_a_refused_call_when_logged_then_it_shows_the_refusal_and_the_finished_o
 }
 
 #[test]
-fn given_a_rule_that_matches_the_settings_when_a_pair_is_refused_then_the_log_shows_a_rule_and_not_a_refusal()
+fn given_a_rule_that_matches_a_pair_of_settings_when_the_pair_is_refused_then_the_log_shows_a_rule_and_not_a_refusal()
  {
     let client = mock();
-    let refusing = Rule::new(
+    client.push_rule(Rule::new(
         |call| {
             call.settings().reasoning() == ReasoningLevel::Max
                 && call.settings().max_output_tokens().get() > 100
@@ -76,9 +79,8 @@ fn given_a_rule_that_matches_the_settings_when_a_pair_is_refused_then_the_log_sh
         Reply::failure(ClientError::MaxOutputTokensTooLarge { limit: Some(100) })
             .build()
             .unwrap(),
-    );
-    client.push_rule(refusing);
-    client.push_reply(Reply::success(text_step("fine")).build().unwrap());
+    ));
+    client.push_reply(Reply::text("fine").build().unwrap());
     let pair = client.with_settings(settings_with(
         ReasoningLevel::Max,
         CacheRequirement::NotRequired,
@@ -90,48 +92,41 @@ fn given_a_rule_that_matches_the_settings_when_a_pair_is_refused_then_the_log_sh
         ClientError::MaxOutputTokensTooLarge { limit: Some(100) }
     );
     assert_eq!(client.log()[0].served(), &Served::Rule { position: 0 });
-    let (other, _) = run(&client, &request());
-    assert!(other.result().is_ok());
+    assert!(run(&client, &request()).0.result().is_ok());
 }
 
 #[test]
-fn given_an_empty_set_of_levels_when_a_call_with_valid_messages_is_made_then_reasoning_not_supported()
+fn given_a_success_refused_against_the_request_when_called_then_all_deltas_but_completed_are_sent_and_the_report_is_kept()
  {
-    let client = strict_mock(|spec| spec.reasoning_levels = Accepted::Only(vec![]));
-    let (outcome, _) = run(&client, &request());
-    assert!(matches!(
-        error_of(&outcome),
-        ClientError::ReasoningNotSupported { .. }
-    ));
-}
-
-#[test]
-fn given_a_success_refused_against_the_request_when_called_then_all_events_but_finish_are_sent() {
     let client = mock();
-    let step_value = step(
-        vec![AssistantBlock::Structured {
-            value: json!({ "a": 1 }),
-        }],
-        StopReason::EndTurn,
+    let metadata = ResponseMetadata::new()
+        .with_usage(usage(4, 6))
+        .with_model(model("answering"));
+    let response = response_of(
+        vec![structured_content(r#"{"a":1}"#)],
+        ResponseEnding::finished(),
+        metadata,
     );
-    let all = derive_events(&step_value, &Chunking::none())
-        .unwrap()
-        .into_events();
     client.push_reply(
-        Reply::success(step_with_usage_of(step_value, usage(4, 6)))
-            .model(model("answering"))
+        Reply::success(response.clone())
             .request_id("req-9")
             .time_to_first_event(Duration::from_millis(3))
             .total_duration(Duration::from_millis(7))
             .build()
             .unwrap(),
     );
-    let (outcome, sink) = run(&client, &request());
+    let request_value = request();
+    let (outcome, sink) = run(&client, &request_value);
     assert!(matches!(
         error_of(&outcome),
         ClientError::MalformedResponse { .. }
     ));
-    assert_eq!(sink.events(), all[..all.len() - 1]);
+    let mut all = expected_deltas(&request_value, &response, &crate::Chunking::none());
+    assert!(matches!(
+        all.pop().unwrap().op(),
+        DeltaOp::ResponseCompleted { .. }
+    ));
+    assert_eq!(sink.deltas(), all);
     let report = outcome.report();
     assert_eq!(report.model(), Some(&model("answering")));
     assert_eq!(report.request_id(), Some("req-9"));
@@ -140,43 +135,14 @@ fn given_a_success_refused_against_the_request_when_called_then_all_events_but_f
     assert_eq!(report.usage(), Some(&usage(4, 6)));
 }
 
-fn step_with_usage_of(
-    step_value: br_llm_messages::Step,
-    usage_value: br_llm_messages::Usage,
-) -> br_llm_messages::Step {
-    br_llm_messages::Step::new(
-        step_value.content().to_vec(),
-        step_value.stop_reason().clone(),
-        Some(usage_value),
-        None,
-    )
-    .unwrap()
-}
-
 #[test]
-fn given_an_unusable_success_when_called_then_the_error_of_core_is_given_with_the_reply_report() {
+fn given_a_blocked_success_when_called_then_content_blocked_is_given_after_the_deltas() {
     let client = mock();
-    let only_thinking = step(
-        vec![AssistantBlock::Thinking(br_llm_messages::Thinking {
-            text: "hm".to_owned(),
-            signature: None,
-        })],
-        StopReason::MaxTokens,
-    );
-    client.push_reply(Reply::success(only_thinking).build().unwrap());
+    let response = response_ending(vec![thinking_content()], ResponseEnding::refusal());
+    client.push_reply(Reply::success(response).build().unwrap());
     let (outcome, sink) = run(&client, &request());
-    assert_eq!(
-        error_of(&outcome),
-        ClientError::ReplyUnusable {
-            stop_reason: StopReason::MaxTokens
-        }
-    );
-    assert!(
-        !sink
-            .events()
-            .iter()
-            .any(|event| matches!(event, StreamEvent::Finish { .. }))
-    );
+    assert_eq!(error_of(&outcome), ClientError::ContentBlocked);
+    assert!(!sink.is_empty());
 }
 
 #[test]
@@ -184,16 +150,14 @@ fn given_the_codes_when_listed_then_they_start_with_mock_and_exhaustion_is_not_r
     for code in [CODE_INVALID_REPLY, CODE_SCRIPT_EXHAUSTED] {
         assert!(code.starts_with("mock."));
     }
-    let client = mock();
-    let (outcome, _) = run(&client, &request());
+    let (outcome, _) = run(&mock(), &request());
     assert!(!error_of(&outcome).is_retryable());
 }
 
 #[test]
-fn given_the_everything_capabilities_when_a_complete_call_is_made_then_the_request_is_not_changed()
-{
-    let client = MockClient::new(settings(), everything_caps());
-    client.push_reply(Reply::success(text_step("ok")).build().unwrap());
+fn given_a_complete_call_when_made_then_the_request_is_not_changed() {
+    let client = mock();
+    client.push_reply(Reply::text("ok").build().unwrap());
     let request_value = request();
     let before = request_value.clone();
     run(&client, &request_value);

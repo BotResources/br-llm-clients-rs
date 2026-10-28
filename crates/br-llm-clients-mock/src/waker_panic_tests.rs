@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use br_llm_clients_core::{BoxFuture, Client, StreamSink};
-use br_llm_messages::StreamEvent;
+use br_llm_messages::ResponseDelta;
 
 use crate::call_log::{CallState, StateKind};
 use crate::gate::Gate;
@@ -19,7 +19,7 @@ fn given_a_waker_that_panics_when_a_gate_opens_then_the_other_waiting_calls_are_
     let gate = Gate::new();
     let client = mock();
     client.set_fallback(
-        Reply::success(text_step("ok"))
+        Reply::success(text_response("ok"))
             .gate_at(0, &gate)
             .build()
             .unwrap(),
@@ -43,7 +43,7 @@ fn given_a_waker_that_panics_when_a_gate_opens_then_the_other_waiting_calls_are_
 fn given_a_waker_that_panics_when_calls_begin_then_the_other_waiters_are_woken_and_the_mock_stays_usable()
  {
     let client = mock();
-    client.set_fallback(Reply::success(text_step("ok")).build().unwrap());
+    client.set_fallback(Reply::success(text_response("ok")).build().unwrap());
     let survivor = Arc::new(WakeCount::default());
     let mut doomed = Box::pin(client.wait_for_calls(1));
     let mut waiting = Box::pin(client.wait_for_calls(1));
@@ -69,18 +69,16 @@ fn given_a_waker_that_panics_when_an_event_arrives_then_the_other_waiters_are_wo
  {
     let sink = RecordingSink::new();
     let survivor = Arc::new(WakeCount::default());
-    let mut doomed = Box::pin(sink.wait_for_events(1));
-    let mut waiting = Box::pin(sink.wait_for_events(1));
+    let mut doomed = Box::pin(sink.wait_for_deltas(1));
+    let mut waiting = Box::pin(sink.wait_for_deltas(1));
     assert!(poll_with(&mut doomed.as_mut(), &panicking_waker()).is_pending());
     assert!(poll_with(&mut waiting.as_mut(), &survivor.waker()).is_pending());
     let mut writer = sink.clone();
-    let sent = catch_unwind(AssertUnwindSafe(|| {
-        block_on(writer.send(StreamEvent::BlockEnd { index: 0 }))
-    }));
+    let sent = catch_unwind(AssertUnwindSafe(|| block_on(writer.send(started_delta()))));
     assert!(sent.is_err());
     assert_eq!(survivor.count(), 1);
     assert_eq!(sink.len(), 1);
-    block_on(writer.send(StreamEvent::BlockEnd { index: 1 }));
+    block_on(writer.send(started_delta()));
     assert_eq!(sink.len(), 2);
 }
 
@@ -103,7 +101,7 @@ impl Future for PendingThenPanic {
 struct FailingSink;
 
 impl StreamSink for FailingSink {
-    fn send<'a>(&'a mut self, _event: StreamEvent) -> BoxFuture<'a, ()> {
+    fn send<'a>(&'a mut self, _delta: ResponseDelta) -> BoxFuture<'a, ()> {
         Box::pin(PendingThenPanic { polled: false })
     }
 }
@@ -112,7 +110,7 @@ impl StreamSink for FailingSink {
 fn given_a_sink_that_panics_while_a_waiter_waker_panics_then_the_unwinding_does_not_abort_and_the_other_waiter_is_woken()
  {
     let client = mock();
-    client.set_fallback(Reply::success(text_step("ok")).build().unwrap());
+    client.set_fallback(Reply::success(text_response("ok")).build().unwrap());
     let request_value = request();
     let mut sink = FailingSink;
     let mut call = Box::pin(client.call(&request_value, &mut sink));

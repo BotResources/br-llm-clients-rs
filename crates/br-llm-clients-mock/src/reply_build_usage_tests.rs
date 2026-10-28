@@ -1,60 +1,85 @@
 use br_llm_clients_core::ClientError;
-use br_llm_messages::Usage;
+use br_llm_messages::{ModelResponse, Usage};
 
 use crate::build_error::MockBuildError;
 use crate::reply::Reply;
 use crate::test_support::*;
 
-fn ok_step() -> br_llm_messages::Step {
-    text_step("hello")
+fn with_usage(usage_value: Usage) -> ModelResponse {
+    text_response_with_usage("hi", usage_value)
 }
 
 fn breaking_usage() -> Usage {
-    Usage {
-        input_tokens: 5,
-        output_tokens: 5,
-        cache_read_tokens: Some(3),
-        cache_write_tokens: Some(3),
-        thinking_tokens: None,
-    }
+    Usage::of_input_tokens(5)
+        .with_output_tokens(5)
+        .with_cache_read_input_tokens(3)
+        .with_cache_creation_input_tokens(3)
+}
+
+fn refused(usage_value: Usage) -> bool {
+    matches!(
+        Reply::success(with_usage(usage_value)).build(),
+        Err(MockBuildError::UsageBreaksCounting)
+    )
 }
 
 #[test]
-fn given_a_step_usage_where_cache_tokens_exceed_input_when_built_then_usage_breaks_counting() {
-    let step_value = step_with_usage("hi", breaking_usage());
-    assert_eq!(
-        Reply::success(step_value).build().unwrap_err(),
-        MockBuildError::UsageBreaksCounting
-    );
+fn given_a_usage_where_cache_tokens_exceed_input_when_built_then_usage_breaks_counting() {
+    assert!(refused(breaking_usage()));
 }
 
 #[test]
 fn given_thinking_tokens_above_output_when_built_then_usage_breaks_counting() {
-    let usage_value = Usage {
-        input_tokens: 5,
-        output_tokens: 2,
-        thinking_tokens: Some(3),
-        ..Usage::default()
-    };
-    assert_eq!(
-        Reply::success(step_with_usage("hi", usage_value))
-            .build()
-            .unwrap_err(),
-        MockBuildError::UsageBreaksCounting
-    );
+    assert!(refused(
+        Usage::of_input_tokens(5)
+            .with_output_tokens(2)
+            .with_thinking_tokens(3)
+    ));
+}
+
+#[test]
+fn given_a_cache_count_without_an_input_count_when_built_then_usage_breaks_counting() {
+    assert!(refused(Usage::of_cache_read_input_tokens(0)));
+    assert!(refused(Usage::of_cache_creation_input_tokens(0)));
+    assert!(refused(
+        Usage::of_output_tokens(4).with_cache_read_input_tokens(1)
+    ));
+}
+
+#[test]
+fn given_a_thinking_count_without_an_output_count_when_built_then_usage_breaks_counting() {
+    assert!(refused(Usage::of_thinking_tokens(0)));
+    assert!(refused(Usage::of_input_tokens(4).with_thinking_tokens(1)));
 }
 
 #[test]
 fn given_a_usage_at_the_exact_bounds_when_built_then_accepted() {
-    let usage_value = Usage {
-        input_tokens: 6,
-        output_tokens: 3,
-        cache_read_tokens: Some(3),
-        cache_write_tokens: Some(3),
-        thinking_tokens: Some(3),
-    };
+    let usage_value = Usage::of_input_tokens(6)
+        .with_output_tokens(3)
+        .with_cache_read_input_tokens(3)
+        .with_cache_creation_input_tokens(3)
+        .with_thinking_tokens(3);
+    assert!(Reply::success(with_usage(usage_value)).build().is_ok());
+}
+
+#[test]
+fn given_an_absent_count_when_summed_then_it_counts_as_zero() {
     assert!(
-        Reply::success(step_with_usage("hi", usage_value))
+        Reply::success(with_usage(
+            Usage::of_input_tokens(2).with_cache_read_input_tokens(2)
+        ))
+        .build()
+        .is_ok()
+    );
+    assert!(
+        Reply::success(with_usage(
+            Usage::of_output_tokens(2).with_thinking_tokens(2)
+        ))
+        .build()
+        .is_ok()
+    );
+    assert!(
+        Reply::success(with_usage(Usage::of_input_tokens(1)))
             .build()
             .is_ok()
     );
@@ -71,7 +96,7 @@ fn given_a_named_usage_that_breaks_counting_when_built_then_every_reply_that_nam
         MockBuildError::UsageBreaksCounting
     );
     assert_eq!(
-        Reply::cut(ok_step(), 1, error.clone())
+        Reply::cut(text_response("hi"), 1, error.clone())
             .usage(breaking_usage())
             .build()
             .unwrap_err(),
@@ -88,16 +113,14 @@ fn given_a_named_usage_that_breaks_counting_when_built_then_every_reply_that_nam
 
 #[test]
 fn given_a_usage_that_overflows_when_summed_then_it_is_refused_without_panic() {
-    let usage_value = Usage {
-        input_tokens: 1,
-        output_tokens: 1,
-        cache_read_tokens: Some(u64::MAX),
-        cache_write_tokens: Some(u64::MAX),
-        thinking_tokens: None,
-    };
     assert_eq!(
         Reply::failure(ClientError::Transport)
-            .usage(usage_value)
+            .usage(
+                Usage::of_input_tokens(1)
+                    .with_output_tokens(1)
+                    .with_cache_read_input_tokens(u64::MAX)
+                    .with_cache_creation_input_tokens(u64::MAX)
+            )
             .build()
             .unwrap_err(),
         MockBuildError::UsageBreaksCounting
@@ -105,65 +128,47 @@ fn given_a_usage_that_overflows_when_summed_then_it_is_refused_without_panic() {
 }
 
 #[test]
-fn given_cache_tokens_whose_real_sum_is_one_above_the_maximal_input_when_built_then_refused() {
-    let usage_value = Usage {
-        input_tokens: u64::MAX,
-        output_tokens: 1,
-        cache_read_tokens: Some(u64::MAX),
-        cache_write_tokens: Some(1),
-        thinking_tokens: None,
-    };
-    assert_eq!(
-        Reply::success(step_with_usage("hi", usage_value))
-            .build()
-            .unwrap_err(),
-        MockBuildError::UsageBreaksCounting
-    );
+fn given_cache_tokens_whose_sum_is_one_above_the_maximal_input_when_built_then_refused() {
+    assert!(refused(
+        Usage::of_input_tokens(u64::MAX)
+            .with_output_tokens(1)
+            .with_cache_read_input_tokens(u64::MAX)
+            .with_cache_creation_input_tokens(1)
+    ));
 }
 
 #[test]
 fn given_cache_tokens_whose_sum_is_exactly_the_maximal_input_when_built_then_accepted() {
-    let usage_value = Usage {
-        input_tokens: u64::MAX,
-        output_tokens: 1,
-        cache_read_tokens: Some(u64::MAX - 1),
-        cache_write_tokens: Some(1),
-        thinking_tokens: None,
-    };
     assert!(
-        Reply::success(step_with_usage("hi", usage_value))
-            .build()
-            .is_ok()
+        Reply::success(with_usage(
+            Usage::of_input_tokens(u64::MAX)
+                .with_output_tokens(1)
+                .with_cache_read_input_tokens(u64::MAX - 1)
+                .with_cache_creation_input_tokens(1)
+        ))
+        .build()
+        .is_ok()
     );
 }
 
 #[test]
 fn given_thinking_tokens_one_above_the_maximal_output_when_built_then_refused() {
-    let usage_value = Usage {
-        input_tokens: 1,
-        output_tokens: u64::MAX - 1,
-        thinking_tokens: Some(u64::MAX),
-        ..Usage::default()
-    };
-    assert_eq!(
-        Reply::success(step_with_usage("hi", usage_value))
-            .build()
-            .unwrap_err(),
-        MockBuildError::UsageBreaksCounting
-    );
+    assert!(refused(
+        Usage::of_input_tokens(1)
+            .with_output_tokens(u64::MAX - 1)
+            .with_thinking_tokens(u64::MAX)
+    ));
 }
 
 #[test]
 fn given_thinking_tokens_equal_to_the_maximal_output_when_built_then_accepted() {
-    let usage_value = Usage {
-        input_tokens: 1,
-        output_tokens: u64::MAX,
-        thinking_tokens: Some(u64::MAX),
-        ..Usage::default()
-    };
     assert!(
-        Reply::success(step_with_usage("hi", usage_value))
-            .build()
-            .is_ok()
+        Reply::success(with_usage(
+            Usage::of_input_tokens(1)
+                .with_output_tokens(u64::MAX)
+                .with_thinking_tokens(u64::MAX)
+        ))
+        .build()
+        .is_ok()
     );
 }

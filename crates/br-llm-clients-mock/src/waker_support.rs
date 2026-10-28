@@ -6,7 +6,7 @@ use std::task::{RawWaker, RawWakerVTable, Wake, Waker};
 use std::time::Duration;
 
 use br_llm_clients_core::Client;
-use br_llm_messages::StreamEvent;
+use br_llm_messages::{DeltaOp, ResponseMetadata};
 
 use crate::call_log::StateKind;
 use crate::gate::Gate;
@@ -105,7 +105,7 @@ fn complete_one_call(client: &MockClient) {
 
 fn answering_mock() -> MockClient {
     let client = mock();
-    client.set_fallback(Reply::success(text_step("ok")).build().unwrap());
+    client.set_fallback(Reply::success(text_response("ok")).build().unwrap());
     client
 }
 
@@ -113,7 +113,7 @@ fn gate_pass() -> Subject {
     let gate = Gate::new();
     let client = mock();
     client.set_fallback(
-        Reply::success(text_step("ok"))
+        Reply::success(text_response("ok"))
             .gate_at(0, &gate)
             .build()
             .unwrap(),
@@ -136,7 +136,7 @@ fn wait_for_waiting() -> Subject {
     let gate = Gate::new();
     let client = mock();
     client.set_fallback(
-        Reply::success(text_step("ok"))
+        Reply::success(text_response("ok"))
             .gate_at(0, &gate)
             .build()
             .unwrap(),
@@ -187,17 +187,17 @@ fn wait_for_state() -> Subject {
     }
 }
 
-fn wait_for_events() -> Subject {
+fn wait_for_deltas() -> Subject {
     let sink = RecordingSink::new();
     let (firing, probing) = (sink.clone(), sink.clone());
     Subject {
-        name: "wait for events",
-        future: Box::pin(sink.wait_for_events(1)),
+        name: "wait for deltas",
+        future: Box::pin(sink.wait_for_deltas(1)),
         fire: Arc::new(move || {
             let mut sink = firing.clone();
             block_on(br_llm_clients_core::StreamSink::send(
                 &mut sink,
-                StreamEvent::BlockEnd { index: 0 },
+                delta(DeltaOp::response_started(ResponseMetadata::new())),
             ));
         }),
         touch: Arc::new(move || {
@@ -212,6 +212,6 @@ pub(crate) fn subjects() -> Vec<Subject> {
         wait_for_waiting(),
         wait_for_calls(),
         wait_for_state(),
-        wait_for_events(),
+        wait_for_deltas(),
     ]
 }

@@ -1,97 +1,47 @@
-use std::future::Future;
+mod support;
+
 use std::sync::Arc;
-use std::task::{Context, Poll, Wake, Waker};
-use std::thread::Thread;
+use std::task::{Context, Waker};
 
 use br_llm_clients_core::{
-    CacheRequirement, Client, ClientError, ClientRequest, ClientSettings, MaxOutputTokens,
-    OutputMode, ReasoningLevel,
+    CacheRequirement, Client, ClientError, ClientSettings, MaxOutputTokens, ReasoningLevel,
 };
 use br_llm_clients_mock::{
-    Accepted, Capabilities, CapabilitiesSpec, Chunking, Gate, MockClient, RecordingSink, Reply,
-    ReplySource, Rule, StateKind, derive_events, tool_call_id,
+    Accepted, Capabilities, CapabilitiesSpec, Chunking, DEFAULT_ID_START, Gate, MockClient,
+    RecordingSink, Reply, ReplySource, Rule, SequentialIdSource, Sketch, StateKind, derive_deltas,
+    fold_deltas, fold_partial,
 };
-use br_llm_messages::{
-    AssistantBlock, ModelId, Step, StopReason, Text, ToolCall, ToolName, WireMessage, WireUserBlock,
-};
-
-struct Unparker(Thread);
-
-impl Wake for Unparker {
-    fn wake(self: Arc<Self>) {
-        self.0.unpark();
-    }
-}
-
-fn everything() -> Capabilities {
-    Capabilities::new(CapabilitiesSpec::everything()).unwrap()
-}
+use br_llm_messages::{ContentBlock, ModelName, ResponseEnding};
+use support::{block_on, everything, request, settings};
 
 fn always(reply: Reply) -> Rule {
     Rule::new(|_| true, reply)
 }
 
-fn block_on<F: Future>(future: F) -> F::Output {
-    let waker = Waker::from(Arc::new(Unparker(std::thread::current())));
-    let mut context = Context::from_waker(&waker);
-    let mut future = std::pin::pin!(future);
-    loop {
-        match future.as_mut().poll(&mut context) {
-            Poll::Ready(output) => return output,
-            Poll::Pending => std::thread::park(),
-        }
-    }
-}
-
-fn settings() -> ClientSettings {
-    ClientSettings::new(
-        ModelId::new("test-model").unwrap(),
-        ReasoningLevel::Medium,
-        CacheRequirement::NotRequired,
-        MaxOutputTokens::new(512).unwrap(),
-    )
-}
-
-fn request() -> ClientRequest {
-    let message = WireMessage::User {
-        content: vec![WireUserBlock::Text {
-            text: Text::new("hello").unwrap(),
-        }],
-    };
-    ClientRequest::new(None, vec![message], vec![], OutputMode::Plain).unwrap()
-}
-
-fn answer(value: &str) -> Step {
-    Step::new(
-        vec![AssistantBlock::Text {
-            text: Text::new(value).unwrap(),
-        }],
-        StopReason::EndTurn,
-        None,
-        None,
-    )
-    .unwrap()
+fn text_of(response: &br_llm_messages::ModelResponse) -> String {
+    response
+        .blocks()
+        .iter()
+        .find_map(|block| match block {
+            ContentBlock::Text(text) => Some(text.text().as_str().to_owned()),
+            _ => None,
+        })
+        .unwrap()
 }
 
 #[test]
 fn given_the_public_surface_when_a_test_writes_a_script_then_the_code_under_test_gets_the_answers()
 {
     let client = MockClient::builder(settings(), everything())
-        .reply(Reply::success(answer("scripted")).build().unwrap())
+        .reply(Reply::text("scripted").build().unwrap())
         .build();
     let shared: Arc<dyn Client> = Arc::new(client.clone());
     let mut sink = RecordingSink::new();
     let outcome = block_on(shared.call(&request(), &mut sink));
-    assert_eq!(
-        outcome.result().unwrap().text().next().unwrap().as_str(),
-        "scripted"
-    );
+    assert_eq!(text_of(outcome.result().unwrap()), "scripted");
     assert_eq!(client.calls(), 1);
     assert_eq!(client.log()[0].state().kind(), StateKind::Succeeded);
-    let folded = sink
-        .fold(outcome.result().unwrap().model().cloned())
-        .unwrap();
-    assert_eq!(&folded, outcome.result().unwrap());
+    assert_eq!(&sink.fold().unwrap(), outcome.result().unwrap());
 }
 
 #[test]
@@ -99,7 +49,7 @@ fn given_handles_of_one_mock_when_asked_for_their_settings_then_each_gives_back_
     let original = MockClient::new(settings(), everything());
     let clone = original.clone();
     let wider = ClientSettings::new(
-        ModelId::new("other-model").unwrap(),
+        ModelName::new("other-model").unwrap(),
         ReasoningLevel::High,
         CacheRequirement::Required,
         MaxOutputTokens::new(4096).unwrap(),
@@ -111,7 +61,7 @@ fn given_handles_of_one_mock_when_asked_for_their_settings_then_each_gives_back_
         handles.map(|handle| handle.settings().clone()),
         [settings(), settings(), wider.clone(), wider, settings()]
     );
-    original.set_fallback(Reply::success(answer("any")).build().unwrap());
+    original.set_fallback(Reply::text("any").build().unwrap());
     block_on(retry.call(&request(), &mut RecordingSink::new()));
     assert_eq!(original.log()[0].settings(), retry.settings());
 }
@@ -134,40 +84,24 @@ fn given_capabilities_built_from_everything_when_changed_then_strictness_refuses
 }
 
 #[test]
-fn given_a_reply_function_and_a_helper_when_a_tool_call_is_scripted_then_ids_are_distinct_per_call()
-{
-    let client = MockClient::new(settings(), everything());
-    client.set_fallback(ReplySource::function(|call| {
-        let call = ToolCall {
-            id: tool_call_id("call", call.sequence(), None),
-            name: ToolName::new("search").unwrap(),
-            arguments: serde_json::json!({ "q": "rust" }),
-        };
-        let step = Step::new(
-            vec![AssistantBlock::ToolCall(call)],
-            StopReason::AwaitingToolResults,
-            None,
-            None,
-        )
-        .unwrap();
-        Reply::success(step).build()
-    }));
-    let mut ids = Vec::new();
-    for _ in 0..2 {
-        let mut sink = RecordingSink::new();
-        let outcome = block_on(client.call(&request(), &mut sink));
-        ids.push(
-            outcome
-                .result()
-                .unwrap()
-                .tool_calls()
-                .next()
-                .unwrap()
-                .id
-                .to_string(),
-        );
-    }
-    assert_eq!(ids, ["call-0", "call-1"]);
+fn given_a_reply_function_when_a_tool_call_is_scripted_then_the_identities_are_new_per_call_and_the_same_on_every_run()
+ {
+    let run = || {
+        let client = MockClient::new(settings(), everything());
+        client.set_fallback(ReplySource::function(|call| {
+            Reply::tool_call("search", format!(r#"{{"call":{}}}"#, call.sequence())).build()
+        }));
+        (0..2)
+            .map(|_| {
+                let mut sink = RecordingSink::new();
+                let outcome = block_on(client.call(&request(), &mut sink));
+                outcome.result().unwrap().blocks()[0].id()
+            })
+            .collect::<Vec<_>>()
+    };
+    let first = run();
+    assert_ne!(first[0], first[1]);
+    assert_eq!(first, run());
 }
 
 #[test]
@@ -176,7 +110,7 @@ fn given_a_rule_and_a_gate_when_a_test_drives_a_call_by_hand_then_the_gate_decid
     let gate = Gate::new();
     let client = MockClient::new(settings(), everything());
     client.push_rule(always(
-        Reply::success(answer("held"))
+        Reply::text("held")
             .gate_at(1, &gate)
             .chunking(Chunking::none().text(2))
             .build()
@@ -193,9 +127,14 @@ fn given_a_rule_and_a_gate_when_a_test_drives_a_call_by_hand_then_the_gate_decid
 }
 
 #[test]
-fn given_a_step_when_events_are_derived_then_the_list_ends_with_the_finish_event() {
-    let derived = derive_events(&answer("abc"), &Chunking::none()).unwrap();
-    assert_eq!(derived.before_finish() + 1, derived.events().len());
+fn given_a_response_when_deltas_are_derived_then_the_list_ends_with_completed_and_folds_back() {
+    let response = Sketch::new().text("abc").to_response().unwrap();
+    let request_value = request();
+    let derived = derive_deltas(request_value.reply_turn(), &response, &Chunking::none()).unwrap();
+    assert_eq!(derived.before_completed() + 1, derived.deltas().len());
+    assert_eq!(fold_deltas(derived.deltas()).unwrap(), response);
+    let cut = fold_partial(&derived.deltas()[..2]).unwrap();
+    assert!(cut.stop().is_none());
 }
 
 #[test]
@@ -203,10 +142,7 @@ fn given_a_call_waiting_at_a_gate_when_another_thread_opens_it_then_the_parked_c
     let gate = Gate::new();
     let client = MockClient::new(settings(), everything());
     client.push_rule(always(
-        Reply::success(answer("released"))
-            .gate_at(0, &gate)
-            .build()
-            .unwrap(),
+        Reply::text("released").gate_at(0, &gate).build().unwrap(),
     ));
     let opener = {
         let gate = gate.clone();
@@ -220,4 +156,64 @@ fn given_a_call_waiting_at_a_gate_when_another_thread_opens_it_then_the_parked_c
     opener.join().unwrap();
     assert!(outcome.result().is_ok());
     assert!(gate.is_open());
+}
+
+#[test]
+fn given_two_mocks_in_one_conversation_when_they_share_one_source_then_their_identities_never_meet()
+{
+    let source = SequentialIdSource::starting_at(DEFAULT_ID_START);
+    let build = |text: &str| {
+        let client = MockClient::builder(settings(), everything())
+            .id_source(source.clone())
+            .build();
+        client.set_fallback(Reply::text(text).build().unwrap());
+        client
+    };
+    let (first, second) = (build("a"), build("b"));
+    let one = block_on(first.call(&request(), &mut RecordingSink::new()));
+    let two = block_on(second.call(&request(), &mut RecordingSink::new()));
+    assert_ne!(
+        one.result().unwrap().blocks()[0].id(),
+        two.result().unwrap().blocks()[0].id()
+    );
+    assert_eq!(source.given(), 2);
+}
+
+#[test]
+fn given_a_sketch_with_a_tool_call_when_served_then_the_ending_is_tool_use() {
+    let client = MockClient::new(settings(), everything());
+    client.set_fallback(
+        Reply::success(
+            Sketch::new()
+                .tool_call("search", "{}")
+                .ending(ResponseEnding::finished()),
+        )
+        .build()
+        .unwrap(),
+    );
+    let outcome = block_on(client.call(&request(), &mut RecordingSink::new()));
+    assert_eq!(
+        *outcome.result().unwrap().ending(),
+        ResponseEnding::tool_use()
+    );
+}
+
+#[test]
+fn given_a_sketch_when_deltas_are_derived_then_a_test_chooses_the_count_of_a_cut_from_the_list() {
+    let sketch = Sketch::new()
+        .text("abcdef")
+        .tool_call("search", r#"{"q":1}"#);
+    let request_value = request();
+    let chunking = Chunking::none().text(2);
+    let derived = derive_deltas(request_value.reply_turn(), &sketch, &chunking).unwrap();
+    let count = derived.before_completed();
+    assert_eq!(derived.deltas().len(), count + 1);
+    let cut = Reply::cut(sketch.clone(), count, ClientError::Transport)
+        .chunking(chunking)
+        .build();
+    assert!(cut.is_ok());
+    let too_far = Reply::cut(sketch, count + 1, ClientError::Transport)
+        .chunking(chunking)
+        .build();
+    assert!(too_far.is_err());
 }

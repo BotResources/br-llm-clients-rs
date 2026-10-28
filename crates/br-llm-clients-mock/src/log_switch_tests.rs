@@ -2,7 +2,7 @@ use std::pin::pin;
 use std::sync::Arc;
 use std::task::Poll;
 
-use br_llm_clients_core::{Client, ClientError, OutputMode};
+use br_llm_clients_core::{Client, ClientError};
 
 use crate::call_log::StateKind;
 use crate::gate::Gate;
@@ -13,11 +13,11 @@ use crate::reply::Reply;
 use crate::test_support::*;
 
 fn says(value: &str) -> Reply {
-    Reply::success(text_step(value)).build().unwrap()
+    Reply::success(text_response(value)).build().unwrap()
 }
 
 fn gated(gate: &Gate) -> Reply {
-    Reply::success(text_step("gated"))
+    Reply::success(text_response("gated"))
         .gate_at(0, gate)
         .build()
         .unwrap()
@@ -64,14 +64,14 @@ fn given_the_log_switched_off_when_the_behaviour_is_compared_then_checks_script_
  {
     let client = unlogged();
     client.push_reply(says("scripted"));
-    let bad = request_of(vec![assistant_text("x")], vec![], OutputMode::Plain);
+    let bad = bad_request();
     let (refused, _) = run(&client, &bad);
     assert!(matches!(
         error_of(&refused),
         ClientError::InvalidMessages { .. }
     ));
     let (served, _) = run(&client, &request());
-    assert_eq!(step_of(&served).text().next().unwrap().as_str(), "scripted");
+    assert_eq!(text_of(&served), "scripted");
     let (exhausted, _) = run(&client, &request());
     assert!(matches!(
         error_of(&exhausted),
