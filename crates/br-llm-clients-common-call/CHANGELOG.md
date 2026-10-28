@@ -118,9 +118,11 @@ a tag of line 0.1 stays valid on that tag and is not changed.
   in the collected bytes reaches into the removed part, the trim goes further
   back, to the last point where each kept byte of such a secret is also inside a
   whole secret that is kept. So no byte of any secret, whole or crossing the
-  cut, stays in clear, whatever the rest of the body was. The trim keeps the
-  most bytes that this rule allows. In 0.1.0 the body was cut first and the secrets were
-  replaced after, so a secret that crossed the cut left its first part in the
+  cut, stays in clear, whatever the rest of the body was. The trim never keeps a
+  byte that removing the open start removes, even when keeping it would be
+  safe: with the secrets `xxx`, `zxz` and `zzx`, the cut bytes `xxx` give an
+  empty text. Below that bound, it keeps the most bytes it can. In 0.1.0 the
+  body was cut first and the secrets were replaced after, so a secret that crossed the cut left its first part in the
   text of the `ClientError` and in the text that `error_code` and
   `refine_error` read. Nothing is trimmed when the collection is not cut.
 - The secrets are replaced in one pass over the text. Every occurrence of every
@@ -136,6 +138,16 @@ a tag of line 0.1 stays valid on that tag and is not changed.
   `[[redacted]acted]`. In 0.1.0 each secret was replaced in turn over the whole
   text, so a secret that is a part of `[redacted]` rewrote the placeholders
   already written, and two secrets that overlapped kept a part of one of them.
+- The secrets are found with an automaton over the secrets in effect, so the
+  cost of a cleaning grows with the length of the text and the total length of
+  the secrets, not with their product. Its storage is about 9 bytes per byte
+  of the secrets. A call builds it at most once for each state of the
+  `SecretLog`: the cleaning of a refusal or of an `Error` event and the cleaning
+  of the outcome share it, and a secret recorded between the two makes the
+  second cleaning build it again with that secret. If the secrets in effect
+  hold more than 2^30 - 1 bytes in total, no automaton is built: every
+  non-empty text is replaced by one `[redacted]`, and a cut refusal body keeps
+  no byte.
 - The text of a refusal that `error_code` and `refine_error` get is cut to
   64 KiB at a character boundary after the replacement. In 0.1.0 it was given
   uncut, so a replacement that made it longer gave the dialect up to ten times
@@ -144,7 +156,8 @@ a tag of line 0.1 stays valid on that tag and is not changed.
   before the cut to 64 KiB, as the secrets of the list. The code and the text of an
   `Error` event are cleaned with the secrets in effect too, and so are the reason
   of an `unclassified` ending and the matched sequence of a `stop_sequence`
-  ending inside a `ReplyUnusable`. The kind of the ending never changes.
+  ending inside a `ReplyUnusable`. The kind of the ending never changes: a
+  cleaned text is never empty, so the core always accepts it.
 - The delay of a refusal is read from `retry-after-ms` first, as
   `Response::retry_after_ms` reads it, and from `Retry-After` when the first gives
   nothing. In 0.1.0 only `Retry-After` was read. The delay of an error inside a
