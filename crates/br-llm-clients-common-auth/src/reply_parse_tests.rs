@@ -91,6 +91,14 @@ fn given_expires_in_as_digits_in_a_text_then_it_is_the_validity_and_a_huge_one_s
         Some(Duration::from_secs(7))
     );
     assert_eq!(
+        validity(r#"{"access_token":"a","expires_in":"18446744073709551615"}"#),
+        Some(Duration::from_secs(u64::MAX))
+    );
+    assert_eq!(
+        validity(r#"{"access_token":"a","expires_in":"18446744073709551616"}"#),
+        Some(Duration::from_secs(u64::MAX))
+    );
+    assert_eq!(
         validity(r#"{"access_token":"a","expires_in":"99999999999999999999999999"}"#),
         Some(Duration::from_secs(u64::MAX))
     );
@@ -115,6 +123,18 @@ fn given_expires_in_that_is_not_a_whole_number_of_seconds_then_it_is_refused() {
         "true",
         "[5]",
         "{}",
+    ] {
+        let body = format!(r#"{{"access_token":"a","expires_in":{value}}}"#);
+        assert_eq!(flaw(&body), Flaw::ExpiresIn, "{value}");
+    }
+}
+
+#[test]
+fn given_an_expires_in_number_above_the_largest_u64_then_it_is_refused_because_it_cannot_be_told_from_a_decimal()
+ {
+    for value in [
+        "18446744073709551616",
+        "1.8446744073709552e19",
         "1000000000000000000000",
     ] {
         let body = format!(r#"{{"access_token":"a","expires_in":{value}}}"#);

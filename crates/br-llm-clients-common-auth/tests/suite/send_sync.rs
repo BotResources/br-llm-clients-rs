@@ -9,6 +9,8 @@ fn send_sync<T: Send + Sync>() {}
 
 fn send<T: Send>(_: &T) {}
 
+fn clone<T: Clone>() {}
+
 #[test]
 fn given_the_public_types_then_they_are_send_and_sync() {
     send_sync::<AccessToken>();
@@ -20,6 +22,17 @@ fn given_the_public_types_then_they_are_send_and_sync() {
     send_sync::<FormTokenClient>();
     send_sync::<AuthConfigError>();
     send_sync::<Arc<dyn TokenSource>>();
+}
+
+#[test]
+fn given_the_types_the_library_says_can_be_cloned_then_they_are_clone() {
+    clone::<AccessToken>();
+    clone::<TokenCache>();
+    clone::<TokenAuthorizer>();
+    clone::<TokenForm>();
+    clone::<TokenReply>();
+    clone::<FormTokenClient>();
+    clone::<AuthConfigError>();
 }
 
 #[tokio::test]

@@ -62,6 +62,17 @@ async fn given_a_form_when_fetched_then_the_library_adds_only_the_form_content_t
         names
     };
     assert_eq!(names(0), names(1));
+    assert_eq!(
+        names(0),
+        vec![
+            "accept-encoding",
+            "content-length",
+            "content-type",
+            "host",
+            "user-agent"
+        ]
+    );
+    assert!(captured[0].header_values("authorization").is_empty());
 }
 
 #[tokio::test]
