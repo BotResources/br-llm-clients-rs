@@ -31,8 +31,10 @@ Released on 2026-10-28.
   kept. A fetch is cut after 30 seconds of the tokio clock with `FetchFailed` and
   the text `the token fetch timed out`. A call also waits at most 30 seconds
   from the start of the fetch it waits for, then fails the same way, even when
-  the leader is never polled again; the next call leads a new fetch, and a late
-  leader changes nothing. A dropped or panicking leader leaves no lock held: a
+  the leader is never polled again; the next call leads a new fetch. A result
+  that comes at or after 30 seconds from the start of its fetch counts as that
+  timeout: nothing is kept, and the leader gets the usable token it holds or
+  the same error. A dropped or panicking leader leaves no lock held: a
   waiting call leads the next fetch. No fetch starts in the background.
 - `TokenAuthorizer::bearer`, an `Authorizer` that sets `authorization: Bearer
   <token>` from a `TokenCache`, and `with_token_observer`, called once with the
@@ -50,7 +52,7 @@ Released on 2026-10-28.
   and an optional non-empty `refresh_token`. A 429 or 5xx is `FetchFailed`; any
   other status outside 2xx is `Unavailable`. Error texts are fixed: they name the
   status, and add the `error` member only when it is 1 to 64 characters from `a`
-  to `z` and `_`, holds no secret of the form and is not equal to a plain value
-  of the form.
+  to `z` and `_`, is not equal to a plain value of the form, holds no secret of
+  the form and is no part of one.
 - `Debug` and the texts of every type never show a token, a secret or a form
   value.
