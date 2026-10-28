@@ -28,7 +28,9 @@ br-llm-clients-common-http = { git = "https://github.com/BotResources/br-llm-cli
 
 `br-llm-clients-mock` (0.6.0) pins `br-llm-clients-core` at `br-llm-clients-core/v0.5.0` and `br-llm-messages` at `br-llm-messages/v2.1.0`; a project that uses the mock and names core or messages pins those same two tags, or the types are two copies.
 
-**Status:** `br-llm-clients-core` is at `0.5.0`, `br-llm-clients-mock` is at `0.5.0`, `br-llm-clients-common-http` and `br-llm-clients-common-call` are at `0.2.0`, and `br-llm-clients-common-sse`, `br-llm-clients-api-anthropic-messages`, `br-llm-clients-api-openai-responses` and `br-llm-clients-api-openai-chat-completions` are at `0.1.0`; the other crates are not written yet.
+`br-llm-clients-common-call` (0.2.0) pins `br-llm-clients-core` at `br-llm-clients-core/v0.5.0`, `br-llm-clients-common-http` at `br-llm-clients-common-http/v0.2.0`, `br-llm-clients-common-sse` at `br-llm-clients-common-sse/v0.1.0` and `br-llm-messages` at `br-llm-messages/v2.1.0`, and it re-exports `Authorizer`, `Endpoint`, `Headers`, `HttpClient` and `Secret` of `br-llm-clients-common-http`; a project that uses common-call and names a type of these crates pins those same tags, or the types are two copies.
+
+The three `br-llm-clients-api-*` libraries (0.1.0) still take `br-llm-clients-common-call` 0.1.0, `br-llm-clients-core` 0.4.0 and `br-llm-clients-common-http` 0.1.0 from the tag `br-llm-clients-common-call/v0.1.0`, and `br-llm-messages` at `br-llm-messages/v0.5.0`; a project that uses one of them pins those, and does not mix them with the `br-llm-clients-core/v0.5.0` and `br-llm-clients-common-http/v0.2.0` pins above, until the api libraries move to common-call 0.2.
 
 ## Provider keys for real calls
 
