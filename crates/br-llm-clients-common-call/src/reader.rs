@@ -15,6 +15,7 @@ use crate::normalizer::Normalizer;
 use crate::payload::Payload;
 use crate::payload_decoder::{End, PayloadDecoder};
 use crate::provider_event::ProviderEvent;
+use crate::secrets_cache::SecretsCache;
 
 pub(crate) enum Flow {
     More,
@@ -23,6 +24,7 @@ pub(crate) enum Flow {
 
 pub(crate) struct Reader<'a> {
     spec: &'a CallSpec,
+    secrets: &'a SecretsCache,
     request: &'a ClientRequest,
     record: &'a mut CallRecord,
     sse: Decoder,
@@ -34,6 +36,7 @@ pub(crate) struct Reader<'a> {
 impl<'a> Reader<'a> {
     pub(crate) fn new(
         spec: &'a CallSpec,
+        secrets: &'a SecretsCache,
         request: &'a ClientRequest,
         sink: &'a mut dyn StreamSink,
         record: &'a mut CallRecord,
@@ -41,6 +44,7 @@ impl<'a> Reader<'a> {
         let answered = record.answered_model.clone();
         Self {
             spec,
+            secrets,
             request,
             record,
             sse: Decoder::default(),
@@ -122,7 +126,11 @@ impl<'a> Reader<'a> {
     }
 
     fn classify(&self, info: ErrorInfo) -> ClientError {
-        classify_stream_error(&*self.spec.dialect, &self.spec.secrets_in_effect(), info)
+        classify_stream_error(
+            &*self.spec.dialect,
+            &self.secrets.in_effect(self.spec),
+            info,
+        )
     }
 
     async fn apply(&mut self, event: ProviderEvent) -> Result<(), ClientError> {

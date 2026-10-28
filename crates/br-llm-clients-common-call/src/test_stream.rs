@@ -6,6 +6,7 @@ use br_llm_messages::{BlockStart, DeltaOp, ModelResponse, ResponseDelta, Respons
 use crate::call_record::CallRecord;
 use crate::call_spec::CallSpec;
 use crate::reader::{Flow, Reader};
+use crate::secrets_cache::SecretsCache;
 use crate::test_decoder::{DecoderLog, EndScript};
 use crate::test_dialect::ScriptedDialect;
 use crate::test_fixtures::spec_for;
@@ -71,7 +72,8 @@ async fn pump(
     record: &mut CallRecord,
     chunks: &[Vec<u8>],
 ) -> Result<ModelResponse, ClientError> {
-    let mut reader = Reader::new(spec, request, sink, record);
+    let secrets = SecretsCache::default();
+    let mut reader = Reader::new(spec, &secrets, request, sink, record);
     for chunk in chunks {
         if let Flow::Complete = reader.chunk(chunk).await? {
             return reader.conclude().await;

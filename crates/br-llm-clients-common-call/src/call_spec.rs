@@ -57,9 +57,9 @@ impl CallSpec {
         self
     }
 
-    pub(crate) fn secrets_in_effect(&self) -> Secrets {
+    pub(crate) fn secrets_with(&self, logged: Vec<Secret>) -> Secrets {
         let mut all = self.secrets.clone();
-        all.extend(self.secret_log.snapshot());
+        all.extend(logged);
         Secrets::new(all)
     }
 }

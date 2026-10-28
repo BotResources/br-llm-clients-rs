@@ -37,6 +37,7 @@ mod run;
 mod secret_automaton;
 mod secret_log;
 mod secret_ranges;
+mod secrets_cache;
 mod text_clean;
 
 pub use br_llm_clients_common_http::{Authorizer, Endpoint, Headers, HttpClient, Secret};
@@ -117,6 +118,8 @@ mod secret_trim_differential_tests;
 mod secret_trim_exhaustive_tests;
 #[cfg(test)]
 mod secret_trim_tests;
+#[cfg(test)]
+mod secrets_cache_tests;
 #[cfg(test)]
 mod static_tests;
 #[cfg(test)]
