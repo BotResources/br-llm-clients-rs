@@ -27,7 +27,7 @@ form to decide whether a version ships.
 - Breaking, the reply checks. The refusal of a response that holds a tool call whose id is the id of a tool call of the request is gone, with the renaming of tool call ids (`rename_tool_call_ids`) and the helper `tool_call_id`. Identities come from a source and never repeat within one source. An external id that repeats is a matter of core, which makes the wire ids distinct.
 - Breaking, the fold of `RecordingSink`. The helper takes no model id, because the model comes from the deltas.
 - Breaking, the types inside the capabilities and the errors. `ModelId` becomes `ModelName`, `ImageMime` becomes `MediaType` (so a set of image media types is an `Accepted<MediaType>`), and `ReplyUnusable` carries a `ResponseEnding`. The capabilities are still the types of `br-llm-clients-core`, re-exported at the same paths.
-- Breaking, the dependencies. The mock needs `br-llm-clients-core` 0.5.0, pinned by path and version `0.5.0`, and `br-llm-messages` 2.1.0, pinned by the tag `br-llm-messages/v2.1.0`. An importer moves its own pins of core and messages to the same versions together with the mock.
+- Breaking, the dependencies. The mock needs `br-llm-clients-core` 0.5.0, pinned by the git tag `br-llm-clients-core/v0.5.0`, and `br-llm-messages` 2.1.0, pinned by the git tag `br-llm-messages/v2.1.0`, both with the same git url as an importer uses. An importer that names core or messages pins the same tags, `br-llm-clients-core/v0.5.0` and `br-llm-messages/v2.1.0`; with another tag it gets two copies of the types, which are not the same types.
 
 ### Added
 
