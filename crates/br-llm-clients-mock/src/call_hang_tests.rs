@@ -3,11 +3,10 @@ use std::sync::Arc;
 use std::task::Poll;
 
 use br_llm_clients_core::{Client, ClientError};
-use br_llm_messages::StreamEvent;
+use br_llm_messages::DeltaOp;
 
 use crate::call_log::StateKind;
 use crate::chunking::Chunking;
-use crate::derive_events::derive_events;
 use crate::gate::Gate;
 use crate::recording_sink::RecordingSink;
 use crate::reply::Reply;
@@ -15,35 +14,32 @@ use crate::reply_source::ReplySource;
 use crate::test_support::*;
 
 #[test]
-fn given_a_hang_at_the_full_count_when_called_then_every_event_but_the_finish_is_sent_and_the_call_never_ends()
+fn given_a_hang_at_the_full_count_when_called_then_every_delta_but_the_completed_is_sent_and_the_call_never_ends()
  {
-    let step_value = text_step("hello");
-    let derived = derive_events(&step_value, &Chunking::none()).unwrap();
-    let client = mock();
-    client.push_reply(
-        Reply::hang(step_value, derived.before_finish())
-            .build()
-            .unwrap(),
-    );
+    let response = text_response("hello");
     let request_value = request();
+    let expected = expected_deltas(&request_value, &response, &Chunking::none());
+    let full = expected.len() - 1;
+    let client = mock();
+    client.push_reply(Reply::hang(response, full).build().unwrap());
     let sink = RecordingSink::new();
     let mut handle = sink.clone();
     let mut call = pin!(client.call(&request_value, &mut handle));
     assert!(poll_once(&mut call).is_pending());
-    assert_eq!(sink.events(), derived.events()[..derived.before_finish()]);
+    assert_eq!(sink.deltas(), expected[..full]);
     assert!(
         !sink
-            .events()
+            .deltas()
             .iter()
-            .any(|event| matches!(event, StreamEvent::Finish { .. }))
+            .any(|delta| matches!(delta.op(), DeltaOp::ResponseCompleted { .. }))
     );
     assert_eq!(client.log()[0].state().kind(), StateKind::Hanging);
 }
 
 #[test]
-fn given_a_hang_at_zero_when_called_then_no_event_is_sent_and_the_call_hangs() {
+fn given_a_hang_at_zero_when_called_then_no_delta_is_sent_and_the_call_hangs() {
     let client = mock();
-    client.push_reply(Reply::hang(text_step("x"), 0).build().unwrap());
+    client.push_reply(Reply::hang(text_response("x"), 0).build().unwrap());
     let request_value = request();
     let sink = RecordingSink::new();
     let mut handle = sink.clone();
@@ -57,7 +53,7 @@ fn given_a_gate_at_the_hang_position_when_called_then_the_call_waits_at_the_gate
     let gate = Gate::new();
     let client = mock();
     client.push_reply(
-        Reply::hang(text_step("x"), 1)
+        Reply::hang(text_response("x"), 1)
             .gate_at(1, &gate)
             .build()
             .unwrap(),
@@ -77,7 +73,7 @@ fn given_a_gate_at_the_cut_position_when_called_then_the_call_waits_before_it_gi
     let gate = Gate::new();
     let client = mock();
     client.push_reply(
-        Reply::cut(text_step("x"), 2, ClientError::StreamTruncated)
+        Reply::cut(text_response("x"), 2, ClientError::StreamTruncated)
             .gate_at(2, &gate)
             .build()
             .unwrap(),
@@ -97,8 +93,8 @@ fn given_a_gate_at_the_cut_position_when_called_then_the_call_waits_before_it_gi
 fn given_a_hanging_call_when_the_task_is_woken_by_others_then_it_stays_pending_and_is_never_woken_by_the_mock()
  {
     let client = mock();
-    client.push_reply(Reply::hang(text_step("x"), 1).build().unwrap());
-    client.set_fallback(Reply::success(text_step("y")).build().unwrap());
+    client.push_reply(Reply::hang(text_response("x"), 1).build().unwrap());
+    client.set_fallback(Reply::success(text_response("y")).build().unwrap());
     let wakes = Arc::new(WakeCount::default());
     let waker = wakes.waker();
     let request_value = request();
@@ -114,7 +110,7 @@ fn given_a_call_waiting_at_a_gate_when_the_gate_opens_then_the_waker_of_the_call
     let gate = Gate::new();
     let client = mock();
     client.push_reply(
-        Reply::success(text_step("x"))
+        Reply::success(text_response("x"))
             .gate_at(0, &gate)
             .build()
             .unwrap(),
@@ -136,7 +132,7 @@ fn given_a_released_call_when_release_returns_then_only_the_released_call_was_wo
     let gate = Gate::new();
     let client = mock();
     client.set_fallback(
-        Reply::success(text_step("x"))
+        Reply::success(text_response("x"))
             .gate_at(0, &gate)
             .build()
             .unwrap(),
@@ -160,17 +156,11 @@ fn given_script_entries_that_are_functions_when_claimed_then_the_prior_claims_ar
     let client = mock();
     for _ in 0..3 {
         client.push_reply(ReplySource::function(|call| {
-            Reply::success(text_step(&format!("entry {}", call.claimed_before()))).build()
+            Reply::text(format!("entry {}", call.claimed_before())).build()
         }));
     }
     let answers: Vec<String> = (0..3)
-        .map(|_| {
-            step_of(&run(&client, &request()).0)
-                .text()
-                .next()
-                .unwrap()
-                .to_string()
-        })
+        .map(|_| text_of(&run(&client, &request()).0))
         .collect();
     assert_eq!(answers, ["entry 0", "entry 1", "entry 2"]);
 }

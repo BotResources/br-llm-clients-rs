@@ -66,7 +66,11 @@ impl MockClient {
     }
 
     pub fn log(&self) -> Vec<LoggedCall> {
-        self.shared.with(|state| state.log.snapshot())
+        let snapshot = self.shared.with(|state| state.log.snapshot());
+        snapshot
+            .iter()
+            .map(|call| LoggedCall::clone(call))
+            .collect()
     }
 
     pub fn calls(&self) -> usize {

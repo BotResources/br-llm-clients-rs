@@ -7,7 +7,7 @@ use crate::reply::Reply;
 use crate::test_support::*;
 
 fn says(value: &str) -> Reply {
-    Reply::success(text_step(value)).build().unwrap()
+    Reply::success(text_response(value)).build().unwrap()
 }
 
 fn fails() -> Reply {
@@ -17,7 +17,7 @@ fn fails() -> Reply {
 fn answer_of(client: &MockClient) -> String {
     let (outcome, _) = run(client, &request());
     match outcome.result() {
-        Ok(step_value) => step_value.text().next().unwrap().to_string(),
+        Ok(_) => text_of(&outcome),
         Err(error) => format!("{error:?}"),
     }
 }
@@ -102,7 +102,7 @@ fn given_calls_polled_in_order_and_finishing_in_reverse_when_claiming_then_the_c
     let gate = crate::Gate::new();
     let client = mock();
     for label in ["first", "second"] {
-        let reply = Reply::success(text_step(label))
+        let reply = Reply::success(text_response(label))
             .gate_at(0, &gate)
             .build()
             .unwrap();
@@ -126,8 +126,8 @@ fn given_calls_polled_in_order_and_finishing_in_reverse_when_claiming_then_the_c
     gate.open();
     let second = block_on(call_b.as_mut());
     let first = block_on(call_a.as_mut());
-    assert_eq!(step_of(&second).text().next().unwrap().as_str(), "second");
-    assert_eq!(step_of(&first).text().next().unwrap().as_str(), "first");
+    assert_eq!(text_of(&second), "second");
+    assert_eq!(text_of(&first), "first");
 }
 
 #[test]

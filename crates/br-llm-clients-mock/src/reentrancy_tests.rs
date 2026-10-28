@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use std::sync::mpsc;
 
 use br_llm_clients_core::{BoxFuture, Client, StreamSink};
-use br_llm_messages::StreamEvent;
+use br_llm_messages::{DeltaOp, ResponseDelta};
 
 use crate::call_log::{CallState, Served, StateKind};
 use crate::mock_client::MockClient;
@@ -13,7 +13,7 @@ use crate::rule::Rule;
 use crate::test_support::*;
 
 fn says(value: &str) -> Reply {
-    Reply::success(text_step(value)).build().unwrap()
+    Reply::success(text_response(value)).build().unwrap()
 }
 
 struct ReentrantSink {
@@ -22,9 +22,9 @@ struct ReentrantSink {
 }
 
 impl StreamSink for ReentrantSink {
-    fn send<'a>(&'a mut self, event: StreamEvent) -> BoxFuture<'a, ()> {
+    fn send<'a>(&'a mut self, delta: ResponseDelta) -> BoxFuture<'a, ()> {
         Box::pin(async move {
-            if !matches!(event, StreamEvent::BlockStart { .. }) {
+            if !matches!(delta.op(), DeltaOp::BlockStarted { .. }) {
                 return;
             }
             let log_len = self.client.log().len();
@@ -38,10 +38,7 @@ impl StreamSink for ReentrantSink {
             let (inner, _) = run(&self.client, &request());
             self.inner_answers.push(format!(
                 "{log_len}:{}",
-                inner
-                    .result()
-                    .map(|found| found.text().next().unwrap().to_string())
-                    .unwrap_or_default()
+                inner.result().map(|_| text_of(&inner)).unwrap_or_default()
             ));
         })
     }
@@ -69,18 +66,12 @@ fn given_a_reply_function_that_uses_the_same_mock_when_it_runs_then_there_is_no_
     client.push_reply(ReplySource::function(move |_| {
         inside.push_reply(says("pushed from the function"));
         let seen = inside.log().len();
-        Reply::success(text_step(&format!("function saw {seen}"))).build()
+        Reply::success(text_response(&format!("function saw {seen}"))).build()
     }));
     let (outcome, _) = run(&client, &request());
-    assert_eq!(
-        step_of(&outcome).text().next().unwrap().as_str(),
-        "function saw 1"
-    );
+    assert_eq!(text_of(&outcome), "function saw 1");
     let (next, _) = run(&client, &request());
-    assert_eq!(
-        step_of(&next).text().next().unwrap().as_str(),
-        "pushed from the function"
-    );
+    assert_eq!(text_of(&next), "pushed from the function");
 }
 
 #[test]
@@ -113,7 +104,7 @@ fn given_a_matcher_that_blocks_when_the_test_thread_uses_the_mock_then_no_lock_i
     assert_eq!(client.unused_entries(), 2);
     resume_tx.send(()).unwrap();
     let outcome = caller.join().unwrap();
-    assert_eq!(step_of(&outcome).text().next().unwrap().as_str(), "entry");
+    assert_eq!(text_of(&outcome), "entry");
 }
 
 #[test]
@@ -134,7 +125,7 @@ fn given_a_reply_function_that_blocks_when_other_calls_are_made_then_they_are_no
     };
     entered_rx.recv().unwrap();
     let (free, _) = run(&client, &request());
-    assert_eq!(step_of(&free).text().next().unwrap().as_str(), "free");
+    assert_eq!(text_of(&free), "free");
     resume_tx.send(()).unwrap();
     assert!(caller.join().unwrap().result().is_ok());
 }
@@ -142,7 +133,7 @@ fn given_a_reply_function_that_blocks_when_other_calls_are_made_then_they_are_no
 struct PanickingSink;
 
 impl StreamSink for PanickingSink {
-    fn send<'a>(&'a mut self, _event: StreamEvent) -> BoxFuture<'a, ()> {
+    fn send<'a>(&'a mut self, _delta: ResponseDelta) -> BoxFuture<'a, ()> {
         Box::pin(async move { panic!("the sink failed") })
     }
 }
@@ -164,7 +155,7 @@ fn given_a_panic_in_a_sink_when_the_call_is_polled_then_the_panic_goes_to_the_po
     assert_eq!(client.unused_entries(), 1);
     drop(call);
     let (next, _) = run(&client, &request());
-    assert_eq!(step_of(&next).text().next().unwrap().as_str(), "next");
+    assert_eq!(text_of(&next), "next");
     assert_eq!(client.log().len(), 2);
 }
 
@@ -200,7 +191,7 @@ fn given_a_panic_in_a_matcher_when_the_call_is_polled_then_no_entry_and_no_use_i
     assert_eq!(client.unused_uses(), 3);
     drop(call);
     let (next, _) = run(&client, &request());
-    assert_eq!(step_of(&next).text().next().unwrap().as_str(), "entry");
+    assert_eq!(text_of(&next), "entry");
 }
 
 #[test]
@@ -264,7 +255,7 @@ fn given_a_panic_in_user_code_on_one_thread_when_other_threads_use_the_mock_then
     assert!(failing.join().is_err());
     for _ in 0..4 {
         let (outcome, _) = run(&client, &request());
-        assert_eq!(step_of(&outcome).text().next().unwrap().as_str(), "fine");
+        assert_eq!(text_of(&outcome), "fine");
     }
     assert_eq!(client.calls(), 5);
     assert_eq!(

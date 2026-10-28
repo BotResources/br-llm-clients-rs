@@ -1,24 +1,29 @@
 use br_llm_clients_core::Client;
-use br_llm_messages::ImageMime;
+use br_llm_messages::MediaType;
 
 use crate::build_error::MockBuildError;
 use crate::call_log::{CallState, LoggedCall, Served, StateKind};
 use crate::call_view::{MatchContext, ReplyContext};
 use crate::chunking::Chunking;
-use crate::derive_events::DerivedEvents;
+use crate::derive_deltas::DerivedDeltas;
+use crate::fold::{PartialFold, Stop};
 use crate::fold_error::FoldError;
 use crate::gate::{Gate, WaitForWaiting};
+use crate::json_input::JsonInput;
 use crate::log_disabled::LogDisabled;
 use crate::mock_builder::MockBuilder;
 use crate::mock_client::MockClient;
 use crate::mock_waits::{WaitForCalls, WaitForState};
-use crate::recording_sink::{RecordingSink, WaitForEvents};
+use crate::recording_sink::{RecordingSink, WaitForDeltas};
 use crate::reply::Reply;
 use crate::reply_builder::{
     BrokenStreamKind, CutKind, FailureKind, HangKind, ReplyBuilder, SuccessKind,
 };
 use crate::reply_source::ReplySource;
+use crate::response_input::ResponseInput;
 use crate::rule::Rule;
+use crate::sequential_id_source::SequentialIdSource;
+use crate::sketch::Sketch;
 use crate::{Accepted, Capabilities, CapabilitiesError, CapabilitiesSpec};
 
 fn assert_send_sync<T: Send + Sync + ?Sized>() {}
@@ -27,7 +32,7 @@ fn assert_future_traits<T: Send + Sync + Unpin + 'static>() {}
 
 #[test]
 fn given_every_public_type_when_compiled_then_it_is_send_and_sync() {
-    assert_send_sync::<Accepted<ImageMime>>();
+    assert_send_sync::<Accepted<MediaType>>();
     assert_send_sync::<BrokenStreamKind>();
     assert_send_sync::<CallState>();
     assert_send_sync::<Capabilities>();
@@ -35,10 +40,16 @@ fn given_every_public_type_when_compiled_then_it_is_send_and_sync() {
     assert_send_sync::<CapabilitiesSpec>();
     assert_send_sync::<Chunking>();
     assert_send_sync::<CutKind>();
-    assert_send_sync::<DerivedEvents>();
+    assert_send_sync::<DerivedDeltas>();
     assert_send_sync::<FailureKind>();
     assert_send_sync::<FoldError>();
     assert_send_sync::<Gate>();
+    assert_send_sync::<JsonInput>();
+    assert_send_sync::<PartialFold>();
+    assert_send_sync::<ResponseInput>();
+    assert_send_sync::<SequentialIdSource>();
+    assert_send_sync::<Sketch>();
+    assert_send_sync::<Stop>();
     assert_send_sync::<HangKind>();
     assert_send_sync::<LogDisabled>();
     assert_send_sync::<LoggedCall>();
@@ -61,7 +72,7 @@ fn given_every_public_type_when_compiled_then_it_is_send_and_sync() {
 #[test]
 fn given_the_four_wait_futures_when_compiled_then_they_are_send_sync_unpin_and_static() {
     assert_future_traits::<WaitForCalls>();
-    assert_future_traits::<WaitForEvents>();
+    assert_future_traits::<WaitForDeltas>();
     assert_future_traits::<WaitForState>();
     assert_future_traits::<WaitForWaiting>();
 }

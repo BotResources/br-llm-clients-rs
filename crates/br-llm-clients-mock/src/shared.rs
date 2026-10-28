@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use br_llm_clients_core::{Capabilities, ClientRequest, ClientSettings};
+use br_llm_clients_core::{Capabilities, ClientRequest, ClientSettings, IdSource};
 
 use crate::log::LogState;
 use crate::script::ScriptState;
@@ -14,6 +14,7 @@ pub(crate) struct State {
 
 pub(crate) struct Shared {
     capabilities: Capabilities,
+    id_source: Box<dyn IdSource>,
     log_enabled: bool,
     state: Mutex<State>,
 }
@@ -25,9 +26,14 @@ pub(crate) struct Begun {
 }
 
 impl Shared {
-    pub(crate) fn new(capabilities: Capabilities, log_enabled: bool) -> Arc<Self> {
+    pub(crate) fn new(
+        capabilities: Capabilities,
+        id_source: Box<dyn IdSource>,
+        log_enabled: bool,
+    ) -> Arc<Self> {
         Arc::new(Self {
             capabilities,
+            id_source,
             log_enabled,
             state: Mutex::new(State {
                 script: ScriptState::default(),
@@ -38,6 +44,10 @@ impl Shared {
 
     pub(crate) fn capabilities(&self) -> &Capabilities {
         &self.capabilities
+    }
+
+    pub(crate) fn id_source(&self) -> &dyn IdSource {
+        self.id_source.as_ref()
     }
 
     pub(crate) fn log_enabled(&self) -> bool {

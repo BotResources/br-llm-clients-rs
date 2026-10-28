@@ -17,11 +17,7 @@ use crate::test_support::*;
 const PARALLEL: usize = 1000;
 
 fn says(value: &str) -> Reply {
-    Reply::success(text_step(value)).build().unwrap()
-}
-
-fn text_of(outcome: &CallOutcome) -> String {
-    step_of(outcome).text().next().unwrap().to_string()
+    Reply::success(text_response(value)).build().unwrap()
 }
 
 fn spawn_small<T: Send + 'static>(
@@ -168,7 +164,7 @@ fn given_two_calls_that_both_match_the_last_use_when_they_claim_together_then_on
 #[test]
 fn given_a_hung_call_when_other_calls_are_made_on_the_same_mock_then_they_are_not_blocked() {
     let client = mock();
-    client.push_reply(Reply::hang(text_step("stuck"), 1).build().unwrap());
+    client.push_reply(Reply::hang(text_response("stuck"), 1).build().unwrap());
     client.set_fallback(says("free"));
     let request_value = request();
     let mut hung_sink = RecordingSink::new();
@@ -191,7 +187,7 @@ fn given_a_gate_wait_in_one_task_when_another_task_calls_the_same_mock_then_it_i
     let gate = Gate::new();
     let client = mock();
     client.push_reply(
-        Reply::success(text_step("held"))
+        Reply::success(text_response("held"))
             .gate_at(0, &gate)
             .build()
             .unwrap(),

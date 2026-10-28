@@ -1,81 +1,147 @@
-use br_llm_messages::{AssistantBlock, Signature, StopReason, StreamEvent, Thinking};
-use serde_json::json;
+use br_llm_messages::{
+    ContentBlock, DeltaOp, ModelResponse, OpaqueJson, ReplayFormat, ReplayMaterial, ReplayPayload,
+    ResponseEnding, ResponseMetadata, ThinkingBlock,
+};
 
 use crate::build_error::MockBuildError;
 use crate::chunking::Chunking;
-use crate::derive_events::derive_events;
+use crate::derive_deltas::derive_deltas;
+use crate::fixtures::{block_id, turn_id};
 use crate::test_support::*;
 
-fn thinking(text_value: &str, signature: Option<&str>) -> AssistantBlock {
-    AssistantBlock::Thinking(Thinking {
-        text: text_value.to_owned(),
-        signature: signature.map(|value| Signature::new(value).unwrap()),
-    })
+fn derived(response: &ModelResponse, chunking: &Chunking) -> Vec<DeltaOp> {
+    derive_deltas(turn_id(), response, chunking)
+        .unwrap()
+        .into_deltas()
+        .iter()
+        .map(|delta| delta.op().clone())
+        .collect()
 }
 
-fn text_block(value: &str) -> AssistantBlock {
-    AssistantBlock::Text { text: text(value) }
+fn texts(ops: &[DeltaOp]) -> Vec<String> {
+    ops.iter()
+        .filter_map(|op| match op {
+            DeltaOp::TextAppended { text, .. } => Some(text.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn json_fragments(ops: &[DeltaOp]) -> Vec<String> {
+    ops.iter()
+        .filter_map(|op| match op {
+            DeltaOp::JsonAppended { fragment, .. } => Some(fragment.clone()),
+            _ => None,
+        })
+        .collect()
 }
 
 #[test]
-fn given_a_signature_when_thinking_is_cut_then_the_signature_stays_whole() {
-    let step_value = step(
-        vec![thinking("xy", Some("longsignature"))],
-        StopReason::EndTurn,
+fn given_replay_material_when_thinking_is_cut_then_the_material_stays_whole() {
+    let material = ReplayMaterial::new(
+        ReplayFormat::new("sig").unwrap(),
+        ReplayPayload::text("longsignature"),
     );
-    let derived = derive_events(&step_value, &Chunking::none().thinking(1)).unwrap();
-    let signatures: Vec<_> = derived
-        .events()
+    let block = ThinkingBlock::new(block_id(), "xy")
+        .unwrap()
+        .with_replay(material.clone());
+    let response = response_of(
+        vec![ContentBlock::Thinking(block)],
+        ResponseEnding::finished(),
+        ResponseMetadata::new(),
+    );
+    let ops = derived(&response, &Chunking::none().thinking(1));
+    let thinking = ops
         .iter()
-        .filter(|event| matches!(event, StreamEvent::SignatureDelta { .. }))
+        .filter(|op| matches!(op, DeltaOp::ThinkingAppended { .. }))
+        .count();
+    let replays: Vec<_> = ops
+        .iter()
+        .filter_map(|op| match op {
+            DeltaOp::ReplayMaterialSet { material, .. } => Some(material.clone()),
+            _ => None,
+        })
         .collect();
-    assert_eq!(signatures.len(), 1);
+    assert_eq!(thinking, 2);
+    assert_eq!(replays, [material]);
 }
 
 #[test]
 fn given_text_with_multibyte_characters_when_cut_then_no_scalar_value_is_split_and_sizes_are_exact()
 {
-    let step_value = step(vec![text_block("aé😀bç😀d")], StopReason::EndTurn);
-    let derived = derive_events(&step_value, &Chunking::none().text(3)).unwrap();
-    let pieces: Vec<&str> = derived
-        .events()
-        .iter()
-        .filter_map(|event| match event {
-            StreamEvent::TextDelta { text, .. } => Some(text.as_str()),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(pieces, ["aé😀", "bç😀", "d"]);
+    let response = text_response("aé😀bç😀d");
+    let ops = derived(&response, &Chunking::none().text(3));
+    assert_eq!(texts(&ops), ["aé😀", "bç😀", "d"]);
 }
 
 #[test]
 fn given_a_size_larger_than_the_text_when_cut_then_one_piece() {
-    let derived = derive_events(&text_step("abc"), &Chunking::none().text(10)).unwrap();
-    assert_eq!(derived.before_finish(), 3);
+    let ops = derived(&text_response("abc"), &Chunking::none().text(10));
+    assert_eq!(texts(&ops), ["abc"]);
+}
+
+#[test]
+fn given_no_size_when_derived_then_a_text_is_one_piece() {
+    let ops = derived(&text_response("abcdef"), &Chunking::none());
+    assert_eq!(texts(&ops), ["abcdef"]);
 }
 
 #[test]
 fn given_sizes_per_kind_when_cut_then_each_kind_uses_its_own_size_and_others_stay_whole() {
-    let step_value = step(
+    let response = response_of(
         vec![
-            text_block("abcdef"),
-            tool_call("c1", "search", json!({ "key": "value" })),
+            text_content("abcdef"),
+            call_content("search", r#"{"key":"value"}"#),
         ],
-        StopReason::AwaitingToolResults,
+        ResponseEnding::tool_use(),
+        ResponseMetadata::new(),
     );
-    let derived = derive_events(&step_value, &Chunking::none().tool_arguments(5)).unwrap();
-    let text_deltas = derived
-        .events()
-        .iter()
-        .filter(|event| matches!(event, StreamEvent::TextDelta { .. }))
-        .count();
-    let argument_deltas = derived
-        .events()
-        .iter()
-        .filter(|event| matches!(event, StreamEvent::ToolCallArgumentsDelta { .. }))
-        .count();
-    assert_eq!(text_deltas, 1);
-    assert_eq!(argument_deltas, 3);
+    let ops = derived(&response, &Chunking::none().tool_arguments(5));
+    assert_eq!(texts(&ops), ["abcdef"]);
+    assert_eq!(json_fragments(&ops), [r#"{"key"#, r#"":"va"#, r#"lue"}"#]);
+}
+
+#[test]
+fn given_a_structured_value_when_cut_then_the_pieces_follow_its_compact_json_text() {
+    let value = OpaqueJson::parse(r#"{ "a" : [1, 2] }"#).unwrap();
+    let block = br_llm_messages::StructuredBlock::new(block_id(), value).unwrap();
+    let response = response_of(
+        vec![ContentBlock::StructuredContent(block)],
+        ResponseEnding::finished(),
+        ResponseMetadata::new(),
+    );
+    let ops = derived(&response, &Chunking::none().structured(4));
+    assert_eq!(json_fragments(&ops), [r#"{"a""#, r#":[1,"#, "2]}"]);
+}
+
+#[test]
+fn given_arguments_of_an_empty_object_when_derived_then_the_text_is_two_braces() {
+    let response = response_of(
+        vec![call_content("search", "{}")],
+        ResponseEnding::tool_use(),
+        ResponseMetadata::new(),
+    );
+    let ops = derived(&response, &Chunking::none());
+    assert_eq!(json_fragments(&ops), ["{}"]);
+}
+
+#[test]
+fn given_a_thinking_block_with_an_empty_text_when_derived_then_it_gives_no_thinking_delta() {
+    let material = ReplayMaterial::new(
+        ReplayFormat::new("sig").unwrap(),
+        ReplayPayload::text("only"),
+    );
+    let block = ThinkingBlock::replay_only(block_id(), material);
+    let response = response_of(
+        vec![ContentBlock::Thinking(block), text_content("a")],
+        ResponseEnding::finished(),
+        ResponseMetadata::new(),
+    );
+    let ops = derived(&response, &Chunking::none());
+    assert!(
+        !ops.iter()
+            .any(|op| matches!(op, DeltaOp::ThinkingAppended { .. }))
+    );
 }
 
 #[test]
@@ -87,8 +153,19 @@ fn given_a_size_of_zero_when_derived_then_chunk_size_zero() {
         Chunking::none().structured(0),
     ] {
         assert_eq!(
-            derive_events(&text_step("a"), &chunking),
+            derive_deltas(turn_id(), text_response("a"), &chunking).map(|_| ()),
             Err(MockBuildError::ChunkSizeZero)
         );
     }
+}
+
+#[test]
+fn given_text_with_blank_pieces_when_cut_then_every_blank_piece_is_sent_in_the_order_of_the_text() {
+    let response = text_response("a \n b");
+    let ops = derived(&response, &Chunking::none().text(2));
+    assert_eq!(texts(&ops), ["a ", "\n ", "b"]);
+    let ops = derived(&response, &Chunking::none().text(1));
+    assert_eq!(texts(&ops), ["a", " ", "\n", " ", "b"]);
+    let blank_middle = derived(&text_response("a  \t b"), &Chunking::none().text(2));
+    assert_eq!(texts(&blank_middle), ["a ", " \t", " b"]);
 }

@@ -1,5 +1,5 @@
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("the events do not fold into a step: {reason}")]
+#[error("the deltas do not fold into a response: {reason}")]
 pub struct FoldError {
     reason: String,
 }

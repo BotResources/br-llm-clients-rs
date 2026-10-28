@@ -11,7 +11,7 @@ form to decide whether a version ships.
 
 ## 0.2.0
 
-Dated 2026-10-27. This is a breaking line: the types of `br-llm-messages` 2.1 and
+Dated 2026-10-28. This is a breaking line: the types of `br-llm-messages` 2.1 and
 of `br-llm-clients-core` 0.5 that the crate names are the new ones, so a dialect
 that compiles against 0.1.0 does not compile against 0.2.0. A library released on
 a tag of line 0.1 stays valid on that tag and is not changed.

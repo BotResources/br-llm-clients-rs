@@ -2,6 +2,7 @@ use br_llm_clients_core::ClientError;
 
 pub const CODE_SCRIPT_EXHAUSTED: &str = "mock.script_exhausted";
 pub const CODE_INVALID_REPLY: &str = "mock.invalid_reply";
+pub const CODE_IDENTITY_COLLISION: &str = "mock.identity_collision";
 
 fn rejected(code: &str, body: String) -> ClientError {
     ClientError::ProviderRejected {
@@ -22,5 +23,12 @@ pub(crate) fn invalid_reply(origin: &str, cause: &impl std::fmt::Display) -> Cli
     rejected(
         CODE_INVALID_REPLY,
         format!("{origin} returned an invalid reply: {cause}"),
+    )
+}
+
+pub(crate) fn identity_collision() -> ClientError {
+    rejected(
+        CODE_IDENTITY_COLLISION,
+        "an identity of the source equals another identity of the response".to_owned(),
     )
 }

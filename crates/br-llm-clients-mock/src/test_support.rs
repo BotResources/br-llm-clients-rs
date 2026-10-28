@@ -10,14 +10,22 @@ use br_llm_clients_core::{
     StructuredShape, ToolSpec,
 };
 use br_llm_messages::{
-    AssistantBlock, Base64Data, Image, ImageMime, ModelId, Step, StopReason, StreamEvent, Text,
-    ToolCall, ToolCallId, ToolName, ToolResult, ToolResultBlock, Usage, WireMessage, WireUserBlock,
+    ContentBlock, DeltaOp, ModelName, ModelResponse, OpaqueJson, PlainBlock, ResponseDelta,
+    ResponseEnding, ResponseMetadata, TextBlock, ToolName, Usage,
 };
 
+use crate::chunking::Chunking;
+use crate::derive_deltas::derive_response_deltas;
+use crate::fixtures::{
+    agent_id, answered_turn, block_id, entry_id, human_turn, project, text_block, thread_of,
+    turn_id, unanswered_call_turn,
+};
 use crate::mock_client::MockClient;
 use crate::recording_sink::RecordingSink;
+use crate::renew::renew;
 use crate::reply_source::ReplySource;
 use crate::rule::Rule;
+use crate::sequential_id_source::SequentialIdSource;
 
 struct Unparker(Thread);
 
@@ -75,16 +83,8 @@ pub(crate) fn poll_with<F: Future + ?Sized>(
     future.as_mut().poll(&mut Context::from_waker(waker))
 }
 
-pub(crate) fn model(name: &str) -> ModelId {
-    ModelId::new(name).unwrap()
-}
-
-pub(crate) fn text(value: &str) -> Text {
-    Text::new(value).unwrap()
-}
-
-pub(crate) fn call_id(value: &str) -> ToolCallId {
-    ToolCallId::new(value).unwrap()
+pub(crate) fn model(name: &str) -> ModelName {
+    ModelName::new(name).unwrap()
 }
 
 pub(crate) fn settings() -> ClientSettings {
@@ -105,86 +105,62 @@ pub(crate) fn settings_with(
 }
 
 pub(crate) fn usage(input: u64, output: u64) -> Usage {
-    Usage {
-        input_tokens: input,
-        output_tokens: output,
-        ..Usage::default()
-    }
+    Usage::of_input_tokens(input).with_output_tokens(output)
 }
 
-pub(crate) fn text_step(value: &str) -> Step {
-    step(
-        vec![AssistantBlock::Text { text: text(value) }],
-        StopReason::EndTurn,
+pub(crate) fn response_of(
+    blocks: Vec<ContentBlock>,
+    ending: ResponseEnding,
+    metadata: ResponseMetadata,
+) -> ModelResponse {
+    ModelResponse::new(entry_id(), blocks, ending, metadata).unwrap()
+}
+
+pub(crate) fn text_content(value: &str) -> ContentBlock {
+    ContentBlock::Text(TextBlock::new(block_id(), value).unwrap())
+}
+
+pub(crate) fn text_response(value: &str) -> ModelResponse {
+    response_of(
+        vec![text_content(value)],
+        ResponseEnding::finished(),
+        ResponseMetadata::new(),
     )
 }
 
-pub(crate) fn step(content: Vec<AssistantBlock>, stop_reason: StopReason) -> Step {
-    Step::new(content, stop_reason, None, None).unwrap()
-}
-
-pub(crate) fn step_with_usage(value: &str, usage: Usage) -> Step {
-    Step::new(
-        vec![AssistantBlock::Text { text: text(value) }],
-        StopReason::EndTurn,
-        Some(usage),
-        None,
+pub(crate) fn text_response_with_usage(value: &str, usage: Usage) -> ModelResponse {
+    response_of(
+        vec![text_content(value)],
+        ResponseEnding::finished(),
+        ResponseMetadata::new().with_usage(usage),
     )
-    .unwrap()
 }
 
-pub(crate) fn tool_call(id: &str, name: &str, arguments: serde_json::Value) -> AssistantBlock {
-    AssistantBlock::ToolCall(ToolCall {
-        id: call_id(id),
-        name: ToolName::new(name).unwrap(),
-        arguments,
-    })
+pub(crate) fn call_content(name: &str, arguments: &str) -> ContentBlock {
+    ContentBlock::RuntimeToolCall(
+        br_llm_messages::RuntimeToolCall::new(
+            block_id(),
+            ToolName::new(name).unwrap(),
+            OpaqueJson::parse(arguments).unwrap(),
+        )
+        .unwrap(),
+    )
 }
 
-pub(crate) fn calls_step(ids: &[&str]) -> Step {
-    let content = ids
-        .iter()
-        .map(|id| tool_call(id, "search", serde_json::json!({ "q": id })))
-        .collect();
-    step(content, StopReason::AwaitingToolResults)
+pub(crate) fn calls_response(count: usize) -> ModelResponse {
+    response_of(
+        (0..count).map(|_| call_content("search", "{}")).collect(),
+        ResponseEnding::tool_use(),
+        ResponseMetadata::new(),
+    )
 }
 
-pub(crate) fn user_text(value: &str) -> WireMessage {
-    WireMessage::User {
-        content: vec![WireUserBlock::Text { text: text(value) }],
-    }
+pub(crate) fn delta(op: DeltaOp) -> ResponseDelta {
+    ResponseDelta::new(turn_id(), entry_id(), op)
 }
 
-pub(crate) fn user_image(mime: ImageMime) -> WireMessage {
-    WireMessage::User {
-        content: vec![WireUserBlock::Image(Image {
-            mime,
-            data: Base64Data::new("aGVsbG8=").unwrap(),
-        })],
-    }
-}
-
-pub(crate) fn user_result(id: &str) -> WireMessage {
-    WireMessage::User {
-        content: vec![WireUserBlock::ToolResult(ToolResult::new(
-            call_id(id),
-            ToolName::new("search").unwrap(),
-            vec![ToolResultBlock::text(text("found"))],
-            false,
-        ))],
-    }
-}
-
-pub(crate) fn assistant_text(value: &str) -> WireMessage {
-    WireMessage::Assistant {
-        content: vec![AssistantBlock::Text { text: text(value) }],
-    }
-}
-
-pub(crate) fn assistant_call(id: &str) -> WireMessage {
-    WireMessage::Assistant {
-        content: vec![tool_call(id, "search", serde_json::json!({}))],
-    }
+pub(crate) fn started_delta() -> ResponseDelta {
+    delta(DeltaOp::response_started(ResponseMetadata::new()))
 }
 
 pub(crate) fn tool() -> ToolSpec {
@@ -196,15 +172,60 @@ pub(crate) fn shape() -> OutputMode {
 }
 
 pub(crate) fn request_of(
-    messages: Vec<WireMessage>,
+    content: Vec<PlainBlock>,
     tools: Vec<ToolSpec>,
     output: OutputMode,
 ) -> ClientRequest {
-    ClientRequest::new(None, messages, tools, output).unwrap()
+    ClientRequest::new(
+        None,
+        thread_of(vec![human_turn(content)]),
+        turn_id(),
+        entry_id(),
+        tools,
+        output,
+    )
+    .unwrap()
 }
 
 pub(crate) fn request() -> ClientRequest {
-    request_of(vec![user_text("hello")], vec![], OutputMode::Plain)
+    crate::fixtures::with_fixed_ids(900_000, || {
+        request_of(vec![text_block("hello")], vec![], OutputMode::Plain)
+    })
+}
+
+pub(crate) fn long_request() -> ClientRequest {
+    crate::fixtures::with_fixed_ids(800_000, long_request_body)
+}
+
+fn long_request_body() -> ClientRequest {
+    let agent = agent_id();
+    let turns = vec![
+        human_turn(vec![text_block("a")]),
+        answered_turn(agent, "b"),
+        human_turn(vec![text_block("c")]),
+    ];
+    ClientRequest::new(
+        None,
+        project(agent, turns),
+        turn_id(),
+        entry_id(),
+        vec![],
+        OutputMode::Plain,
+    )
+    .unwrap()
+}
+
+pub(crate) fn bad_request() -> ClientRequest {
+    let agent = agent_id();
+    ClientRequest::new(
+        None,
+        project(agent, vec![unanswered_call_turn(agent)]),
+        turn_id(),
+        entry_id(),
+        vec![],
+        OutputMode::Plain,
+    )
+    .unwrap()
 }
 
 pub(crate) fn everything_caps() -> Capabilities {
@@ -229,8 +250,19 @@ pub(crate) fn error_of(outcome: &CallOutcome) -> ClientError {
     outcome.result().unwrap_err().clone()
 }
 
-pub(crate) fn step_of(outcome: &CallOutcome) -> Step {
+pub(crate) fn response_from(outcome: &CallOutcome) -> ModelResponse {
     outcome.result().unwrap().clone()
+}
+
+pub(crate) fn text_of(outcome: &CallOutcome) -> String {
+    response_from(outcome)
+        .blocks()
+        .iter()
+        .find_map(|block| match block {
+            ContentBlock::Text(text) => Some(text.text().as_str().to_owned()),
+            _ => None,
+        })
+        .unwrap()
 }
 
 pub(crate) fn caps(change: impl FnOnce(&mut CapabilitiesSpec)) -> Capabilities {
@@ -239,9 +271,18 @@ pub(crate) fn caps(change: impl FnOnce(&mut CapabilitiesSpec)) -> Capabilities {
     Capabilities::new(spec).unwrap()
 }
 
-pub(crate) fn finish_event() -> StreamEvent {
-    StreamEvent::Finish {
-        stop_reason: StopReason::EndTurn,
-        usage: None,
-    }
+pub(crate) fn expected_deltas(
+    request: &ClientRequest,
+    response: &ModelResponse,
+    chunking: &Chunking,
+) -> Vec<ResponseDelta> {
+    let renewed = renew(
+        &SequentialIdSource::of_mock(),
+        request.reply_entry(),
+        response,
+    )
+    .unwrap();
+    derive_response_deltas(request.reply_turn(), &renewed, chunking)
+        .unwrap()
+        .into_deltas()
 }
