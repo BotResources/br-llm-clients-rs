@@ -1,41 +1,57 @@
 pub mod server;
 pub mod source;
 
+use std::future::Future;
+use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll, Waker};
 
 use br_llm_clients_common_auth::TokenCache;
 use br_llm_clients_common_http::{AuthorizerError, Secret};
-use std::time::Duration;
-
-use tokio::task::{JoinError, JoinHandle};
-use tokio::time::{sleep, timeout};
 
 use source::Scripted;
+
+pub type Call<'a> = Pin<Box<dyn Future<Output = Result<Secret, AuthorizerError>> + Send + 'a>>;
 
 pub fn cache_of(source: &Arc<Scripted>) -> TokenCache {
     TokenCache::new(source.clone())
 }
 
-pub fn spawn_call(cache: &TokenCache) -> JoinHandle<Result<Secret, AuthorizerError>> {
-    let cache = cache.clone();
-    tokio::spawn(async move { cache.token().await })
+pub fn poll_once<F: Future + Unpin>(future: &mut F) -> Poll<F::Output> {
+    Pin::new(future).poll(&mut Context::from_waker(Waker::noop()))
 }
 
-pub async fn settle() {
-    sleep(Duration::from_millis(1)).await;
+pub fn call(cache: &TokenCache) -> Call<'_> {
+    Box::pin(cache.token())
 }
 
-pub async fn bounded<T>(handle: JoinHandle<T>) -> Result<T, JoinError> {
-    timeout(Duration::from_secs(120), handle)
-        .await
-        .expect("the task did not end within 120 seconds")
+pub fn parked(cache: &TokenCache) -> Call<'_> {
+    let mut pending = call(cache);
+    assert!(
+        poll_once(&mut pending).is_pending(),
+        "the call ended at once instead of waiting"
+    );
+    pending
 }
 
-pub async fn text_of(handle: JoinHandle<Result<Secret, AuthorizerError>>) -> String {
-    bounded(handle)
-        .await
-        .expect("task")
-        .expect("token")
-        .expose()
-        .to_owned()
+pub fn at_once(cache: &TokenCache) -> Result<Secret, AuthorizerError> {
+    match poll_once(&mut call(cache)) {
+        Poll::Ready(result) => result,
+        Poll::Pending => panic!("the call waited instead of ending at once"),
+    }
+}
+
+pub fn panics_when_polled(pending: &mut Call<'_>) -> bool {
+    catch_unwind(AssertUnwindSafe(|| poll_once(pending))).is_err()
+}
+
+pub async fn text_of(pending: Call<'_>) -> String {
+    pending.await.expect("token").expose().to_owned()
+}
+
+pub fn alive_tasks() -> usize {
+    tokio::runtime::Handle::current()
+        .metrics()
+        .num_alive_tasks()
 }

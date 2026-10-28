@@ -1,12 +1,13 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 
 use br_llm_clients_common_auth::{AccessToken, TokenCache, TokenSource};
 use br_llm_clients_common_http::{AuthorizerError, BoxFuture, Secret};
 use tokio::sync::Notify;
 
 use crate::support::source::{Scripted, Step};
-use crate::support::{bounded, cache_of, settle, spawn_call, text_of};
+use crate::support::{cache_of, call, panics_when_polled, parked, poll_once, text_of};
 
 struct PanicsBeforeTheFuture {
     calls: AtomicUsize,
@@ -20,7 +21,7 @@ impl TokenSource for PanicsBeforeTheFuture {
         Box::pin(async move {
             Ok(AccessToken::new(
                 Secret::new("again").expect("secret"),
-                Some(std::time::Duration::from_secs(1000)),
+                Some(Duration::from_secs(1000)),
             ))
         })
     }
@@ -31,16 +32,22 @@ async fn given_a_dropped_leader_when_calls_wait_then_one_waiter_leads_and_none_f
     let gate = Arc::new(Notify::new());
     let source = Scripted::new(vec![
         Step::secs("lost", 1000).gated(&gate),
-        Step::secs("second", 1000),
+        Step::secs("second", 1000).gated(&gate),
     ]);
     let cache = cache_of(&source);
-    let leader = spawn_call(&cache);
-    settle().await;
-    let waiters: Vec<_> = (0..3).map(|_| spawn_call(&cache)).collect();
-    settle().await;
+    let leader = parked(&cache);
+    let mut waiters: Vec<_> = (0..3).map(|_| parked(&cache)).collect();
     assert_eq!(source.calls(), 1);
-    leader.abort();
-    assert!(bounded(leader).await.expect_err("aborted").is_cancelled());
+    drop(leader);
+    let mut first = waiters.remove(0);
+    assert!(poll_once(&mut first).is_pending());
+    assert_eq!(source.calls(), 2);
+    for waiter in &mut waiters {
+        assert!(poll_once(waiter).is_pending());
+    }
+    assert_eq!(source.calls(), 2);
+    gate.notify_one();
+    assert_eq!(text_of(first).await, "second");
     for waiter in waiters {
         assert_eq!(text_of(waiter).await, "second");
     }
@@ -55,18 +62,8 @@ async fn given_a_dropped_leader_and_no_waiter_when_called_again_then_no_lock_is_
         Step::secs("second", 1000),
     ]);
     let cache = cache_of(&source);
-    let leader = spawn_call(&cache);
-    settle().await;
-    leader.abort();
-    let _ = bounded(leader).await;
-    assert_eq!(
-        bounded(spawn_call(&cache))
-            .await
-            .expect("task")
-            .expect("token")
-            .expose(),
-        "second"
-    );
+    drop(parked(&cache));
+    assert_eq!(text_of(call(&cache)).await, "second");
     assert_eq!(source.calls(), 2);
 }
 
@@ -75,12 +72,11 @@ async fn given_a_source_that_panics_when_calls_wait_then_the_panic_reaches_the_l
     let gate = Arc::new(Notify::new());
     let source = Scripted::new(vec![Step::panic().gated(&gate), Step::secs("second", 1000)]);
     let cache = cache_of(&source);
-    let leader = spawn_call(&cache);
-    settle().await;
-    let waiters: Vec<_> = (0..3).map(|_| spawn_call(&cache)).collect();
-    settle().await;
+    let mut leader = parked(&cache);
+    let waiters: Vec<_> = (0..3).map(|_| parked(&cache)).collect();
     gate.notify_one();
-    assert!(bounded(leader).await.expect_err("panicked").is_panic());
+    assert!(panics_when_polled(&mut leader));
+    drop(leader);
     for waiter in waiters {
         assert_eq!(text_of(waiter).await, "second");
     }
@@ -94,14 +90,8 @@ async fn given_a_source_that_panics_before_its_future_when_called_again_then_the
         calls: AtomicUsize::new(0),
     });
     let cache = TokenCache::new(source);
-    let leader = spawn_call(&cache);
-    assert!(bounded(leader).await.expect_err("panicked").is_panic());
-    assert_eq!(
-        bounded(spawn_call(&cache))
-            .await
-            .expect("task")
-            .expect("token")
-            .expose(),
-        "again"
-    );
+    let mut leader = call(&cache);
+    assert!(panics_when_polled(&mut leader));
+    drop(leader);
+    assert_eq!(text_of(call(&cache)).await, "again");
 }

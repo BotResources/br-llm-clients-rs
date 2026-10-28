@@ -6,8 +6,8 @@ use br_llm_clients_common_auth::{AccessToken, StaticToken, TokenCache, TokenSour
 use br_llm_clients_common_http::{AuthorizerError, BoxFuture, Secret};
 use tokio::time::advance;
 
-use crate::support::cache_of;
 use crate::support::source::{Scripted, Step};
+use crate::support::{alive_tasks, cache_of};
 
 struct Bare;
 
@@ -170,9 +170,11 @@ fn given_a_new_cache_when_built_outside_a_runtime_then_it_makes_no_fetch() {
 async fn given_a_cache_when_time_passes_then_no_fetch_starts_in_the_background() {
     let source = Scripted::new(vec![Step::secs("t", 100)]);
     let cache = cache_of(&source);
+    assert_eq!(alive_tasks(), 0);
     cache.token().await.expect("first");
+    assert_eq!(alive_tasks(), 0);
     advance(Duration::from_secs(10_000)).await;
-    crate::support::settle().await;
+    assert_eq!(alive_tasks(), 0);
     assert_eq!(source.calls(), 1);
 }
 

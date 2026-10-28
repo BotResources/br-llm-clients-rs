@@ -3,8 +3,8 @@ use std::time::Duration;
 use br_llm_clients_common_http::AuthorizerError;
 use tokio::time::{Instant, advance};
 
-use crate::support::cache_of;
 use crate::support::source::{Scripted, Step};
+use crate::support::{cache_of, parked};
 
 fn timed_out() -> AuthorizerError {
     AuthorizerError::fetch_failed("the token fetch timed out")
@@ -61,6 +61,18 @@ async fn given_a_token_that_ends_during_a_failing_fetch_then_the_leader_gets_the
 }
 
 #[tokio::test(start_paused = true)]
+async fn given_a_token_with_time_left_when_a_failing_fetch_ends_then_the_leader_gives_the_token() {
+    let source = Scripted::new(vec![
+        Step::secs("old", 100),
+        Step::fail(AuthorizerError::fetch_failed("down")).after(Duration::from_millis(19_999)),
+    ]);
+    let cache = cache_of(&source);
+    cache.token().await.expect("first");
+    advance(Duration::from_secs(80)).await;
+    assert_eq!(cache.token().await.expect("second").expose(), "old");
+}
+
+#[tokio::test(start_paused = true)]
 async fn given_a_fetch_that_never_ends_then_it_fails_after_exactly_30_seconds_with_a_fixed_text() {
     let source = Scripted::new(vec![Step::hang(), Step::secs("t", 1000)]);
     let cache = cache_of(&source);
@@ -71,8 +83,10 @@ async fn given_a_fetch_that_never_ends_then_it_fails_after_exactly_30_seconds_wi
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_fetch_of_29_seconds_then_it_is_not_cut() {
-    let source = Scripted::new(vec![Step::secs("t", 1000).after(Duration::from_secs(29))]);
+async fn given_a_fetch_just_under_30_seconds_then_it_is_not_cut() {
+    let source = Scripted::new(vec![
+        Step::secs("t", 1000).after(Duration::from_millis(29_999)),
+    ]);
     assert_eq!(
         cache_of(&source).token().await.expect("token").expose(),
         "t"
@@ -83,10 +97,12 @@ async fn given_a_fetch_of_29_seconds_then_it_is_not_cut() {
 async fn given_a_timed_out_fetch_when_calls_wait_then_they_share_the_timeout() {
     let source = Scripted::new(vec![Step::hang()]);
     let cache = cache_of(&source);
-    let calls: Vec<_> = (0..3).map(|_| crate::support::spawn_call(&cache)).collect();
-    for call in calls {
-        assert_eq!(call.await.expect("task").expect_err("error"), timed_out());
+    let calls: Vec<_> = (0..3).map(|_| parked(&cache)).collect();
+    let start = Instant::now();
+    for pending in calls {
+        assert_eq!(pending.await.expect_err("error"), timed_out());
     }
+    assert_eq!(start.elapsed(), Duration::from_secs(30));
     assert_eq!(source.calls(), 1);
 }
 

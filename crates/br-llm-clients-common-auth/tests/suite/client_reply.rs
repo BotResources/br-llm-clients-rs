@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use br_llm_clients_common_auth::{FormTokenClient, TokenForm};
-use br_llm_clients_common_http::{AuthorizerError, Secret};
-use tokio::net::TcpSocket;
+use br_llm_clients_common_http::{AuthorizerError, Endpoint, Secret};
+use tokio::net::TcpListener;
 
 use crate::support::server::{Answer, Server, http_client, json, short_body};
 
@@ -136,22 +136,18 @@ async fn given_a_server_that_closes_without_an_answer_then_it_is_a_fetch_failure
 }
 
 #[tokio::test]
-async fn given_a_port_with_no_server_then_it_is_a_fetch_failure_that_names_the_stage() {
-    let socket = TcpSocket::new_v4().expect("socket");
-    socket
-        .bind("127.0.0.1:0".parse().expect("address"))
-        .expect("bind");
-    let port = socket.local_addr().expect("address").port();
+async fn given_a_port_where_nothing_listens_then_it_is_a_fetch_failure_that_names_the_stage() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let port = listener.local_addr().expect("address").port();
+    drop(listener);
     let endpoint =
-        br_llm_clients_common_http::Endpoint::plain_http(&format!("http://127.0.0.1:{port}/token"))
-            .expect("endpoint");
+        Endpoint::plain_http(&format!("http://127.0.0.1:{port}/token")).expect("endpoint");
     let client = FormTokenClient::new(http_client(Duration::from_secs(5)), endpoint);
     let error = client.fetch(&form()).await.expect_err("refused");
     assert_eq!(
         error,
         AuthorizerError::fetch_failed("the token request could not be sent")
     );
-    drop(socket);
 }
 
 #[tokio::test]
