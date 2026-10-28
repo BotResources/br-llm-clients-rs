@@ -164,3 +164,9 @@ fn given_one_byte_secrets_when_trimmed_then_nothing_is_removed() {
     assert_eq!(trimmed(&["k"], b"kkkk"), b"kkkk");
     assert_eq!(trimmed(&["k", "z"], b"akzk"), b"akzk");
 }
+
+#[test]
+fn given_a_whole_secret_that_a_longer_cut_could_keep_safely_when_trimmed_then_the_suffix_rule_still_bounds_it()
+ {
+    assert_eq!(trimmed(&["xxx", "zxz", "zzx"], b"xxx"), b"");
+}

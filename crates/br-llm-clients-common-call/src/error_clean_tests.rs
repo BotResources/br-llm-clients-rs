@@ -185,3 +185,21 @@ fn given_a_matched_stop_sequence_over_the_cap_when_cleaned_then_the_replacement_
         unusable(matched(&expected))
     );
 }
+
+#[test]
+fn given_the_placeholder_as_a_reason_or_a_sequence_when_built_then_the_core_accepts_it_so_no_ending_changes_kind()
+ {
+    assert_eq!(
+        ResponseEnding::unclassified("[redacted]")
+            .map(|ending| matches!(ending, ResponseEnding::Unclassified { .. })),
+        Ok(true)
+    );
+    assert_eq!(
+        ResponseEnding::matched_stop_sequence("[redacted]")
+            .map(|ending| ending.matched_sequence() == Some("[redacted]")),
+        Ok(true)
+    );
+    for text in ["TOPSECRET", "x"] {
+        assert!(!secrets().clean(text).is_empty());
+    }
+}
