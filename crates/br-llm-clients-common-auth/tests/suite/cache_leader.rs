@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::task::Poll;
 use std::time::Duration;
 
 use br_llm_clients_common_auth::{AccessToken, TokenCache, TokenSource};
@@ -7,7 +8,7 @@ use br_llm_clients_common_http::{AuthorizerError, BoxFuture, Secret};
 use tokio::sync::Notify;
 
 use crate::support::source::{Scripted, Step};
-use crate::support::{cache_of, call, panics_when_polled, parked, poll_once, text_of};
+use crate::support::{at_once, cache_of, call, panics_when_polled, parked, poll_once, text_of};
 
 struct PanicsBeforeTheFuture {
     calls: AtomicUsize,
@@ -63,7 +64,7 @@ async fn given_a_dropped_leader_and_no_waiter_when_called_again_then_no_lock_is_
     ]);
     let cache = cache_of(&source);
     drop(parked(&cache));
-    assert_eq!(text_of(call(&cache)).await, "second");
+    assert_eq!(at_once(&cache).expect("token").expose(), "second");
     assert_eq!(source.calls(), 2);
 }
 
@@ -73,12 +74,15 @@ async fn given_a_source_that_panics_when_calls_wait_then_the_panic_reaches_the_l
     let source = Scripted::new(vec![Step::panic().gated(&gate), Step::secs("second", 1000)]);
     let cache = cache_of(&source);
     let mut leader = parked(&cache);
-    let waiters: Vec<_> = (0..3).map(|_| parked(&cache)).collect();
+    let mut waiters: Vec<_> = (0..3).map(|_| parked(&cache)).collect();
     gate.notify_one();
     assert!(panics_when_polled(&mut leader));
     drop(leader);
-    for waiter in waiters {
-        assert_eq!(text_of(waiter).await, "second");
+    for waiter in &mut waiters {
+        match poll_once(waiter) {
+            Poll::Ready(result) => assert_eq!(result.expect("token").expose(), "second"),
+            Poll::Pending => panic!("a waiter did not take over after the panic"),
+        }
     }
     assert_eq!(source.calls(), 2);
 }
@@ -89,9 +93,10 @@ async fn given_a_source_that_panics_before_its_future_when_called_again_then_the
     let source = Arc::new(PanicsBeforeTheFuture {
         calls: AtomicUsize::new(0),
     });
-    let cache = TokenCache::new(source);
+    let cache = TokenCache::new(source.clone());
     let mut leader = call(&cache);
     assert!(panics_when_polled(&mut leader));
     drop(leader);
-    assert_eq!(text_of(call(&cache)).await, "again");
+    assert_eq!(at_once(&cache).expect("token").expose(), "again");
+    assert_eq!(source.calls.load(Ordering::SeqCst), 2);
 }
