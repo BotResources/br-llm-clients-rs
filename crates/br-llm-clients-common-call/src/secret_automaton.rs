@@ -41,13 +41,16 @@ impl Automaton {
             links: reserved(nodes)?,
             longest: reserved(nodes)?,
             root: vec![NONE; 256],
-            branches: Vec::new(),
-            starts: Vec::new(),
+            branches: reserved(secrets.len())?,
+            starts: reserved(secrets.len())?,
         };
         automaton.push_node(0)?;
-        let mut sorted = secrets.to_vec();
+        let mut sorted = reserved(secrets.len())?;
+        sorted.extend_from_slice(secrets);
         sorted.sort_unstable();
-        let mut path = vec![ROOT];
+        let deepest = secrets.iter().map(|secret| secret.len()).max().unwrap_or(0);
+        let mut path = reserved(deepest.saturating_add(1))?;
+        path.push(ROOT);
         let mut previous: &[u8] = &[];
         for secret in sorted {
             automaton.insert(secret, previous, &mut path)?;
@@ -88,6 +91,17 @@ impl Automaton {
             }
             state = self.fail(state);
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn capacities(&self) -> [usize; 5] {
+        [
+            self.bytes.capacity(),
+            self.links.capacity(),
+            self.longest.capacity(),
+            self.branches.capacity(),
+            self.starts.capacity(),
+        ]
     }
 
     #[cfg(test)]

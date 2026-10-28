@@ -74,6 +74,14 @@ fn given_secrets_over_the_node_limit_when_cleaned_then_every_text_is_wholly_reda
 }
 
 #[test]
+fn given_secrets_when_built_then_every_vector_keeps_the_capacity_reserved_before_the_build() {
+    let built = secrets(&["abd", "abc", "de", "de", "a"], 64);
+    assert_eq!(built.replace("abc de"), "[redacted] [redacted]");
+    let automaton = built.built().expect("built");
+    assert_eq!(automaton.capacities(), [12, 12, 12, 5, 5]);
+}
+
+#[test]
 fn given_a_reservation_that_cannot_be_made_when_reserved_then_it_is_refused_without_a_panic() {
     assert!(reserved::<u32>(usize::MAX).is_none());
     assert!(reserved::<u32>(4).is_some_and(|reserved| reserved.capacity() >= 4));
