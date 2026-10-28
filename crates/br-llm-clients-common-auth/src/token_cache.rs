@@ -41,17 +41,13 @@ impl TokenCache {
             match self.step() {
                 Step::Ready(secret) => return Ok(secret),
                 Step::Wait(waiting) => {
-                    let id = waiting.id;
-                    if lost == Some(id) {
+                    if lost == Some(waiting.id) {
                         pass().await;
                     }
                     match timeout(waiting.time_left, wait(waiting.receiver)).await {
                         Ok(Some(result)) => return result,
-                        Ok(None) => lost = Some(id),
-                        Err(_) => {
-                            lock(&self.state).expire(id);
-                            return Err(timed_out());
-                        }
+                        Ok(None) => lost = Some(waiting.id),
+                        Err(_) => return Err(timed_out()),
                     }
                 }
                 Step::Lead(lead) => return self.fetch(lead).await,

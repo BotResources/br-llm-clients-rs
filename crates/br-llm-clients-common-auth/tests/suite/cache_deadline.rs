@@ -8,7 +8,7 @@ use tokio::sync::Notify;
 use tokio::time::{Instant, advance};
 
 use crate::support::source::{Scripted, Step};
-use crate::support::{Call, at_once, cache_of, parked, poll_once};
+use crate::support::{Call, at_once, cache_of, call, parked, poll_once};
 
 fn timed_out() -> AuthorizerError {
     AuthorizerError::fetch_failed("the token fetch timed out")
@@ -75,6 +75,7 @@ async fn given_a_stale_leader_that_ends_later_then_it_changes_nothing_of_the_new
     assert_eq!(source.calls(), 2);
     old_gate.notify_one();
     assert_eq!(text(&mut stale), "stale");
+    assert!(poll_once(&mut call(&cache)).is_pending());
     assert!(poll_once(&mut waiter).is_pending());
     assert!(poll_once(&mut newer).is_pending());
     new_gate.notify_one();

@@ -44,12 +44,6 @@ impl State {
         self.flight.as_ref().is_some_and(|flight| flight.id == id)
     }
 
-    pub(crate) fn expire(&mut self, id: u64) {
-        if self.is_current(id) {
-            self.flight = None;
-        }
-    }
-
     pub(crate) fn settle(
         &mut self,
         id: u64,

@@ -96,8 +96,4 @@ fn given_a_flight_that_is_no_longer_current_when_it_settles_then_the_state_does_
     assert_eq!(text(settled.leader), "stale");
     assert!(state.held.is_none());
     assert!(state.is_current(newer));
-    state.expire(stale);
-    assert!(state.is_current(newer));
-    state.expire(newer);
-    assert!(state.flight.is_none());
 }
