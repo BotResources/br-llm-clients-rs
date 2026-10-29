@@ -18,9 +18,11 @@ mod encode_assistant;
 mod encode_messages;
 mod encode_output;
 mod encode_parts;
+mod encode_plan;
 mod encode_schema;
 mod encode_tools;
 mod encode_user;
+mod ending;
 mod error_code;
 mod finish;
 mod json_fields;
@@ -31,21 +33,20 @@ mod reasoning_effort;
 mod reasoning_rule;
 mod reasoning_table;
 mod request_id;
-mod stop_reason;
 mod stream_error;
 mod tool_fragments;
 mod tool_only_content;
 mod usage;
 
 pub use br_llm_clients_common_call::{
-    Dialect, EncodedRequest, End, ErrorInfo, Headers, Payload, PayloadDecoder, PayloadError,
-    ProviderBlock, ProviderEvent,
+    Dialect, DialectHooks, EncodedRequest, End, ErrorInfo, Headers, Layered, Payload,
+    PayloadDecoder, PayloadError, ProviderBlock, ProviderEvent,
 };
 pub use br_llm_clients_core::{
     CacheRequirement, ClientError, ClientRequest, ClientSettings, MaxOutputTokens, OutputMode,
-    ReasoningLevel,
+    ReasoningLevel, RenderedHistory,
 };
-pub use br_llm_messages::{ModelId, StopReason, Usage};
+pub use br_llm_messages::{ModelName, ResponseEnding, Usage};
 pub use dialect::ChatCompletionsDialect;
 pub use max_tokens_field::MaxTokensField;
 pub use options::ChatCompletionsOptions;
@@ -73,6 +74,8 @@ mod decode_tool_fragment_tests;
 #[cfg(test)]
 mod decode_tool_tests;
 #[cfg(test)]
+mod decode_usage_cache_tests;
+#[cfg(test)]
 mod decode_usage_tests;
 #[cfg(test)]
 mod encode_assistant_tests;
@@ -84,6 +87,8 @@ mod encode_carry_back_tests;
 mod encode_default_bytes_tests;
 #[cfg(test)]
 mod encode_max_tokens_tests;
+#[cfg(test)]
+mod encode_merge_tests;
 #[cfg(test)]
 mod encode_output_tests;
 #[cfg(test)]
@@ -98,6 +103,8 @@ mod encode_user_tests;
 mod error_code_tests;
 #[cfg(test)]
 mod golden_cases;
+#[cfg(test)]
+mod host_shapes_tests;
 #[cfg(test)]
 mod options_new_tests;
 #[cfg(test)]
@@ -142,3 +149,7 @@ mod test_server;
 mod test_sink;
 #[cfg(test)]
 mod test_support;
+#[cfg(test)]
+mod test_thread;
+#[cfg(test)]
+mod wrap_tests;

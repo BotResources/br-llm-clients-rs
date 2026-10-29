@@ -2,7 +2,13 @@ use br_llm_clients_common_call::ErrorInfo;
 use br_llm_clients_core::ClientError;
 use serde_json::Value;
 
-const QUOTA_CODE: &str = "insufficient_quota";
+const QUOTA_CODES: [&str; 5] = [
+    "insufficient_quota",
+    "credit_balance_exhausted",
+    "organization_spend_limit_exceeded",
+    "project_spend_limit_exceeded",
+    "organization_usage_limit_exceeded",
+];
 
 pub(crate) fn error_code(body: &str) -> Option<String> {
     let Ok(Value::Object(root)) = serde_json::from_str::<Value>(body) else {
@@ -21,8 +27,8 @@ pub(crate) fn code_of_error(error: &Value) -> Option<String> {
 }
 
 pub(crate) fn refine_error(info: &ErrorInfo) -> Option<ClientError> {
-    match info.code() {
-        Some(QUOTA_CODE) => Some(ClientError::QuotaExceeded),
-        _ => None,
-    }
+    let code = info.code()?;
+    QUOTA_CODES
+        .contains(&code)
+        .then_some(ClientError::QuotaExceeded)
 }
