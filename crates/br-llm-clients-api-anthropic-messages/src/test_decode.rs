@@ -173,3 +173,24 @@ pub(crate) fn delta(index: u64, delta: &str) -> String {
 pub(crate) fn stop_of(index: u64) -> String {
     format!(r#"{{"type":"content_block_stop","index":{index}}}"#)
 }
+
+pub(crate) fn start_with(usage: &str) -> (Session, Vec<ProviderEvent>) {
+    let mut session = Session::plain();
+    let events = session.ok(&format!(
+        r#"{{"type":"message_start","message":{{"usage":{usage}}}}}"#
+    ));
+    (session, events)
+}
+
+pub(crate) fn delta_usage(session: &mut Session, usage: &str) -> Vec<ProviderEvent> {
+    session.ok(&format!(
+        r#"{{"type":"message_delta","delta":{{}},"usage":{usage}}}"#
+    ))
+}
+
+pub(crate) fn only_usage(events: Vec<ProviderEvent>) -> Usage {
+    match events.as_slice() {
+        [ProviderEvent::Usage(usage)] => usage.clone(),
+        other => panic!("expected one usage event, got {other:?}"),
+    }
+}

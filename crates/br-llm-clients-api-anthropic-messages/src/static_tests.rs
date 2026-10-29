@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use br_llm_clients_common_call::{Dialect, Payload};
 
+use crate::OptionsError;
 use crate::test_decode::decoder;
 use crate::test_fixtures::dialect;
 
@@ -31,4 +32,11 @@ fn given_one_dialect_when_two_decoders_are_made_then_their_state_is_separate() {
             .payload(Payload::new(None, r#"{"type":"message_stop"}"#))
             .is_ok()
     );
+}
+
+fn assert_error<T: std::error::Error + std::fmt::Debug + Clone + PartialEq>() {}
+
+#[test]
+fn given_the_options_error_when_used_as_an_error_then_it_is_clone_and_partial_eq() {
+    assert_error::<OptionsError>();
 }

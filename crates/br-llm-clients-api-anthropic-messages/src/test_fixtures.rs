@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 
 pub(crate) use crate::test_thread::user;
 use crate::test_thread::{project, reply_entry, reply_turn};
-use crate::{AnthropicMessages, MessagesOptions};
+use crate::{AnthropicMessages, MessagesOptions, VersionPlacement};
 
 pub(crate) const MODEL: &str = "claude-test-model";
 
@@ -111,4 +111,8 @@ pub(crate) fn simple_body() -> Value {
 
 pub(crate) fn expected_simple_messages() -> Value {
     json!([{"role": "user", "content": [{"type": "text", "text": "hello"}]}])
+}
+
+pub(crate) fn vertex() -> VersionPlacement {
+    VersionPlacement::Body("vertex-2023-10-16".to_owned())
 }

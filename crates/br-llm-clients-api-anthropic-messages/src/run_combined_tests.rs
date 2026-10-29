@@ -137,7 +137,7 @@ async fn given_a_tool_call_with_complete_arguments_left_open_when_message_stop_a
 }
 
 #[tokio::test]
-async fn given_a_text_block_left_open_when_message_stop_arrives_under_end_turn_then_the_step_holds_the_text()
+async fn given_a_text_block_left_open_when_message_stop_arrives_under_end_turn_then_the_response_holds_the_text()
  {
     let stream = message_start() + &text_block("Hello there", false) + &finish(Some("end_turn"));
     let called = call_stream(&hello(), &stream).await;
@@ -147,7 +147,8 @@ async fn given_a_text_block_left_open_when_message_stop_arrives_under_end_turn_t
 }
 
 #[tokio::test]
-async fn given_a_basic_stream_without_its_content_block_stop_when_run_then_the_step_is_the_same() {
+async fn given_a_basic_stream_without_its_content_block_stop_when_run_then_the_response_is_the_same()
+ {
     let without_stop = BASIC.replace(
         "event: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}\n\n",
         "",
@@ -183,7 +184,7 @@ async fn given_the_structured_mode_and_a_refusal_when_run_then_the_text_decides_
 }
 
 #[tokio::test]
-async fn given_the_plain_mode_and_a_refusal_with_prose_when_run_then_the_step_keeps_the_prose_and_the_refusal()
+async fn given_the_plain_mode_and_a_refusal_with_prose_when_run_then_the_response_keeps_the_prose_and_the_refusal()
  {
     let prose = message_start() + &text_block("I can't help", true) + &finish(Some("refusal"));
     let called = call_stream(&hello(), &prose).await;

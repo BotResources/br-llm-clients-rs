@@ -1,27 +1,5 @@
 use crate::test_decode::*;
-use br_llm_clients_common_call::ProviderEvent;
 use br_llm_messages::Usage;
-
-fn start_with(usage: &str) -> (Session, Vec<ProviderEvent>) {
-    let mut session = Session::plain();
-    let events = session.ok(&format!(
-        r#"{{"type":"message_start","message":{{"usage":{usage}}}}}"#
-    ));
-    (session, events)
-}
-
-fn delta_usage(session: &mut Session, usage: &str) -> Vec<ProviderEvent> {
-    session.ok(&format!(
-        r#"{{"type":"message_delta","delta":{{}},"usage":{usage}}}"#
-    ))
-}
-
-fn only_usage(events: Vec<ProviderEvent>) -> Usage {
-    match events.as_slice() {
-        [ProviderEvent::Usage(usage)] => usage.clone(),
-        other => panic!("expected one usage event, got {other:?}"),
-    }
-}
 
 #[test]
 fn given_no_thinking_tokens_in_any_payload_when_decoded_then_it_is_none() {
