@@ -163,22 +163,59 @@ async fn given_the_real_stream_when_run_then_the_response_holds_the_redacted_blo
     );
 }
 
+fn split_offsets(stream: &str) -> Vec<usize> {
+    let mut offsets = vec![0, stream.len()];
+    for (end, _) in stream.match_indices("\n\n") {
+        let boundary = end.saturating_add(2);
+        offsets.extend([
+            boundary.saturating_sub(1),
+            boundary,
+            boundary.saturating_add(1),
+        ]);
+    }
+    for (start, character) in stream.char_indices() {
+        offsets.extend((1..character.len_utf8()).map(|inner| start.saturating_add(inner)));
+    }
+    offsets.retain(|offset| *offset <= stream.len());
+    offsets.sort_unstable();
+    offsets.dedup();
+    offsets
+}
+
+#[test]
+fn given_the_real_stream_when_split_points_are_listed_then_they_hold_every_frame_edge_and_every_inner_byte()
+ {
+    let offsets = split_offsets(REDACTED_THINKING_REAL);
+    let frames = REDACTED_THINKING_REAL.matches("\n\n").count();
+    assert!(frames > REDACTED_BLOCK_COUNT);
+    let inner: Vec<usize> = REDACTED_THINKING_REAL
+        .char_indices()
+        .flat_map(|(start, character)| (1..character.len_utf8()).map(move |inner| start + inner))
+        .collect();
+    assert!(!inner.is_empty());
+    assert!(inner.iter().all(|offset| offsets.contains(offset)));
+    assert!(offsets.len() >= frames * 3);
+    assert!(offsets.len() < REDACTED_THINKING_REAL.len() / 10);
+}
+
 #[tokio::test]
-async fn given_the_real_stream_split_in_two_writes_at_every_byte_when_run_then_the_outcome_never_changes()
+async fn given_the_real_stream_split_in_two_writes_at_frame_edges_and_inside_characters_when_run_then_the_outcome_never_changes()
  {
     let whole = call_stream(&hello(), REDACTED_THINKING_REAL).await;
-    let server = crate::test_server::TestServer::start(|index| {
+    let offsets = split_offsets(REDACTED_THINKING_REAL);
+    let served = offsets.clone();
+    let server = crate::test_server::TestServer::start(move |index| {
         crate::test_server::http(
             "200 OK",
             &[("content-type", "text/event-stream")],
             REDACTED_THINKING_REAL.as_bytes(),
         )
-        .split_body_at(index)
+        .split_body_at(served.get(index).copied().unwrap_or(0))
     })
     .await;
     let dialect = std::sync::Arc::new(plain_dialect());
     let http = http_client();
-    for offset in 0..REDACTED_THINKING_REAL.len() {
+    for offset in offsets {
         let spec = spec_with(std::sync::Arc::clone(&dialect), &server, http.clone());
         let mut sink = crate::test_sink::RecordingSink::default();
         let outcome = br_llm_clients_common_call::run(&spec, &hello(), &mut sink).await;

@@ -3,27 +3,6 @@ use br_llm_messages::Usage;
 
 use crate::test_decode::*;
 
-fn start_with(usage: &str) -> (Session, Vec<ProviderEvent>) {
-    let mut session = Session::plain();
-    let events = session.ok(&format!(
-        r#"{{"type":"message_start","message":{{"usage":{usage}}}}}"#
-    ));
-    (session, events)
-}
-
-fn delta_usage(session: &mut Session, usage: &str) -> Vec<ProviderEvent> {
-    session.ok(&format!(
-        r#"{{"type":"message_delta","delta":{{}},"usage":{usage}}}"#
-    ))
-}
-
-fn only_usage(events: Vec<ProviderEvent>) -> Usage {
-    match events.as_slice() {
-        [ProviderEvent::Usage(usage)] => usage.clone(),
-        other => panic!("expected one usage event, got {other:?}"),
-    }
-}
-
 #[test]
 fn given_input_and_output_in_message_start_when_decoded_then_one_usage_is_given() {
     let (_, events) = start_with(r#"{"input_tokens":10,"output_tokens":2}"#);

@@ -44,10 +44,6 @@ fn without(mut body: Value, member: &str) -> Value {
     body
 }
 
-fn vertex() -> VersionPlacement {
-    VersionPlacement::Body("vertex-2023-10-16".to_owned())
-}
-
 #[test]
 fn given_the_model_placement_omitted_when_encoded_then_only_the_model_member_is_absent() {
     let body = body_with(MessagesOptions::new().with_model_placement(ModelPlacement::Omitted));
@@ -204,13 +200,6 @@ fn given_several_reserved_names_when_set_then_one_of_them_is_named() {
         .expect_err("refused");
     let OptionsError::ReservedExtraBodyMember { member } = error;
     assert!(["system", "tools"].contains(&member.as_str()));
-}
-
-fn assert_error<T: std::error::Error + Clone + PartialEq>() {}
-
-#[test]
-fn given_the_options_error_when_used_as_an_error_then_it_is_clone_and_partial_eq() {
-    assert_error::<OptionsError>();
 }
 
 #[test]

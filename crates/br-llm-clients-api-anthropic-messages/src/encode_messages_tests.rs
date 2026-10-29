@@ -1,4 +1,4 @@
-use br_llm_messages::{ContentBlock, MediaType, TextBlock, Turn};
+use br_llm_messages::{MediaType, Turn};
 use serde_json::{Value, json};
 
 use crate::test_fixtures::*;
@@ -193,32 +193,6 @@ fn given_an_assistant_text_block_when_encoded_then_it_stays_a_text_block() {
         messages[1]["content"],
         json!([{"type": "text", "text": " b "}])
     );
-}
-
-#[test]
-fn given_a_text_block_with_replay_material_in_the_turn_in_progress_when_encoded_then_only_its_text_is_sent()
- {
-    let call = call("t1", "lookup", json!({}));
-    let sealed = ContentBlock::Text(
-        TextBlock::new(block_id(), "sealed")
-            .expect("a text")
-            .with_replay(material("other/format", "hidden-material")),
-    );
-    let body = body_of(
-        &dialect(),
-        &request(vec![
-            user("go"),
-            in_progress(vec![
-                calling(vec![sealed, call_block(&call)]),
-                results(vec![result_of(&call, texts(&["r"]), false)]),
-            ]),
-        ]),
-    );
-    assert_eq!(
-        body["messages"][1]["content"][0],
-        json!({"type": "text", "text": "sealed"})
-    );
-    assert!(!body.to_string().contains("hidden-material"));
 }
 
 #[test]

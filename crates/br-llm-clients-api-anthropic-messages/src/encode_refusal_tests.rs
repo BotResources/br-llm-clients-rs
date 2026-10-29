@@ -21,17 +21,6 @@ fn refused(turns: Vec<Turn>) -> String {
     reason_of(refusal_of(&dialect(), &request(turns)))
 }
 
-fn in_progress_with(block: ContentBlock) -> Vec<Turn> {
-    let call = call("t1", "lookup", json!({}));
-    vec![
-        user("go"),
-        in_progress(vec![
-            calling(vec![block, call_block(&call)]),
-            results(vec![result_of(&call, texts(&["r"]), false)]),
-        ]),
-    ]
-}
-
 fn json_material(format: &str) -> ReplayMaterial {
     let value = OpaqueJson::parse(r#"{"sig":"x"}"#).expect("json");
     ReplayMaterial::new(

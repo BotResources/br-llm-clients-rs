@@ -3,11 +3,7 @@ use serde_json::{Map, json};
 
 use crate::options_tests::RESERVED;
 use crate::test_fixtures::*;
-use crate::{AnthropicMessages, MessagesOptions, VersionPlacement};
-
-fn vertex() -> VersionPlacement {
-    VersionPlacement::Body("vertex-2023-10-16".to_owned())
-}
+use crate::{AnthropicMessages, MessagesOptions};
 
 const NOT_RESERVED: [&str; 11] = [
     "metadata",

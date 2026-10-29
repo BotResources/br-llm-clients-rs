@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use br_llm_messages::{
     AITurn, AgentId, Author, Base64Data, BlockId, ContentBlock, Conversation, ConversationId,
     EntryId, ExternalId, HumanId, HumanMessage, ImageBlock, ImageSource, IncomingEntry, InputTurn,
-    MediaType, ModelResponse, OpaqueJson, Perspective, PlainBlock, ProjectedThread,
+    ItemRef, MediaType, ModelResponse, OpaqueJson, Perspective, PlainBlock, ProjectedThread,
     RedactedThinkingBlock, ReplayFormat, ReplayMaterial, ReplayPayload, ResponseEnding,
     ResponseMetadata, RuntimeToolCall, RuntimeToolResult, RuntimeToolResults, TextBlock,
     ThinkingBlock, ToolName, Turn, TurnEntry, TurnId, Uuid,
@@ -174,6 +174,32 @@ pub(crate) fn results(results: Vec<RuntimeToolResult>) -> TurnEntry {
     TurnEntry::RuntimeToolResults(RuntimeToolResults::new(entry_id(), results).expect("results"))
 }
 
+pub(crate) fn one_call_turn(
+    call: &RuntimeToolCall,
+    content: Vec<PlainBlock>,
+    is_error: bool,
+) -> Turn {
+    in_progress(vec![
+        calling(vec![call_block(call)]),
+        results(vec![result_of(call, content, is_error)]),
+    ])
+}
+
+pub(crate) fn item_ref(value: &str) -> ItemRef {
+    ItemRef::new(value).expect("an item reference")
+}
+
 pub(crate) fn texts(values: &[&str]) -> Vec<PlainBlock> {
     values.iter().map(|value| plain_text(value)).collect()
+}
+
+pub(crate) fn in_progress_with(block: ContentBlock) -> Vec<Turn> {
+    let call = call("t1", "lookup", serde_json::json!({}));
+    vec![
+        user("go"),
+        in_progress(vec![
+            calling(vec![block, call_block(&call)]),
+            results(vec![result_of(&call, texts(&["r"]), false)]),
+        ]),
+    ]
 }

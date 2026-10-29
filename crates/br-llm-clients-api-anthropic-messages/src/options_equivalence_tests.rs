@@ -1,5 +1,5 @@
 use br_llm_clients_core::{ClientError, ParameterKind};
-use br_llm_messages::{ContentBlock, ProviderToolCall, Turn};
+use br_llm_messages::{ContentBlock, ProviderToolCall};
 use serde_json::json;
 
 use crate::test_call::*;
@@ -28,17 +28,6 @@ fn every_option_set() -> Vec<MessagesOptions> {
             .with_version_placement(version)
             .with_extra_body(extra)
             .expect("accepted"),
-    ]
-}
-
-fn in_progress_with(block: ContentBlock) -> Vec<Turn> {
-    let call = call("t1", "weather", json!({}));
-    vec![
-        user("a"),
-        in_progress(vec![
-            calling(vec![block, call_block(&call)]),
-            results(vec![result_of(&call, texts(&["r"]), false)]),
-        ]),
     ]
 }
 
