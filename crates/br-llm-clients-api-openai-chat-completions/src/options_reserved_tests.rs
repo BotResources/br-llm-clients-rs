@@ -1,9 +1,9 @@
-use br_llm_clients_common_call::Dialect;
 use serde_json::{Map, Value, json};
 
 use crate::test_support::{
-    dialect_for, options, parameter, request_with, settings, shape, tool, user_text,
+    dialect_for, encode, options, parameter, request_with, settings, shape, tool,
 };
+use crate::test_thread::user;
 use crate::{
     ChatCompletionsDialect, ChatCompletionsOptions, MaxTokensField, OptionsError, ReasoningLevel,
 };
@@ -12,7 +12,7 @@ use br_llm_clients_core::ParameterKind;
 fn fullest_body(field: MaxTokensField) -> Map<String, Value> {
     let request = request_with(
         Some("be brief"),
-        vec![user_text("hello")],
+        vec![user("hello")],
         vec![tool("weather", "gives the weather", vec![])],
         shape(
             "answer",
@@ -21,7 +21,7 @@ fn fullest_body(field: MaxTokensField) -> Map<String, Value> {
         ),
     );
     let dialect = dialect_for(ReasoningLevel::High, options().with_max_tokens_field(field));
-    let encoded = dialect.encode(&request).expect("encoded");
+    let encoded = encode(&dialect, &request).expect("encoded");
     serde_json::from_slice::<Value>(encoded.body())
         .expect("json")
         .as_object()

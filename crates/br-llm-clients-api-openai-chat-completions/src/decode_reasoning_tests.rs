@@ -3,7 +3,7 @@ use br_llm_clients_core::OutputMode;
 use serde_json::json;
 
 use crate::test_support::{
-    chunk, content_chunk, end, feed, options, run_chunks, start, text_delta, without_model,
+    chunk, content_chunk, end, feed, options, run_chunks, start, text_delta, without_metadata,
 };
 use crate::{ChatCompletionsDialect, ReasoningLevel};
 use br_llm_clients_common_call::Dialect;
@@ -30,7 +30,7 @@ fn given_a_reasoning_field_in_the_options_when_it_carries_text_then_a_thinking_b
         reasoning_chunk(" and two"),
         content_chunk("answer"),
     ];
-    let events = without_model(crate::test_support::feed_all(decoder.as_mut(), &chunks));
+    let events = without_metadata(crate::test_support::feed_all(decoder.as_mut(), &chunks));
     assert_eq!(
         events,
         [
@@ -70,7 +70,7 @@ fn given_a_reasoning_field_when_its_value_is_empty_or_null_then_nothing_is_given
         chunk(json!({"reasoning_content": null}), None),
     ] {
         assert_eq!(
-            without_model(feed(decoder.as_mut(), &data).expect("chunk")),
+            without_metadata(feed(decoder.as_mut(), &data).expect("chunk")),
             []
         );
     }
@@ -90,7 +90,7 @@ fn given_a_reasoning_field_when_its_value_is_not_a_string_then_the_field_is_name
 fn given_text_then_reasoning_then_text_when_decoded_then_the_second_text_is_a_second_block() {
     let mut decoder = with_reasoning_field(&OutputMode::Plain);
     let chunks = [content_chunk("a"), reasoning_chunk("r"), content_chunk("b")];
-    let events = without_model(crate::test_support::feed_all(decoder.as_mut(), &chunks));
+    let events = without_metadata(crate::test_support::feed_all(decoder.as_mut(), &chunks));
     assert_eq!(
         events,
         [

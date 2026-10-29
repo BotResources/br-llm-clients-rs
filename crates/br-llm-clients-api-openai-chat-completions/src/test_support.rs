@@ -1,19 +1,20 @@
-use br_llm_clients_common_call::{Dialect, Payload, PayloadDecoder, PayloadError, ProviderEvent};
+use br_llm_clients_common_call::{
+    Dialect, EncodedRequest, Payload, PayloadDecoder, PayloadError, ProviderEvent,
+};
 use br_llm_clients_core::{
     CacheRequirement, ClientError, ClientRequest, ClientSettings, MaxOutputTokens, OutputMode,
     Parameter, ParameterKind, Parameters, ReasoningLevel, StructuredShape, ToolSpec,
+    render_history,
 };
-use br_llm_messages::{
-    AssistantBlock, Base64Data, ImageMime, ModelId, Text, ToolCall, ToolCallId, ToolName,
-    ToolResult, ToolResultBlock, WireMessage, WireUserBlock,
-};
+use br_llm_messages::{ModelName, PlainText, ToolName, Turn};
 use serde_json::Value;
 
+use crate::test_thread::{project, reply_entry, reply_turn, user};
 use crate::{ChatCompletionsDialect, ChatCompletionsOptions, ReasoningTable};
 
 pub(crate) fn settings(level: ReasoningLevel) -> ClientSettings {
     ClientSettings::new(
-        ModelId::new("gpt-test").expect("model"),
+        ModelName::new("gpt-test").expect("model"),
         level,
         CacheRequirement::NotRequired,
         MaxOutputTokens::new(1024).expect("tokens"),
@@ -35,79 +36,34 @@ pub(crate) fn dialect() -> ChatCompletionsDialect {
     dialect_for(ReasoningLevel::Off, options())
 }
 
-pub(crate) fn text(value: &str) -> Text {
-    Text::new(value).expect("text")
-}
-
-pub(crate) fn call_id(value: &str) -> ToolCallId {
-    ToolCallId::new(value).expect("call id")
-}
-
 pub(crate) fn tool_name(value: &str) -> ToolName {
     ToolName::new(value).expect("tool name")
 }
 
-pub(crate) fn user_text(value: &str) -> WireMessage {
-    WireMessage::User {
-        content: vec![WireUserBlock::Text { text: text(value) }],
-    }
-}
-
-pub(crate) fn user(content: Vec<WireUserBlock>) -> WireMessage {
-    WireMessage::User { content }
-}
-
-pub(crate) fn image(mime: ImageMime, data: &str) -> WireUserBlock {
-    WireUserBlock::Image(br_llm_messages::Image {
-        mime,
-        data: Base64Data::new(data).expect("data"),
-    })
-}
-
-pub(crate) fn tool_result(id: &str, name: &str, texts: &[&str], is_error: bool) -> WireUserBlock {
-    let content = texts
-        .iter()
-        .map(|value| ToolResultBlock::text(text(value)))
-        .collect();
-    WireUserBlock::ToolResult(ToolResult::new(
-        call_id(id),
-        tool_name(name),
-        content,
-        is_error,
-    ))
-}
-
-pub(crate) fn assistant(content: Vec<AssistantBlock>) -> WireMessage {
-    WireMessage::Assistant { content }
-}
-
-pub(crate) fn assistant_text(value: &str) -> AssistantBlock {
-    AssistantBlock::Text { text: text(value) }
-}
-
-pub(crate) fn assistant_call(id: &str, name: &str, arguments: Value) -> AssistantBlock {
-    AssistantBlock::ToolCall(ToolCall {
-        id: call_id(id),
-        name: tool_name(name),
-        arguments,
-    })
-}
-
-pub(crate) fn request_of(messages: Vec<WireMessage>) -> ClientRequest {
-    request_with(None, messages, Vec::new(), OutputMode::Plain)
+pub(crate) fn request_of(turns: Vec<Turn>) -> ClientRequest {
+    request_with(None, turns, Vec::new(), OutputMode::Plain)
 }
 
 pub(crate) fn request_with(
     system: Option<&str>,
-    messages: Vec<WireMessage>,
+    turns: Vec<Turn>,
     tools: Vec<ToolSpec>,
     output: OutputMode,
 ) -> ClientRequest {
-    ClientRequest::new(system.map(text), messages, tools, output).expect("request")
+    let system = system.map(|value| PlainText::new(value).expect("system"));
+    ClientRequest::new(
+        system,
+        project(turns),
+        reply_turn(),
+        reply_entry(),
+        tools,
+        output,
+    )
+    .expect("request")
 }
 
 pub(crate) fn hello() -> ClientRequest {
-    request_of(vec![user_text("hello")])
+    request_of(vec![user("hello")])
 }
 
 pub(crate) fn parameter(
@@ -134,16 +90,35 @@ pub(crate) fn shape(name: &str, description: Option<&str>, list: Vec<Parameter>)
     )
 }
 
-pub(crate) fn encoded_body(dialect: &ChatCompletionsDialect, request: &ClientRequest) -> Value {
-    let encoded = dialect.encode(request).expect("encoded");
+pub(crate) fn encode(
+    dialect: &dyn Dialect,
+    request: &ClientRequest,
+) -> Result<EncodedRequest, ClientError> {
+    let history = render_history(request).expect("a rendering");
+    dialect.encode(request, &history)
+}
+
+pub(crate) fn encoded_body(dialect: &dyn Dialect, request: &ClientRequest) -> Value {
+    let encoded = encode(dialect, request).expect("encoded");
     serde_json::from_slice(encoded.body()).expect("json body")
 }
 
-pub(crate) fn encode_error(
-    dialect: &ChatCompletionsDialect,
-    request: &ClientRequest,
-) -> ClientError {
-    dialect.encode(request).expect_err("a refusal")
+pub(crate) fn messages_of(dialect: &dyn Dialect, request: &ClientRequest) -> Vec<Value> {
+    encoded_body(dialect, request)["messages"]
+        .as_array()
+        .cloned()
+        .expect("messages")
+}
+
+pub(crate) fn encode_error(dialect: &dyn Dialect, request: &ClientRequest) -> ClientError {
+    encode(dialect, request).expect_err("a refusal")
+}
+
+pub(crate) fn roles(messages: &[Value]) -> Vec<&str> {
+    messages
+        .iter()
+        .filter_map(|message| message["role"].as_str())
+        .collect()
 }
 
 pub(crate) fn decoder_for(output: &OutputMode) -> Box<dyn PayloadDecoder> {
@@ -207,16 +182,21 @@ pub(crate) fn text_delta(key: &str, value: &str) -> ProviderEvent {
     }
 }
 
-pub(crate) fn without_model(events: Vec<ProviderEvent>) -> Vec<ProviderEvent> {
+pub(crate) fn without_metadata(events: Vec<ProviderEvent>) -> Vec<ProviderEvent> {
     events
         .into_iter()
-        .filter(|event| !matches!(event, ProviderEvent::Model(_)))
+        .filter(|event| {
+            !matches!(
+                event,
+                ProviderEvent::Model(_) | ProviderEvent::ResponseId(_)
+            )
+        })
         .collect()
 }
 
 pub(crate) fn run_chunks(chunks: &[String]) -> Vec<ProviderEvent> {
     let mut decoder = plain_decoder();
-    without_model(feed_all(decoder.as_mut(), chunks))
+    without_metadata(feed_all(decoder.as_mut(), chunks))
 }
 
 pub(crate) fn fails(data: &str) -> PayloadError {
