@@ -2,13 +2,14 @@ use br_llm_clients_core::{ParameterKind, Parameters};
 use serde_json::{Value, json};
 
 use crate::test_support::{
-    dialect, encoded_body, hello, parameter, parameters, request_with, tool, user_text,
+    dialect, encoded_body, hello, parameter, parameters, request_with, tool,
 };
+use crate::test_thread::user;
 
 fn tools_of(list: Vec<br_llm_clients_core::ToolSpec>) -> Value {
     let request = request_with(
         None,
-        vec![user_text("hello")],
+        vec![user("hello")],
         list,
         br_llm_clients_core::OutputMode::Plain,
     );
@@ -186,7 +187,7 @@ fn given_several_tools_when_encoded_then_they_keep_the_order_of_the_request() {
 fn given_tools_when_encoded_then_no_tool_choice_and_no_parallel_flag_are_written() {
     let request = request_with(
         None,
-        vec![user_text("hello")],
+        vec![user("hello")],
         vec![tool("lookup", "", Vec::new())],
         br_llm_clients_core::OutputMode::Plain,
     );

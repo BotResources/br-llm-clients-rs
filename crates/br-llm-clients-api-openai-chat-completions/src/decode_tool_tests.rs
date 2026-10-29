@@ -1,5 +1,5 @@
 use br_llm_clients_common_call::{ProviderBlock, ProviderEvent};
-use br_llm_messages::StopReason;
+use br_llm_messages::ResponseEnding;
 use serde_json::json;
 
 use crate::test_support::{
@@ -44,11 +44,10 @@ fn given_a_streamed_tool_call_when_decoded_then_nothing_is_given_before_the_fini
         piece(0, "\"rust\"}"),
     ] {
         let events = feed(decoder.as_mut(), &data).expect("chunk");
-        assert!(
-            events
-                .iter()
-                .all(|event| matches!(event, ProviderEvent::Model(_)))
-        );
+        assert!(events.iter().all(|event| matches!(
+            event,
+            ProviderEvent::Model(_) | ProviderEvent::ResponseId(_)
+        )));
     }
 }
 
@@ -67,7 +66,7 @@ fn given_a_streamed_tool_call_when_the_finish_arrives_then_the_whole_call_comes_
             start("0", call("lookup", Some("call_1"))),
             arguments("0", "{\"q\":\"rust\"}"),
             end("0"),
-            ProviderEvent::Stop(StopReason::AwaitingToolResults),
+            ProviderEvent::Stop(ResponseEnding::tool_use()),
         ]
     );
 }
@@ -140,7 +139,7 @@ fn given_blank_arguments_when_the_finish_is_length_then_no_arguments_delta_is_gi
             [
                 start("0", call("f", Some("c1"))),
                 end("0"),
-                ProviderEvent::Stop(StopReason::MaxTokens),
+                ProviderEvent::Stop(ResponseEnding::output_exhaustion()),
             ],
             "{blank:?}"
         );
@@ -211,7 +210,7 @@ fn given_text_then_a_tool_call_then_more_text_when_finished_then_all_text_comes_
             start("0", call("f", Some("c1"))),
             arguments("0", "{}"),
             end("0"),
-            ProviderEvent::Stop(StopReason::AwaitingToolResults),
+            ProviderEvent::Stop(ResponseEnding::tool_use()),
         ]
     );
 }
@@ -230,5 +229,5 @@ fn given_a_held_call_when_the_sentinel_arrives_without_a_finish_then_it_is_dropp
 #[test]
 fn given_an_empty_tool_calls_array_when_decoded_then_nothing_is_held() {
     let events = run_chunks(&[chunk(json!({"tool_calls": []}), None), finish_chunk("stop")]);
-    assert_eq!(events, [ProviderEvent::Stop(StopReason::EndTurn)]);
+    assert_eq!(events, [ProviderEvent::Stop(ResponseEnding::finished())]);
 }

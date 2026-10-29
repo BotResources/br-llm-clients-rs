@@ -82,27 +82,37 @@ fn given_a_body_that_is_not_json_or_is_cut_when_read_then_there_is_no_code_and_n
     }
 }
 
+const QUOTA_CODES: [&str; 5] = [
+    "insufficient_quota",
+    "credit_balance_exhausted",
+    "organization_spend_limit_exceeded",
+    "project_spend_limit_exceeded",
+    "organization_usage_limit_exceeded",
+];
+
 #[test]
-fn given_any_status_when_the_code_is_insufficient_quota_then_it_is_quota_exceeded() {
-    for status in [
-        None,
-        Some(200),
-        Some(400),
-        Some(402),
-        Some(403),
-        Some(429),
-        Some(500),
-        Some(503),
-    ] {
-        let mut info = ErrorInfo::new("body").with_code("insufficient_quota");
-        if let Some(status) = status {
-            info = info.with_status(status);
+fn given_any_status_when_the_code_is_one_of_the_quota_codes_then_it_is_quota_exceeded() {
+    for code in QUOTA_CODES {
+        for status in [
+            None,
+            Some(200),
+            Some(400),
+            Some(402),
+            Some(403),
+            Some(429),
+            Some(500),
+            Some(503),
+        ] {
+            let mut info = ErrorInfo::new("body").with_code(code);
+            if let Some(status) = status {
+                info = info.with_status(status);
+            }
+            assert_eq!(
+                dialect().refine_error(&info),
+                Some(ClientError::QuotaExceeded),
+                "{code} {status:?}"
+            );
         }
-        assert_eq!(
-            dialect().refine_error(&info),
-            Some(ClientError::QuotaExceeded),
-            "{status:?}"
-        );
     }
 }
 
@@ -127,6 +137,10 @@ fn given_any_other_code_when_refined_then_the_generic_table_decides() {
         "invalid_api_key",
         "Insufficient_Quota",
         "insufficient_quota ",
+        "credit_balance",
+        "spend_limit_exceeded",
+        "usage_limit_exceeded",
+        "billing_hard_limit_reached",
         "",
     ] {
         for status in [400, 401, 429, 503] {

@@ -20,7 +20,7 @@ pub(crate) type HeldCalls = BTreeMap<u16, HeldCall>;
 pub(crate) fn hold(held: &mut HeldCalls, fragments: &[Value]) -> Result<(), PayloadError> {
     for fragment in fragments {
         let Value::Object(fragment) = fragment else {
-            return Err(wrong("tool_calls[]", "an object"));
+            return Err(wrong("choices[].delta.tool_calls[]", "an object"));
         };
         hold_one(held, fragment)?;
     }
@@ -30,19 +30,39 @@ pub(crate) fn hold(held: &mut HeldCalls, fragments: &[Value]) -> Result<(), Payl
 fn hold_one(held: &mut HeldCalls, fragment: &Map<String, Value>) -> Result<(), PayloadError> {
     let index = index_of(fragment)?;
     check_type(fragment)?;
-    let id = non_empty(text_field(fragment, "id", "tool_calls[].id")?);
-    let function = object_field(fragment, "function", "tool_calls[].function")?;
+    let id = non_empty(text_field(
+        fragment,
+        "id",
+        "choices[].delta.tool_calls[].id",
+    )?);
+    let function = object_field(
+        fragment,
+        "function",
+        "choices[].delta.tool_calls[].function",
+    )?;
     let name = match function {
-        Some(function) => non_empty(text_field(function, "name", "tool_calls[].function.name")?),
+        Some(function) => non_empty(text_field(
+            function,
+            "name",
+            "choices[].delta.tool_calls[].function.name",
+        )?),
         None => None,
     };
     let arguments = match function {
-        Some(function) => text_field(function, "arguments", "tool_calls[].function.arguments")?,
+        Some(function) => text_field(
+            function,
+            "arguments",
+            "choices[].delta.tool_calls[].function.arguments",
+        )?,
         None => None,
     };
     let call = held.entry(index).or_default();
-    merge(&mut call.id, id, "tool_calls[].id")?;
-    merge(&mut call.name, name, "tool_calls[].function.name")?;
+    merge(&mut call.id, id, "choices[].delta.tool_calls[].id")?;
+    merge(
+        &mut call.name,
+        name,
+        "choices[].delta.tool_calls[].function.name",
+    )?;
     call.arguments.push_str(arguments.unwrap_or_default());
     Ok(())
 }
@@ -52,15 +72,21 @@ fn index_of(fragment: &Map<String, Value>) -> Result<u16, PayloadError> {
         .and_then(Value::as_u64)
         .filter(|index| *index <= MAX_INDEX)
         .and_then(|index| u16::try_from(index).ok())
-        .ok_or_else(|| wrong("tool_calls[].index", "an integer from 0 to 1023"))
+        .ok_or_else(|| {
+            wrong(
+                "choices[].delta.tool_calls[].index",
+                "an integer from 0 to 1023",
+            )
+        })
 }
 
 fn check_type(fragment: &Map<String, Value>) -> Result<(), PayloadError> {
     match present(fragment, "type") {
         None => Ok(()),
         Some(Value::String(kind)) if kind == FUNCTION_TYPE => Ok(()),
-        Some(_) => Err(PayloadError::new(
-            "a tool call has a type other than `function`",
+        Some(_) => Err(wrong(
+            "choices[].delta.tool_calls[].type",
+            "`function`, the only type of tool call that this dialect can represent",
         )),
     }
 }
