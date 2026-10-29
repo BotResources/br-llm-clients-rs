@@ -1,5 +1,5 @@
 use br_llm_clients_common_call::ProviderEvent;
-use br_llm_messages::StopReason;
+use br_llm_messages::ResponseEnding;
 
 use crate::test_decoder::{
     arguments, end, feed, flat, model, plain_decoder, start_call, stop, usage,
@@ -37,7 +37,7 @@ fn given_a_function_call_when_streamed_then_nothing_comes_until_the_terminal_eve
             end("0"),
             usage(3, 4),
             model("gpt-5.1"),
-            stop(StopReason::EndTurn),
+            stop(ResponseEnding::finished()),
             ProviderEvent::Complete,
         ]
     );
@@ -70,7 +70,7 @@ fn given_a_text_and_two_calls_in_the_wrong_order_when_finished_then_calls_come_l
     let text_end = position(&end("2.0"));
     let first = position(&start_call("0", "first", Some("call_a")));
     let second = position(&start_call("1", "second", Some("call_b")));
-    let stop_at = position(&stop(StopReason::EndTurn));
+    let stop_at = position(&stop(ResponseEnding::finished()));
     assert!(text_end < first && first < second && second < stop_at);
     assert_eq!(events.last(), Some(&ProviderEvent::Complete));
 }

@@ -11,7 +11,10 @@ fn tool(spec: &ToolSpec) -> Result<Value, ClientError> {
         })?;
     let mut fields = Map::new();
     fields.insert("type".to_owned(), Value::String("function".to_owned()));
-    fields.insert("name".to_owned(), Value::String(spec.name().to_string()));
+    fields.insert(
+        "name".to_owned(),
+        Value::String(spec.name().as_str().to_owned()),
+    );
     if !spec.description().is_empty() {
         fields.insert(
             "description".to_owned(),

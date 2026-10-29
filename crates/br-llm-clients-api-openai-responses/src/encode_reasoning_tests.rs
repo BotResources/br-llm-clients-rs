@@ -55,6 +55,52 @@ fn given_each_level_above_off_when_encoded_then_summary_auto_and_the_encrypted_i
 }
 
 #[test]
+fn given_each_summary_option_when_encoded_then_the_summary_value_follows_the_table() {
+    let table = [
+        (ReasoningSummary::Auto, json!("auto")),
+        (ReasoningSummary::Concise, json!("concise")),
+        (ReasoningSummary::Detailed, json!("detailed")),
+    ];
+    for (summary, wire) in table {
+        for (level, effort) in LEVELS {
+            let options = Options {
+                reasoning_summary: summary,
+                ..Options::default()
+            };
+            let body = body_at(level, options);
+            assert_eq!(
+                body["reasoning"],
+                json!({ "effort": effort, "summary": wire }),
+                "{level:?} {summary:?}"
+            );
+            assert_eq!(body["include"], json!(["reasoning.encrypted_content"]));
+        }
+    }
+}
+
+#[test]
+fn given_any_summary_option_and_off_when_encoded_then_the_effort_is_sent_alone() {
+    for summary in [
+        ReasoningSummary::None,
+        ReasoningSummary::Auto,
+        ReasoningSummary::Concise,
+        ReasoningSummary::Detailed,
+    ] {
+        let options = Options {
+            reasoning_summary: summary,
+            ..Options::default()
+        };
+        let body = body_at(ReasoningLevel::Off, options);
+        assert_eq!(
+            body["reasoning"],
+            json!({ "effort": "none" }),
+            "{summary:?}"
+        );
+        assert!(body.get("include").is_none());
+    }
+}
+
+#[test]
 fn given_no_summary_option_when_encoded_then_the_summary_field_is_absent_but_include_stays() {
     for (level, effort) in LEVELS {
         let body = body_at(level, without_summary());
@@ -108,7 +154,7 @@ fn given_a_refused_level_when_encoded_twice_then_the_refusal_comes_on_every_call
     let dialect = dialect_with(ReasoningLevel::High, omitted());
     for _ in 0..2 {
         assert!(matches!(
-            br_llm_clients_common_call::Dialect::encode(&dialect, &hello()),
+            crate::test_requests::encoded(&dialect, &hello()),
             Err(ClientError::ReasoningNotSupported { .. })
         ));
     }
@@ -116,19 +162,18 @@ fn given_a_refused_level_when_encoded_twice_then_the_refusal_comes_on_every_call
 
 #[test]
 fn given_any_level_and_any_token_limit_when_encoded_then_the_pair_is_never_refused() {
-    use br_llm_clients_common_call::Dialect;
     use br_llm_clients_core::{CacheRequirement, ClientSettings, MaxOutputTokens};
-    use br_llm_messages::ModelId;
+    use br_llm_messages::ModelName;
     for level in [ReasoningLevel::Off, ReasoningLevel::Max] {
         for tokens in [1, 100, u32::MAX] {
             let settings = ClientSettings::new(
-                ModelId::new("m").expect("model"),
+                ModelName::new("m").expect("model"),
                 level,
                 CacheRequirement::NotRequired,
                 MaxOutputTokens::new(tokens).expect("tokens"),
             );
             let dialect = crate::OpenAiResponses::new(&settings, Options::default());
-            let encoded = dialect.encode(&hello()).expect("never refused");
+            let encoded = crate::test_requests::encoded(&dialect, &hello()).expect("never refused");
             let body: serde_json::Value = serde_json::from_slice(encoded.body()).expect("json");
             assert_eq!(body["max_output_tokens"], json!(tokens));
         }

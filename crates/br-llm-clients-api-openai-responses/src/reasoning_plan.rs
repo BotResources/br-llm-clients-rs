@@ -1,7 +1,7 @@
 use br_llm_clients_core::{ClientError, ReasoningLevel};
 use serde_json::{Map, Value, json};
 
-use crate::options::{Options, ReasoningParameter, ReasoningSummary};
+use crate::options::{Options, ReasoningParameter};
 
 pub(crate) struct ReasoningFields {
     pub(crate) reasoning: Option<Value>,
@@ -59,8 +59,8 @@ pub(crate) fn plan(
             include: None,
         });
     }
-    if options.reasoning_summary == ReasoningSummary::Auto {
-        reasoning.insert("summary".to_owned(), Value::String("auto".to_owned()));
+    if let Some(summary) = options.reasoning_summary.wire() {
+        reasoning.insert("summary".to_owned(), Value::String(summary.to_owned()));
     }
     Ok(ReasoningFields {
         reasoning: Some(Value::Object(reasoning)),

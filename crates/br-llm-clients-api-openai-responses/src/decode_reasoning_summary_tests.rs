@@ -7,7 +7,7 @@ use crate::test_events::{
 };
 
 fn envelope(id: &str, encrypted: &str) -> String {
-    crate::test_requests::envelope_text(id, encrypted)
+    crate::test_history::envelope_text(id, encrypted)
 }
 
 fn parsed(text: &str) -> serde_json::Value {
@@ -179,8 +179,13 @@ fn given_a_done_item_with_id_and_encrypted_content_when_decoded_then_the_signatu
     assert_eq!(events.len(), 2);
     assert_eq!(events[1], end("0"));
     let carried = match events[0].clone() {
-        br_llm_clients_common_call::ProviderEvent::SignatureDelta { key, signature } => {
+        br_llm_clients_common_call::ProviderEvent::SignatureDelta {
+            key,
+            format,
+            signature,
+        } => {
             assert_eq!(key, "0");
+            assert_eq!(format, crate::test_decoder::reasoning_format());
             signature
         }
         other => panic!("{other:?}"),

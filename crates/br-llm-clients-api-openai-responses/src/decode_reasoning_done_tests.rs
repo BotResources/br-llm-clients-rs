@@ -146,29 +146,30 @@ fn given_a_reasoning_item_with_a_signature_when_replayed_in_a_request_then_the_e
         &mut decoder,
         &reasoning_done(0, "rs_77", Some("ENC=="), &["s"]),
     );
-    let carried = events
+    let (format, carried) = events
         .iter()
         .find_map(|event| match event {
-            br_llm_clients_common_call::ProviderEvent::SignatureDelta { signature, .. } => {
-                Some(signature.clone())
-            }
+            br_llm_clients_common_call::ProviderEvent::SignatureDelta {
+                format, signature, ..
+            } => Some((format.clone(), signature.clone())),
             _ => None,
         })
         .expect("a signature");
-    let messages = vec![
-        crate::test_requests::user_text("go"),
-        crate::test_requests::assistant(vec![
-            crate::test_requests::thinking("s", Some(&carried)),
-            crate::test_requests::call_block("c", "search", json!({})),
+    use crate::test_history as h;
+    let material =
+        br_llm_messages::ReplayMaterial::new(format, br_llm_messages::ReplayPayload::text(carried));
+    let call = h::call(Some("c"), "search", "{}");
+    let turns = vec![
+        h::say("go"),
+        h::reply(vec![
+            h::response(vec![
+                h::thinking("s", Some(material)),
+                br_llm_messages::ContentBlock::RuntimeToolCall(call.clone()),
+            ]),
+            h::results(vec![h::result_of(&call, vec![h::plain_text("r")], false)]),
         ]),
-        crate::test_requests::user(vec![crate::test_requests::result_block(
-            "c",
-            "search",
-            &["r"],
-            false,
-        )]),
     ];
-    let items = crate::test_requests::input_of(messages);
+    let items = crate::test_requests::input_of(turns);
     assert_eq!(
         items[1],
         json!({ "type": "reasoning", "id": "rs_77", "summary": [], "encrypted_content": "ENC==" })

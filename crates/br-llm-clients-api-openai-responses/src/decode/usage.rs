@@ -46,18 +46,37 @@ pub(super) fn usage_of(event: EventType, response: &Value) -> Result<Option<Usag
     };
     let input = count(event, usage, "input_tokens")?;
     let output = count(event, usage, "output_tokens")?;
-    let cache_read_tokens = detail_count(event, usage, "input_tokens_details", "cached_tokens")?;
-    let cache_write_tokens =
-        detail_count(event, usage, "input_tokens_details", "cache_write_tokens")?;
-    let thinking_tokens = detail_count(event, usage, "output_tokens_details", "reasoning_tokens")?;
-    let (Some(input_tokens), Some(output_tokens)) = (input, output) else {
-        return Ok(None);
-    };
-    Ok(Some(Usage {
-        input_tokens,
-        output_tokens,
-        cache_read_tokens,
-        cache_write_tokens,
-        thinking_tokens,
-    }))
+    let cache_read = detail_count(event, usage, "input_tokens_details", "cached_tokens")?;
+    let cache_creation = detail_count(event, usage, "input_tokens_details", "cache_write_tokens")?;
+    let thinking = detail_count(event, usage, "output_tokens_details", "reasoning_tokens")?;
+    let with_input = input.map(|input| {
+        let found = Usage::of_input_tokens(input);
+        let found = with_count(found, cache_read, Usage::with_cache_read_input_tokens);
+        with_count(
+            found,
+            cache_creation,
+            Usage::with_cache_creation_input_tokens,
+        )
+    });
+    Ok(match (with_input, output) {
+        (Some(found), Some(output)) => Some(with_count(
+            found.with_output_tokens(output),
+            thinking,
+            Usage::with_thinking_tokens,
+        )),
+        (Some(found), None) => Some(found),
+        (None, Some(output)) => Some(with_count(
+            Usage::of_output_tokens(output),
+            thinking,
+            Usage::with_thinking_tokens,
+        )),
+        (None, None) => None,
+    })
+}
+
+fn with_count(usage: Usage, count: Option<u64>, add: fn(Usage, u64) -> Usage) -> Usage {
+    match count {
+        Some(count) => add(usage, count),
+        None => usage,
+    }
 }
