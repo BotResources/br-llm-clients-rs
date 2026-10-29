@@ -49,9 +49,10 @@ fn image_block(image: &ImageBlock) -> Result<Value, ClientError> {
     let media_type = match media_type {
         MediaType::Jpeg | MediaType::Png | MediaType::Gif | MediaType::Webp => media_type.as_str(),
         _ => {
-            return Err(invalid(
-                "an image media type that this version does not know",
-            ));
+            return Err(invalid(format!(
+                "an image of media type {} that this version does not know",
+                media_type.as_str()
+            )));
         }
     };
     Ok(json!({
@@ -106,9 +107,10 @@ fn content_block(block: &ContentBlock) -> Result<Value, ClientError> {
         ContentBlock::Text(text) => Ok(text_block(text.text().as_str())),
         ContentBlock::Thinking(thinking) => thinking_block(thinking),
         ContentBlock::RedactedThinking(redacted) => redacted_block(redacted),
-        _ => Err(invalid(
-            "a content block of a kind that this version does not encode",
-        )),
+        other => Err(invalid(format!(
+            "a content block of kind {} that this version does not encode",
+            other.kind().as_str()
+        ))),
     }
 }
 

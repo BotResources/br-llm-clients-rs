@@ -1,6 +1,7 @@
 use br_llm_clients_core::{ClientError, OutputMode, ParameterKind};
 use br_llm_messages::{
-    ContentBlock, OpaqueJson, ProviderToolCall, ReplayFormat, ReplayMaterial, ReplayPayload, Turn,
+    ContentBlock, OpaqueJson, ProviderToolCall, ProviderToolExecutionRecord, ReplayFormat,
+    ReplayMaterial, ReplayPayload, Turn,
 };
 use serde_json::json;
 
@@ -84,10 +85,25 @@ fn given_replay_material_of_the_right_format_that_is_not_text_when_encoded_then_
 }
 
 #[test]
-fn given_a_provider_tool_block_in_the_turn_in_progress_when_encoded_then_it_is_refused() {
-    refused(in_progress_with(ContentBlock::ProviderToolCall(
-        ProviderToolCall::new(block_id()),
-    )));
+fn given_a_provider_tool_block_in_the_turn_in_progress_when_encoded_then_it_is_refused_naming_its_kind()
+ {
+    let record = ProviderToolExecutionRecord::new(block_id())
+        .with_content(texts(&["record-secret"]))
+        .expect("a provider record");
+    for (block, kind) in [
+        (
+            ContentBlock::ProviderToolCall(ProviderToolCall::new(block_id())),
+            "provider_tool_call",
+        ),
+        (
+            ContentBlock::ProviderToolExecutionRecord(record),
+            "provider_tool_execution_record",
+        ),
+    ] {
+        let reason = refused(in_progress_with(block));
+        assert!(reason.contains(kind), "{reason}");
+        assert!(!reason.contains("secret"), "{reason}");
+    }
 }
 
 #[test]
