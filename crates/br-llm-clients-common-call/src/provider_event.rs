@@ -1,4 +1,4 @@
-use br_llm_messages::{StopReason, Usage};
+use br_llm_messages::{ReplayFormat, ResponseEnding, Usage};
 
 use crate::error_info::ErrorInfo;
 
@@ -15,17 +15,43 @@ pub enum ProviderBlock {
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum ProviderEvent {
-    BlockStart { key: String, block: ProviderBlock },
-    TextDelta { key: String, text: String },
-    ThinkingDelta { key: String, text: String },
-    SignatureDelta { key: String, signature: String },
-    StructuredDelta { key: String, json: String },
-    ToolArgumentsDelta { key: String, json: String },
-    RedactedThinkingData { key: String, data: String },
-    BlockEnd { key: String },
-    Stop(StopReason),
+    BlockStart {
+        key: String,
+        block: ProviderBlock,
+    },
+    TextDelta {
+        key: String,
+        text: String,
+    },
+    ThinkingDelta {
+        key: String,
+        text: String,
+    },
+    SignatureDelta {
+        key: String,
+        format: ReplayFormat,
+        signature: String,
+    },
+    StructuredDelta {
+        key: String,
+        json: String,
+    },
+    ToolArgumentsDelta {
+        key: String,
+        json: String,
+    },
+    RedactedThinkingData {
+        key: String,
+        format: ReplayFormat,
+        data: String,
+    },
+    BlockEnd {
+        key: String,
+    },
+    Stop(ResponseEnding),
     Usage(Usage),
     Model(String),
+    ResponseId(String),
     Error(ErrorInfo),
     Complete,
 }

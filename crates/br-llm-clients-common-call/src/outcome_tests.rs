@@ -2,53 +2,63 @@ use std::time::Duration;
 
 use br_llm_clients_common_http::Secret;
 use br_llm_clients_core::ClientError;
-use br_llm_messages::{AssistantBlock, ModelId, Step, StopReason, Text, Usage};
+use br_llm_messages::{
+    ContentBlock, ModelName, ModelResponse, ResponseEnding, ResponseMetadata, TextBlock, Usage,
+};
 use tokio::time::advance;
 
 use crate::call_record::CallRecord;
 use crate::outcome::outcome;
+use crate::test_ids::{block_of, reply_entry};
 use crate::text_clean::Secrets;
 
 fn usage(input: u64) -> Usage {
-    Usage {
-        input_tokens: input,
-        output_tokens: 2,
-        ..Usage::default()
-    }
+    Usage::of_input_tokens(input).with_output_tokens(2)
 }
 
-fn step(usage: Option<Usage>) -> Step {
-    let text = Text::new("hi").expect("text");
-    Step::new(
-        vec![AssistantBlock::Text { text }],
-        StopReason::EndTurn,
-        usage,
-        None,
+fn response(usage: Option<Usage>) -> ModelResponse {
+    let text = TextBlock::new(block_of(1), "hi").expect("text");
+    let metadata = match usage {
+        Some(usage) => ResponseMetadata::new().with_usage(usage),
+        None => ResponseMetadata::new(),
+    };
+    ModelResponse::new(
+        reply_entry(),
+        vec![ContentBlock::Text(text)],
+        ResponseEnding::finished(),
+        metadata,
     )
-    .expect("step")
+    .expect("response")
 }
 
 fn record() -> CallRecord {
     let mut record = CallRecord::start();
     record.request_id = Some("req-1".to_owned());
-    record.model = Some(ModelId::new("answering-model").expect("model"));
+    record.model = Some(ModelName::new("answering-model").expect("model"));
     record.time_to_first_event = Some(Duration::from_millis(30));
     record
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_step_when_the_outcome_is_built_then_the_report_holds_the_usage_of_the_step_and_the_record()
+async fn given_a_response_when_the_outcome_is_built_then_the_report_holds_the_usage_of_the_response_and_the_record()
  {
     let record = CallRecord {
         usage: Some(usage(99)),
         ..record()
     };
     advance(Duration::from_secs(4)).await;
-    let outcome = outcome(&Secrets::default(), record, Ok(step(Some(usage(7)))));
+    let outcome = outcome(
+        &Secrets::new(Vec::new()),
+        record,
+        Ok(response(Some(usage(7)))),
+    );
     let (report, result) = outcome.into_parts();
-    assert_eq!(result, Ok(step(Some(usage(7)))));
+    assert_eq!(result, Ok(response(Some(usage(7)))));
     assert_eq!(report.usage(), Some(&usage(7)));
-    assert_eq!(report.model().map(ModelId::as_str), Some("answering-model"));
+    assert_eq!(
+        report.model().map(ModelName::as_str),
+        Some("answering-model")
+    );
     assert_eq!(report.request_id(), Some("req-1"));
     assert_eq!(
         report.time_to_first_event(),
@@ -58,12 +68,13 @@ async fn given_a_step_when_the_outcome_is_built_then_the_report_holds_the_usage_
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_step_without_usage_when_the_outcome_is_built_then_the_report_holds_none() {
+async fn given_a_response_without_usage_when_the_outcome_is_built_then_the_report_holds_none() {
     let record = CallRecord {
         usage: Some(usage(99)),
         ..record()
     };
-    let (report, result) = outcome(&Secrets::default(), record, Ok(step(None))).into_parts();
+    let (report, result) =
+        outcome(&Secrets::new(Vec::new()), record, Ok(response(None))).into_parts();
     assert!(result.is_ok());
     assert_eq!(report.usage(), None);
 }
@@ -77,14 +88,17 @@ async fn given_a_failure_when_the_outcome_is_built_then_the_report_holds_the_las
     };
     advance(Duration::from_secs(3)).await;
     let (report, result) = outcome(
-        &Secrets::default(),
+        &Secrets::new(Vec::new()),
         record,
         Err(ClientError::StreamTruncated),
     )
     .into_parts();
     assert_eq!(result, Err(ClientError::StreamTruncated));
     assert_eq!(report.usage(), Some(&usage(5)));
-    assert_eq!(report.model().map(ModelId::as_str), Some("answering-model"));
+    assert_eq!(
+        report.model().map(ModelName::as_str),
+        Some("answering-model")
+    );
     assert_eq!(report.request_id(), Some("req-1"));
     assert_eq!(
         report.time_to_first_event(),
@@ -96,7 +110,7 @@ async fn given_a_failure_when_the_outcome_is_built_then_the_report_holds_the_las
 #[tokio::test(start_paused = true)]
 async fn given_a_failure_without_usage_when_the_outcome_is_built_then_the_report_holds_none() {
     let (report, _) = outcome(
-        &Secrets::default(),
+        &Secrets::new(Vec::new()),
         record(),
         Err(ClientError::StreamTruncated),
     )

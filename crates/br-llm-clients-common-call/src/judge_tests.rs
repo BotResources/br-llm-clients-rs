@@ -1,7 +1,5 @@
 use br_llm_clients_core::{ClientError, OutputMode};
-use br_llm_messages::StopReason::{
-    self, AwaitingToolResults, ContentFilter, EndTurn, MaxTokens, Refusal, StopSequence,
-};
+use br_llm_messages::ResponseEnding;
 
 use crate::judge::{Held, Json, judge};
 use crate::test_requests::structured_request;
@@ -26,21 +24,47 @@ fn shape() -> OutputMode {
     structured_request(false).output().clone()
 }
 
-fn plain(held: &[Held], stop: StopReason) -> Result<StopReason, ClientError> {
+fn plain(held: &[Held], stop: ResponseEnding) -> Result<ResponseEnding, ClientError> {
     judge(held, &stop, &OutputMode::Plain, false)
 }
 
-fn structured(held: &[Held], stop: StopReason, tools: bool) -> Result<StopReason, ClientError> {
+fn structured(
+    held: &[Held],
+    stop: ResponseEnding,
+    tools: bool,
+) -> Result<ResponseEnding, ClientError> {
     judge(held, &stop, &shape(), tools)
 }
 
-fn other() -> StopReason {
-    StopReason::Other {
-        reason: "x".to_owned(),
-    }
+fn other() -> ResponseEnding {
+    ResponseEnding::unclassified("x").expect("an ending")
 }
 
-fn is_malformed(result: &Result<StopReason, ClientError>) -> bool {
+fn finished() -> ResponseEnding {
+    ResponseEnding::finished()
+}
+
+fn tool_use() -> ResponseEnding {
+    ResponseEnding::tool_use()
+}
+
+fn exhausted() -> ResponseEnding {
+    ResponseEnding::output_exhaustion()
+}
+
+fn filtering() -> ResponseEnding {
+    ResponseEnding::filtering()
+}
+
+fn refusal() -> ResponseEnding {
+    ResponseEnding::refusal()
+}
+
+fn stop_seq() -> ResponseEnding {
+    ResponseEnding::stop_sequence()
+}
+
+fn is_malformed(result: &Result<ResponseEnding, ClientError>) -> bool {
     matches!(result, Err(ClientError::MalformedResponse { .. }))
 }
 
@@ -51,19 +75,16 @@ fn given_json_that_is_incomplete_when_judged_then_the_stop_reason_decides() {
         Held::Structured(Json::Incomplete),
     ] {
         let held = [text(), incomplete];
+        assert_eq!(plain(&held, filtering()), Err(ClientError::ContentBlocked));
+        assert_eq!(plain(&held, refusal()), Err(ClientError::ContentBlocked));
         assert_eq!(
-            plain(&held, ContentFilter),
-            Err(ClientError::ContentBlocked)
-        );
-        assert_eq!(plain(&held, Refusal), Err(ClientError::ContentBlocked));
-        assert_eq!(
-            plain(&held, MaxTokens),
+            plain(&held, exhausted()),
             Err(ClientError::ReplyUnusable {
-                stop_reason: MaxTokens
+                ending: exhausted()
             })
         );
-        for stop in [EndTurn, AwaitingToolResults, StopSequence, other()] {
-            assert!(is_malformed(&plain(&held, stop.clone())), "{stop}");
+        for stop in [finished(), tool_use(), stop_seq(), other()] {
+            assert!(is_malformed(&plain(&held, stop.clone())), "{stop:?}");
         }
     }
 }
@@ -71,14 +92,8 @@ fn given_json_that_is_incomplete_when_judged_then_the_stop_reason_decides() {
 #[test]
 fn given_json_that_is_not_valid_when_judged_then_the_reply_is_malformed_whatever_the_stop_reason() {
     let held = [Held::ToolCall(Json::Malformed("bad".to_owned()))];
-    for stop in [
-        EndTurn,
-        MaxTokens,
-        ContentFilter,
-        Refusal,
-        AwaitingToolResults,
-    ] {
-        assert!(is_malformed(&plain(&held, stop.clone())), "{stop}");
+    for stop in [finished(), exhausted(), filtering(), refusal(), tool_use()] {
+        assert!(is_malformed(&plain(&held, stop.clone())), "{stop:?}");
     }
 }
 
@@ -89,9 +104,9 @@ fn given_incomplete_and_invalid_json_together_when_judged_then_incomplete_is_jud
         Held::Structured(Json::Incomplete),
     ];
     assert_eq!(
-        plain(&held, MaxTokens),
+        plain(&held, exhausted()),
         Err(ClientError::ReplyUnusable {
-            stop_reason: MaxTokens
+            ending: exhausted()
         })
     );
 }
@@ -105,16 +120,10 @@ fn given_a_reply_with_nothing_usable_when_judged_then_it_is_unusable_with_the_st
         vec![Held::Thinking],
         vec![Held::Redacted, blank()],
     ] {
-        for stop in [
-            EndTurn,
-            MaxTokens,
-            StopSequence,
-            other(),
-            AwaitingToolResults,
-        ] {
+        for stop in [finished(), exhausted(), stop_seq(), other(), tool_use()] {
             assert_eq!(
                 plain(&held, stop.clone()),
-                Err(ClientError::ReplyUnusable { stop_reason: stop }),
+                Err(ClientError::ReplyUnusable { ending: stop }),
             );
         }
     }
@@ -123,49 +132,40 @@ fn given_a_reply_with_nothing_usable_when_judged_then_it_is_unusable_with_the_st
 #[test]
 fn given_a_filtered_reply_with_nothing_usable_when_judged_then_the_content_is_blocked() {
     for held in [vec![], vec![blank()], vec![Held::Thinking]] {
-        assert_eq!(
-            plain(&held, ContentFilter),
-            Err(ClientError::ContentBlocked)
-        );
-        assert_eq!(plain(&held, Refusal), Err(ClientError::ContentBlocked));
+        assert_eq!(plain(&held, filtering()), Err(ClientError::ContentBlocked));
+        assert_eq!(plain(&held, refusal()), Err(ClientError::ContentBlocked));
     }
 }
 
 #[test]
 fn given_a_filtered_reply_that_holds_something_when_judged_then_it_is_a_normal_step() {
-    assert_eq!(plain(&[text()], ContentFilter), Ok(ContentFilter));
-    assert_eq!(plain(&[text()], Refusal), Ok(Refusal));
-    assert_eq!(plain(&[value()], ContentFilter), Ok(ContentFilter));
-    assert_eq!(plain(&[call()], ContentFilter), Ok(AwaitingToolResults));
+    assert_eq!(plain(&[text()], filtering()), Ok(filtering()));
+    assert_eq!(plain(&[text()], refusal()), Ok(refusal()));
+    assert_eq!(plain(&[value()], filtering()), Ok(filtering()));
+    assert_eq!(plain(&[call()], filtering()), Ok(tool_use()));
 }
 
 #[test]
 fn given_a_content_and_a_stop_reason_when_judged_then_the_stop_reason_is_set_from_the_content() {
-    assert_eq!(plain(&[text(), call()], EndTurn), Ok(AwaitingToolResults));
-    assert_eq!(plain(&[call()], MaxTokens), Ok(AwaitingToolResults));
-    assert_eq!(
-        plain(&[call()], AwaitingToolResults),
-        Ok(AwaitingToolResults)
-    );
-    assert_eq!(plain(&[text()], AwaitingToolResults), Ok(EndTurn));
-    assert_eq!(plain(&[text()], MaxTokens), Ok(MaxTokens));
-    assert_eq!(plain(&[text()], StopSequence), Ok(StopSequence));
+    assert_eq!(plain(&[text(), call()], finished()), Ok(tool_use()));
+    assert_eq!(plain(&[call()], exhausted()), Ok(tool_use()));
+    assert_eq!(plain(&[call()], tool_use()), Ok(tool_use()));
+    assert_eq!(plain(&[text()], tool_use()), Ok(finished()));
+    assert_eq!(plain(&[text()], exhausted()), Ok(exhausted()));
+    assert_eq!(plain(&[text()], stop_seq()), Ok(stop_seq()));
     assert_eq!(plain(&[text()], other()), Ok(other()));
-    assert_eq!(plain(&[text()], EndTurn), Ok(EndTurn));
+    assert_eq!(plain(&[text()], finished()), Ok(finished()));
 }
 
 #[test]
 fn given_the_structured_mode_when_the_reply_holds_one_value_then_it_is_valid_with_any_stop_but_the_tool_one()
  {
-    assert_eq!(structured(&[value()], EndTurn, false), Ok(EndTurn));
-    assert_eq!(structured(&[value()], MaxTokens, false), Ok(MaxTokens));
+    assert_eq!(structured(&[value()], finished(), false), Ok(finished()));
+    assert_eq!(structured(&[value()], exhausted(), false), Ok(exhausted()));
+    assert_eq!(structured(&[value()], tool_use(), false), Ok(finished()));
     assert_eq!(
-        structured(&[value()], AwaitingToolResults, false),
-        Ok(EndTurn)
-    );
-    assert_eq!(
-        structured(&[Held::Thinking, value(), blank()], EndTurn, false),
-        Ok(EndTurn)
+        structured(&[Held::Thinking, value(), blank()], finished(), false),
+        Ok(finished())
     );
 }
 
@@ -173,41 +173,40 @@ fn given_the_structured_mode_when_the_reply_holds_one_value_then_it_is_valid_wit
 fn given_the_structured_mode_when_the_reply_is_not_one_value_then_it_is_malformed() {
     assert!(is_malformed(&structured(
         &[value(), text()],
-        EndTurn,
+        finished(),
         false
     )));
-    assert!(is_malformed(&structured(&[text()], EndTurn, false)));
+    assert!(is_malformed(&structured(&[text()], finished(), false)));
     assert!(is_malformed(&structured(
         &[value(), value()],
-        EndTurn,
+        finished(),
         false
     )));
-    assert!(is_malformed(&structured(&[value(), call()], EndTurn, true)));
+    assert!(is_malformed(&structured(
+        &[value(), call()],
+        finished(),
+        true
+    )));
 }
 
 #[test]
 fn given_the_structured_mode_when_tools_are_declared_then_tool_calls_can_come_instead_with_text() {
+    assert_eq!(structured(&[call()], finished(), true), Ok(tool_use()));
     assert_eq!(
-        structured(&[call()], EndTurn, true),
-        Ok(AwaitingToolResults)
+        structured(&[text(), call()], finished(), true),
+        Ok(tool_use())
     );
-    assert_eq!(
-        structured(&[text(), call()], EndTurn, true),
-        Ok(AwaitingToolResults)
-    );
-    assert!(is_malformed(&structured(&[call()], EndTurn, false)));
+    assert!(is_malformed(&structured(&[call()], finished(), false)));
 }
 
 #[test]
 fn given_the_structured_mode_when_nothing_is_usable_then_unusable_or_blocked_wins_over_malformed() {
     assert_eq!(
-        structured(&[Held::Thinking, blank()], EndTurn, false),
-        Err(ClientError::ReplyUnusable {
-            stop_reason: EndTurn
-        })
+        structured(&[Held::Thinking, blank()], finished(), false),
+        Err(ClientError::ReplyUnusable { ending: finished() })
     );
     assert_eq!(
-        structured(&[], ContentFilter, false),
+        structured(&[], filtering(), false),
         Err(ClientError::ContentBlocked)
     );
 }
@@ -216,24 +215,25 @@ fn given_the_structured_mode_when_nothing_is_usable_then_unusable_or_blocked_win
 fn given_the_structured_mode_when_a_filtered_reply_has_no_value_and_no_call_then_it_is_blocked_whatever_text_it_holds()
  {
     assert_eq!(
-        structured(&[text()], ContentFilter, false),
+        structured(&[text()], filtering(), false),
         Err(ClientError::ContentBlocked)
     );
     assert_eq!(
-        structured(&[text()], Refusal, true),
+        structured(&[text()], refusal(), true),
         Err(ClientError::ContentBlocked)
     );
-    assert_eq!(
-        structured(&[value()], ContentFilter, false),
-        Ok(ContentFilter)
-    );
-    assert_eq!(
-        structured(&[call()], ContentFilter, true),
-        Ok(AwaitingToolResults)
-    );
+    assert_eq!(structured(&[value()], filtering(), false), Ok(filtering()));
+    assert_eq!(structured(&[call()], filtering(), true), Ok(tool_use()));
 }
 
 #[test]
 fn given_the_plain_mode_when_the_reply_holds_a_structured_value_then_no_rule_refuses_it() {
-    assert_eq!(plain(&[value(), text()], EndTurn), Ok(EndTurn));
+    assert_eq!(plain(&[value(), text()], finished()), Ok(finished()));
+}
+
+#[test]
+fn given_the_ending_provider_continuation_when_judged_then_the_reply_is_malformed() {
+    let cont = ResponseEnding::provider_continuation();
+    assert!(is_malformed(&plain(&[text()], cont.clone())));
+    assert!(is_malformed(&plain(&[call()], cont)));
 }

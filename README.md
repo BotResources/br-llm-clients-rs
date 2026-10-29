@@ -12,7 +12,7 @@ Provider clients for LLM calls: send a system prompt, tools and a chat history f
 - `br-llm-clients-common-sse` — a Server-Sent Events decoder: turns the bytes of a response body into frames, with a size limit and no hidden damage.
 - `br-llm-clients-common-auth` — gives a bearer token to a request: a token source, a cache that fetches a new token before the old one ends, an authorizer for `br-llm-clients-common-http` and a client for the form-encoded token request of OAuth 2.0; it is meant to be shared by the provider clients (none exists yet).
 
-**Status:** `br-llm-clients-core` is at `0.5.0`, `br-llm-clients-mock` is at `0.6.0`, `br-llm-clients-common-http` is at `0.2.0`, and `br-llm-clients-common-sse`, `br-llm-clients-common-call`, `br-llm-clients-api-anthropic-messages`, `br-llm-clients-api-openai-responses`, `br-llm-clients-api-openai-chat-completions` and `br-llm-clients-common-auth` are at `0.1.0`; the other crates are not written yet.
+**Status:** `br-llm-clients-core` is at `0.5.0`, `br-llm-clients-mock` is at `0.6.0`, `br-llm-clients-common-http` and `br-llm-clients-common-call` are at `0.2.0`, and `br-llm-clients-common-sse`, `br-llm-clients-api-anthropic-messages`, `br-llm-clients-api-openai-responses`, `br-llm-clients-api-openai-chat-completions` and `br-llm-clients-common-auth` are at `0.1.0`; the other crates are not written yet.
 
 Not on crates.io; pin the git tag with the matching `version` beside it (a tag-only git dependency carries a `*` version requirement, which `cargo-deny` rejects):
 
@@ -20,7 +20,7 @@ Not on crates.io; pin the git tag with the matching `version` beside it (a tag-o
 br-llm-clients-core = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-core", tag = "br-llm-clients-core/v0.5.0", version = "0.5.0" }
 br-llm-clients-mock = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-mock", tag = "br-llm-clients-mock/v0.6.0", version = "0.6.0" }
 br-llm-clients-common-sse = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-common-sse", tag = "br-llm-clients-common-sse/v0.1.0", version = "0.1.0" }
-br-llm-clients-common-call = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-common-call", tag = "br-llm-clients-common-call/v0.1.0", version = "0.1.0" }
+br-llm-clients-common-call = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-common-call", tag = "br-llm-clients-common-call/v0.2.0", version = "0.2.0" }
 br-llm-clients-api-anthropic-messages = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-api-anthropic-messages", tag = "br-llm-clients-api-anthropic-messages/v0.1.0", version = "0.1.0" }
 br-llm-clients-api-openai-responses = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-api-openai-responses", tag = "br-llm-clients-api-openai-responses/v0.1.0", version = "0.1.0" }
 br-llm-clients-api-openai-chat-completions = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-api-openai-chat-completions", tag = "br-llm-clients-api-openai-chat-completions/v0.1.0", version = "0.1.0" }
@@ -30,9 +30,11 @@ br-llm-clients-common-auth = { git = "https://github.com/BotResources/br-llm-cli
 
 `br-llm-clients-mock` (0.6.0) pins `br-llm-clients-core` at `br-llm-clients-core/v0.5.0` and `br-llm-messages` at `br-llm-messages/v2.1.0`; a project that uses the mock and names core or messages pins those same two tags, or the types are two copies.
 
-`br-llm-clients-common-call` (0.1.0) re-exports types of `br-llm-clients-common-http` 0.1.0 (`Authorizer`, `Endpoint`, `Headers`, `HttpClient`, `Secret`), and the three `br-llm-clients-api-*` libraries (0.1.0) take `Headers` in their public `Dialect::request_id`; so a project that uses any of them pins `br-llm-clients-common-http` at `v0.1.0` too, until they move to 0.2.0: with the 0.2.0 pin shown, those types would be two copies.
+`br-llm-clients-common-call` (0.2.0) pins `br-llm-clients-core` at `br-llm-clients-core/v0.5.0`, `br-llm-clients-common-http` at `br-llm-clients-common-http/v0.2.0`, `br-llm-clients-common-sse` at `br-llm-clients-common-sse/v0.1.0` and `br-llm-messages` at `br-llm-messages/v2.1.0`, and it re-exports `Authorizer`, `Endpoint`, `Headers`, `HttpClient` and `Secret` of `br-llm-clients-common-http`; a project that uses common-call and names a type of these crates pins those same tags, or the types are two copies.
 
-`br-llm-clients-common-auth` (0.1.0) uses `br-llm-clients-common-http` 0.2.0 in its public API (`Secret`, `Authorizer`, `AuthorizerError`, `BoxFuture`, `HttpClient`, `Endpoint`); a project that uses it pins `br-llm-clients-common-http` at `br-llm-clients-common-http/v0.2.0`, or the types are two copies. Until `br-llm-clients-common-call` moves to `br-llm-clients-common-http` 0.2.0, a `TokenAuthorizer` cannot be given to it.
+The three `br-llm-clients-api-*` libraries (0.1.0) still take `br-llm-clients-common-call` 0.1.0, `br-llm-clients-core` 0.4.0 and `br-llm-clients-common-http` 0.1.0 from the tag `br-llm-clients-common-call/v0.1.0`, and `br-llm-messages` at `br-llm-messages/v0.5.0`; a project that uses one of them pins those, and does not mix them with the `br-llm-clients-core/v0.5.0` and `br-llm-clients-common-http/v0.2.0` pins above, until the api libraries move to common-call 0.2.
+
+`br-llm-clients-common-auth` (0.1.0) uses `br-llm-clients-common-http` 0.2.0 in its public API (`Secret`, `Authorizer`, `AuthorizerError`, `BoxFuture`, `HttpClient`, `Endpoint`); a project that uses it pins `br-llm-clients-common-http` at `br-llm-clients-common-http/v0.2.0`, or the types are two copies. `br-llm-clients-common-call` 0.2.0 uses the same pin, so a `TokenAuthorizer` can be given to it.
 
 ## Provider keys for real calls
 

@@ -8,7 +8,7 @@ use br_llm_clients_core::ClientError;
 
 use crate::call_spec::CallSpec;
 use crate::test_dialect::ScriptedDialect;
-use crate::test_fixtures::{LONG, failure_of, model, run_call, user_request};
+use crate::test_fixtures::{LONG, failure_of, run_call, user_request};
 use crate::test_server::{TestServer, closed_endpoint, http, raw};
 
 struct Scripted(Result<Vec<(&'static str, &'static str)>, AuthorizerError>);
@@ -37,7 +37,6 @@ fn spec_with(authorizer: Scripted, endpoint: br_llm_clients_common_http::Endpoin
         endpoint,
         Arc::new(authorizer),
         HttpClient::new(HttpConfig::new(LONG, LONG, LONG)).expect("client"),
-        model(),
     )
 }
 

@@ -5,7 +5,7 @@ use crate::test_fixtures::user_request;
 use crate::test_stream::{body, dialect_ending, drive, drive_one, frame, kinds};
 
 fn good() -> Vec<u8> {
-    body(&[&["start a text", "text a hi", "end a", "stop end_turn"]])
+    body(&[&["start a text", "text a hi", "end a", "stop finished"]])
 }
 
 fn end_with(lines: &[&str]) -> EndScript {
@@ -23,17 +23,19 @@ async fn given_a_body_that_ends_cleanly_when_read_then_end_is_called_once_and_th
 
 #[tokio::test]
 async fn given_end_events_when_read_then_they_are_normalized_like_the_events_of_a_payload() {
-    let dialect = dialect_ending(end_with(&["end a", "usage 1 2", "stop end_turn"]));
+    let dialect = dialect_ending(end_with(&["end a", "usage 1 2", "stop finished"]));
     let bytes = body(&[&["start a text", "text a hi"]]);
     let driven = drive_one(&dialect, &user_request(), bytes).await;
     assert!(driven.result.is_ok());
     assert_eq!(
-        kinds(&driven.sink.events),
+        kinds(&driven.sink.deltas),
         vec![
-            "start 0 Text",
-            "text 0 \"hi\"",
-            "end 0",
-            "finish end_turn true"
+            "started",
+            "start 1 text",
+            "text 1 \"hi\"",
+            "final 1",
+            "meta usage=Some(1)/Some(2)",
+            "done Finished"
         ]
     );
 }
@@ -45,8 +47,8 @@ async fn given_a_body_without_stop_when_it_ends_then_the_call_is_truncated_and_n
     let driven = drive_one(&dialect, &user_request(), bytes).await;
     assert_eq!(driven.result, Err(ClientError::StreamTruncated));
     assert_eq!(
-        kinds(&driven.sink.events),
-        vec!["start 0 Text", "text 0 \"hi\"", "end 0"]
+        kinds(&driven.sink.deltas),
+        vec!["started", "start 1 text", "text 1 \"hi\"", "final 1"]
     );
 }
 
@@ -56,7 +58,7 @@ async fn given_a_body_with_no_frame_at_all_when_it_ends_then_the_call_is_truncat
     let driven = drive(&dialect, &user_request(), &[]).await;
     assert_eq!(driven.result, Err(ClientError::StreamTruncated));
     assert_eq!(dialect.log.ends(), 1);
-    assert!(driven.sink.events.is_empty());
+    assert!(driven.sink.deltas.is_empty());
 }
 
 #[tokio::test]
@@ -99,27 +101,27 @@ async fn given_a_body_that_ends_in_the_middle_of_a_frame_when_read_then_it_is_tr
  {
     let dialect = dialect_ending(end_with(&[]));
     let mut bytes = body(&[&["start a text", "text a hi"]]);
-    bytes.extend_from_slice(b"data: stop end_turn\n");
+    bytes.extend_from_slice(b"data: stop finished\n");
     let driven = drive_one(&dialect, &user_request(), bytes).await;
     assert_eq!(driven.result, Err(ClientError::StreamTruncated));
     assert_eq!(dialect.log.ends(), 0);
     assert_eq!(
-        kinds(&driven.sink.events),
-        vec!["start 0 Text", "text 0 \"hi\""]
+        kinds(&driven.sink.deltas),
+        vec!["started", "start 1 text", "text 1 \"hi\""]
     );
 }
 
 #[tokio::test]
 async fn given_a_complete_when_read_then_end_is_not_called_and_later_frames_are_not_decoded() {
     let dialect = dialect_ending(end_with(&[]));
-    let mut bytes = body(&[&["start a text", "text a hi", "end a", "stop end_turn"]]);
+    let mut bytes = body(&[&["start a text", "text a hi", "end a", "stop finished"]]);
     bytes.extend(frame(&["complete"]));
     bytes.extend(frame(&["start b text", "text b late"]));
     let driven = drive_one(&dialect, &user_request(), bytes).await;
     assert!(driven.result.is_ok());
     assert_eq!(dialect.log.ends(), 0);
     assert_eq!(dialect.log.payload_count(), 2);
-    assert_eq!(driven.sink.events.len(), 4);
+    assert_eq!(driven.sink.deltas.len(), 5);
 }
 
 #[tokio::test]
@@ -129,7 +131,7 @@ async fn given_events_after_a_complete_in_the_same_list_when_read_then_they_are_
         "start a text",
         "text a hi",
         "end a",
-        "stop end_turn",
+        "stop finished",
         "complete",
         "start b text",
         "text b late",
@@ -139,12 +141,13 @@ async fn given_events_after_a_complete_in_the_same_list_when_read_then_they_are_
     let driven = drive_one(&dialect, &user_request(), bytes).await;
     assert!(driven.result.is_ok());
     assert_eq!(
-        kinds(&driven.sink.events),
+        kinds(&driven.sink.deltas),
         vec![
-            "start 0 Text",
-            "text 0 \"hi\"",
-            "end 0",
-            "finish end_turn false"
+            "started",
+            "start 1 text",
+            "text 1 \"hi\"",
+            "final 1",
+            "done Finished"
         ]
     );
 }
@@ -183,8 +186,8 @@ async fn given_frames_before_a_decode_error_when_read_then_they_are_processed_fi
         Err(ClientError::MalformedResponse { .. })
     ));
     assert_eq!(
-        kinds(&driven.sink.events),
-        vec!["start 0 Text", "text 0 \"hi\""]
+        kinds(&driven.sink.deltas),
+        vec!["started", "start 1 text", "text 1 \"hi\""]
     );
     assert_eq!(dialect.log.ends(), 0);
 }

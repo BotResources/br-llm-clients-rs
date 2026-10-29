@@ -34,15 +34,15 @@ async fn given_a_payload_the_decoder_cannot_read_when_read_then_the_reply_is_mal
     let dialect = calm();
     let mut bytes = with(&[]);
     bytes.extend(frame(&["bad"]));
-    bytes.extend(frame(&["text a later", "stop end_turn"]));
+    bytes.extend(frame(&["text a later", "stop finished"]));
     let driven = drive_one(&dialect, &user_request(), bytes).await;
     let Err(ClientError::MalformedResponse { detail }) = driven.result else {
         panic!("not malformed");
     };
     assert!(detail.contains("bad"), "{detail}");
     assert_eq!(
-        kinds(&driven.sink.events),
-        vec!["start 0 Text", "text 0 \"hi\""]
+        kinds(&driven.sink.deltas),
+        vec!["started", "start 1 text", "text 1 \"hi\""]
     );
     assert_eq!(dialect.log.payload_count(), 2);
     assert_eq!(dialect.log.ends(), 0);
@@ -62,8 +62,8 @@ async fn given_a_failing_event_in_a_list_when_read_then_the_events_after_it_neve
         Err(ClientError::MalformedResponse { .. })
     ));
     assert_eq!(
-        kinds(&driven.sink.events),
-        vec!["start 0 Text", "text 0 \"hi\""]
+        kinds(&driven.sink.deltas),
+        vec!["started", "start 1 text", "text 1 \"hi\""]
     );
 }
 
@@ -145,7 +145,7 @@ async fn given_a_failure_and_the_error_after_events_to_skip_when_read_then_only_
     let driven = drive_one(
         &dialect,
         &user_request(),
-        with(&["end zz", "stop end_turn", "usage 1 1", "error 429 - 3 slow"]),
+        with(&["end zz", "stop finished", "usage 1 1", "error 429 - 3 slow"]),
     )
     .await;
     assert_eq!(
@@ -162,7 +162,7 @@ async fn given_an_error_event_when_read_then_it_stops_the_call_and_the_events_af
 {
     let dialect = calm();
     let mut bytes = with(&["error 500 - - overloaded", "text a more"]);
-    bytes.extend(frame(&["stop end_turn"]));
+    bytes.extend(frame(&["stop finished"]));
     let driven = drive_one(&dialect, &user_request(), bytes).await;
     assert_eq!(
         driven.result,
@@ -173,8 +173,8 @@ async fn given_an_error_event_when_read_then_it_stops_the_call_and_the_events_af
         })
     );
     assert_eq!(
-        kinds(&driven.sink.events),
-        vec!["start 0 Text", "text 0 \"hi\""]
+        kinds(&driven.sink.deltas),
+        vec!["started", "start 1 text", "text 1 \"hi\""]
     );
     assert_eq!(dialect.log.payload_count(), 1);
 }

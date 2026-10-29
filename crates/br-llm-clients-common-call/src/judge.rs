@@ -1,16 +1,16 @@
 use br_llm_clients_core::{ClientError, OutputMode};
-use br_llm_messages::StopReason;
+use br_llm_messages::ResponseEnding;
 
 use crate::failure_map::malformed;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Json {
     Complete,
     Incomplete,
     Malformed(String),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Held {
     Text { nonblank: bool },
     Thinking,
@@ -40,8 +40,11 @@ impl Content {
     }
 }
 
-fn blocked(stop: &StopReason) -> bool {
-    matches!(stop, StopReason::ContentFilter | StopReason::Refusal)
+fn blocked(stop: &ResponseEnding) -> bool {
+    matches!(
+        stop,
+        ResponseEnding::Filtering { .. } | ResponseEnding::Refusal { .. }
+    )
 }
 
 fn json_of(block: &Held) -> Option<&Json> {
@@ -51,13 +54,13 @@ fn json_of(block: &Held) -> Option<&Json> {
     }
 }
 
-fn check_json(held: &[Held], stop: &StopReason) -> Result<(), ClientError> {
+fn check_json(held: &[Held], stop: &ResponseEnding) -> Result<(), ClientError> {
     let states = || held.iter().filter_map(json_of);
     if states().any(|json| *json == Json::Incomplete) {
         return Err(match stop {
-            StopReason::ContentFilter | StopReason::Refusal => ClientError::ContentBlocked,
-            StopReason::MaxTokens => ClientError::ReplyUnusable {
-                stop_reason: stop.clone(),
+            _ if blocked(stop) => ClientError::ContentBlocked,
+            ResponseEnding::OutputExhaustion { .. } => ClientError::ReplyUnusable {
+                ending: stop.clone(),
             },
             _ => malformed("the JSON of the reply is not complete"),
         });
@@ -73,7 +76,7 @@ fn check_json(held: &[Held], stop: &StopReason) -> Result<(), ClientError> {
 
 fn check_usable(
     content: &Content,
-    stop: &StopReason,
+    stop: &ResponseEnding,
     output: &OutputMode,
 ) -> Result<(), ClientError> {
     let nothing_to_show = match output {
@@ -85,17 +88,17 @@ fn check_usable(
     }
     if content.is_empty() {
         return Err(ClientError::ReplyUnusable {
-            stop_reason: stop.clone(),
+            ending: stop.clone(),
         });
     }
     Ok(())
 }
 
-fn corrected(content: &Content, stop: &StopReason) -> StopReason {
+fn corrected(content: &Content, stop: &ResponseEnding) -> ResponseEnding {
     if content.tool_calls > 0 {
-        StopReason::AwaitingToolResults
-    } else if *stop == StopReason::AwaitingToolResults {
-        StopReason::EndTurn
+        ResponseEnding::tool_use()
+    } else if matches!(stop, ResponseEnding::ToolUse { .. }) {
+        ResponseEnding::finished()
     } else {
         stop.clone()
     }
@@ -122,10 +125,15 @@ fn check_output(
 
 pub(crate) fn judge(
     held: &[Held],
-    stop: &StopReason,
+    stop: &ResponseEnding,
     output: &OutputMode,
     tools_declared: bool,
-) -> Result<StopReason, ClientError> {
+) -> Result<ResponseEnding, ClientError> {
+    if matches!(stop, ResponseEnding::ProviderContinuation { .. }) {
+        return Err(malformed(
+            "the provider ending provider_continuation is not given by this version",
+        ));
+    }
     check_json(held, stop)?;
     let content = Content::of(held);
     check_usable(&content, stop, output)?;
