@@ -9,16 +9,19 @@ use crate::stream_error::error_info;
 use crate::tool_fragments::HeldCalls;
 use crate::usage;
 
+mod delta;
+mod finish;
+
 const SENTINEL: &str = "[DONE]";
 
 pub(crate) struct ChatCompletionsDecoder {
-    pub(crate) structured: bool,
-    pub(crate) reasoning_field: Option<String>,
+    structured: bool,
+    reasoning_field: Option<String>,
     cache_read_field: Option<String>,
-    pub(crate) open: Option<&'static str>,
-    pub(crate) held: HeldCalls,
-    pub(crate) finished: bool,
-    pub(crate) refusal_seen: bool,
+    open: Option<&'static str>,
+    held: HeldCalls,
+    finished: bool,
+    refusal_seen: bool,
     model: Option<String>,
     response_id: Option<String>,
 }
@@ -50,8 +53,9 @@ impl ChatCompletionsDecoder {
             events.push(ProviderEvent::Model(model));
         }
         if let Some(choice) = single_choice(chunk)? {
-            self.read_delta(&choice.delta, &mut events)?;
-            self.read_finish(choice.finish_reason.as_deref(), &mut events)?;
+            let empty = Map::new();
+            self.read_delta(choice.delta.unwrap_or(&empty), &mut events)?;
+            self.read_finish(choice.finish, &mut events)?;
         }
         if let Some(usage) = usage::read(chunk, self.cache_read_field.as_deref())? {
             events.push(ProviderEvent::Usage(usage));

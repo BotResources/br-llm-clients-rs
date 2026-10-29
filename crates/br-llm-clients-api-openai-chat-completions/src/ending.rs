@@ -1,18 +1,45 @@
-use br_llm_clients_common_call::PayloadError;
 use br_llm_messages::ResponseEnding;
 
-pub(crate) fn ending_of(
-    finish_reason: &str,
-    refusal_seen: bool,
-) -> Result<ResponseEnding, PayloadError> {
-    let mapped = match finish_reason {
-        "stop" if refusal_seen => ResponseEnding::refusal(),
-        "stop" => ResponseEnding::finished(),
-        "length" => ResponseEnding::output_exhaustion(),
-        "tool_calls" => ResponseEnding::tool_use(),
-        "content_filter" => ResponseEnding::filtering(),
-        other => ResponseEnding::unclassified(other)
-            .map_err(|_| PayloadError::new("the finish reason is empty"))?,
-    };
-    Ok(mapped)
+pub(crate) enum Finish {
+    Error,
+    Ended(Ended),
+}
+
+pub(crate) enum Ended {
+    Stop,
+    Length,
+    ToolCalls,
+    ContentFilter,
+    Other(ResponseEnding),
+}
+
+impl Finish {
+    pub(crate) fn of_reason(reason: &str) -> Option<Self> {
+        let ended = match reason {
+            "error" => return Some(Finish::Error),
+            "stop" => Ended::Stop,
+            "length" => Ended::Length,
+            "tool_calls" => Ended::ToolCalls,
+            "content_filter" => Ended::ContentFilter,
+            other => Ended::Other(ResponseEnding::unclassified(other).ok()?),
+        };
+        Some(Finish::Ended(ended))
+    }
+}
+
+impl Ended {
+    pub(crate) fn is_length(&self) -> bool {
+        matches!(self, Ended::Length)
+    }
+
+    pub(crate) fn ending(self, refusal_seen: bool) -> ResponseEnding {
+        match self {
+            Ended::Stop if refusal_seen => ResponseEnding::refusal(),
+            Ended::Stop => ResponseEnding::finished(),
+            Ended::Length => ResponseEnding::output_exhaustion(),
+            Ended::ToolCalls => ResponseEnding::tool_use(),
+            Ended::ContentFilter => ResponseEnding::filtering(),
+            Ended::Other(ending) => ending,
+        }
+    }
 }
