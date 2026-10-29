@@ -37,10 +37,30 @@ fn cut_wire(recording: Recording, cut: usize) -> crate::test_server::Wire {
     streamed(&status, &headers, first, vec![(pause(), rest.to_vec())])
 }
 
+fn cuts(body: &str) -> Vec<usize> {
+    let mut cuts = vec![0, body.len()];
+    for (at, character) in body.char_indices() {
+        let after = at + character.len_utf8();
+        if character == '\n' {
+            cuts.extend([after - 1, after, after + 1]);
+        }
+        cuts.extend(at + 1..after);
+    }
+    cuts.retain(|cut| *cut <= body.len());
+    cuts.sort_unstable();
+    cuts.dedup();
+    cuts
+}
+
 async fn summaries(recording: Recording) -> Vec<Summary> {
-    let server = TestServer::start(move |index| cut_wire(recording, index)).await;
+    let offsets = cuts(recording.body);
+    let served = offsets.clone();
+    let server = TestServer::start(move |index| {
+        cut_wire(recording, served.get(index).copied().unwrap_or(0))
+    })
+    .await;
     let mut found = Vec::new();
-    for _ in 0..=recording.body.len() {
+    for _ in &offsets {
         let spec = counted_spec_for(dialect(), &server);
         let mut sink = RecordingSink::default();
         let outcome = run(&spec, &hello(), &mut sink).await;
@@ -58,15 +78,24 @@ async fn summaries(recording: Recording) -> Vec<Summary> {
 
 async fn assert_every_cut_gives_the_same_outcome(recording: Recording) {
     let found = summaries(recording).await;
+    let offsets = cuts(recording.body);
     let reference = found.first().expect("the unsplit call");
     assert_eq!(
         reference.request_id.as_deref(),
         Some(recording.request_id())
     );
-    assert_eq!(found.len(), recording.body.len() + 1);
-    for (cut, summary) in found.iter().enumerate() {
+    assert_eq!(found.len(), offsets.len());
+    for (cut, summary) in offsets.iter().zip(&found) {
         assert_eq!(summary, reference, "{} cut at {cut}", recording.name);
     }
+}
+
+#[test]
+fn given_a_body_when_its_cuts_are_listed_then_they_hold_each_line_end_its_neighbours_and_the_inside_of_each_wide_character()
+ {
+    assert_eq!(cuts("ab\n\ncd"), [0, 2, 3, 4, 5, 6]);
+    assert_eq!(cuts("a\u{e9}b"), [0, 2, 4]);
+    assert_eq!(cuts("\u{20ac}\n"), [0, 1, 2, 3, 4]);
 }
 
 #[tokio::test]
