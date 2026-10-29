@@ -1,5 +1,7 @@
 use br_llm_clients_common_call::{Dialect, EncodedRequest, ErrorInfo, Headers, PayloadDecoder};
-use br_llm_clients_core::{ClientError, ClientRequest, ClientSettings, OutputMode, ReasoningLevel};
+use br_llm_clients_core::{
+    ClientError, ClientRequest, ClientSettings, OutputMode, ReasoningLevel, RenderedHistory,
+};
 
 use crate::decode::ResponsesDecoder;
 use crate::encode::{Fixed, encode};
@@ -28,7 +30,11 @@ impl OpenAiResponses {
 }
 
 impl Dialect for OpenAiResponses {
-    fn encode(&self, request: &ClientRequest) -> Result<EncodedRequest, ClientError> {
+    fn encode(
+        &self,
+        request: &ClientRequest,
+        history: &RenderedHistory,
+    ) -> Result<EncodedRequest, ClientError> {
         encode(
             &Fixed {
                 model: &self.model,
@@ -37,6 +43,7 @@ impl Dialect for OpenAiResponses {
                 options: &self.options,
             },
             request,
+            history,
         )
     }
 

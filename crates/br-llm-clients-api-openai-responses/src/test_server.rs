@@ -1,12 +1,9 @@
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use br_llm_clients_common_call::Endpoint;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-
-const SPLIT_PAUSE: Duration = Duration::from_millis(2);
 
 #[derive(Debug, Clone)]
 pub(crate) struct Received {
@@ -123,7 +120,7 @@ async fn serve(
             let (first, second) = wire.bytes.split_at(cut);
             let _ = stream.write_all(first).await;
             let _ = stream.flush().await;
-            tokio::time::sleep(SPLIT_PAUSE).await;
+            tokio::task::yield_now().await;
             let _ = stream.write_all(second).await;
         }
         _ => {

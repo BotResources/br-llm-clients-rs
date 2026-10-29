@@ -70,14 +70,13 @@ async fn given_every_byte_cut_of_a_stream_when_run_then_each_outcome_is_truncate
         let spec = crate::test_run::spec_with(
             dialect(ReasoningLevel::Off),
             server.endpoint("/v1/responses"),
-            "gpt-5.1",
         );
         let mut sink = crate::test_run::RecordingSink::default();
         let outcome = br_llm_clients_common_call::run(&spec, &hello(), &mut sink).await;
         let failure = outcome
             .into_parts()
             .1
-            .expect_err("a cut stream is never a step");
+            .expect_err("a cut stream is never a reply");
         assert!(
             matches!(
                 failure,

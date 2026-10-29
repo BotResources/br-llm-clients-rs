@@ -1,113 +1,214 @@
-use br_llm_messages::{AssistantBlock, RedactedThinking};
-use serde_json::json;
+use br_llm_messages::{ContentBlock, StructuredBlock};
+use serde_json::{Value, json};
 
-use crate::test_requests::{
-    assistant, call_block, envelope_text, expected_function_call, input_of, result_block, text,
-    thinking, user, user_text,
+use crate::test_history::{
+    call, earlier, fresh_block, json as opaque, notice, redacted, reply, response, result_of,
+    results, say, text, thinking,
 };
+use crate::test_requests::{expected_function_call, input_of};
 
-fn with_assistant(blocks: Vec<AssistantBlock>) -> Vec<serde_json::Value> {
-    input_of(vec![user_text("go"), assistant(blocks), user_text("next")])
+fn assistant_text(text: &str) -> Value {
+    json!({ "type": "message", "role": "assistant", "content": text })
+}
+
+fn user_texts(texts: &[&str]) -> Value {
+    let parts: Vec<Value> = texts
+        .iter()
+        .map(|text| json!({ "type": "input_text", "text": text }))
+        .collect();
+    json!({ "type": "message", "role": "user", "content": parts })
 }
 
 #[test]
 fn given_an_assistant_text_when_encoded_then_it_is_a_message_with_a_string_content_and_no_id() {
-    let items = with_assistant(vec![AssistantBlock::Text { text: text("done") }]);
-    assert_eq!(
-        items[1],
-        json!({ "type": "message", "role": "assistant", "content": "done" })
-    );
+    let items = input_of(vec![
+        say("hi"),
+        earlier(vec![response(vec![text("hello there")])]),
+        say("thanks"),
+    ]);
+    assert_eq!(items[1], assistant_text("hello there"));
+    assert!(items[1].get("id").is_none());
 }
 
 #[test]
 fn given_a_structured_block_when_encoded_then_the_content_is_its_compact_json_text() {
-    let items = with_assistant(vec![AssistantBlock::Structured {
-        value: json!({ "answer": [1, 2], "ok": true }),
-    }]);
-    assert_eq!(items[1]["role"], json!("assistant"));
-    let content = items[1]["content"].as_str().expect("string content");
-    assert!(!content.contains(' ') && !content.contains('\n'));
-    assert_eq!(
-        serde_json::from_str::<serde_json::Value>(content).expect("json"),
-        json!({ "answer": [1, 2], "ok": true })
-    );
+    let structured =
+        StructuredBlock::new(fresh_block(), opaque("{ \"a\" : [1, 2] }")).expect("structured");
+    let items = input_of(vec![
+        say("hi"),
+        earlier(vec![response(vec![ContentBlock::StructuredContent(
+            structured,
+        )])]),
+        say("more"),
+    ]);
+    assert_eq!(items[1], assistant_text("{\"a\":[1,2]}"));
 }
 
 #[test]
 fn given_a_tool_call_when_encoded_then_arguments_is_compact_json_text_and_there_is_no_id() {
-    let items = with_assistant(vec![call_block("call_9", "search", json!({ "q": "rust" }))]);
+    let found = call(Some("call_9"), "search", "{ \"q\" : \"x\" }");
+    let items = input_of(vec![
+        say("hi"),
+        earlier(vec![
+            response(vec![ContentBlock::RuntimeToolCall(found.clone())]),
+            results(vec![result_of(&found, Vec::new(), false)]),
+        ]),
+    ]);
     assert_eq!(
         items[1],
-        expected_function_call("call_9", "search", "{\"q\":\"rust\"}")
+        expected_function_call("call_9", "search", "{\"q\":\"x\"}")
     );
     assert!(items[1].get("id").is_none());
 }
 
 #[test]
-fn given_a_generated_tool_call_id_when_encoded_then_it_is_sent_as_it_is() {
-    let items = with_assistant(vec![call_block("brgen_3", "search", json!({}))]);
-    assert_eq!(items[1]["call_id"], json!("brgen_3"));
+fn given_a_tool_call_without_an_external_id_when_encoded_then_the_call_and_its_output_carry_the_wire_id_of_the_core()
+ {
+    let found = call(None, "search", "{}");
+    let items = input_of(vec![
+        say("hi"),
+        earlier(vec![
+            response(vec![ContentBlock::RuntimeToolCall(found.clone())]),
+            results(vec![result_of(&found, Vec::new(), false)]),
+        ]),
+    ]);
+    let wire = format!("call_{}", found.id().as_uuid().simple());
+    assert_eq!(items[1]["call_id"], json!(wire));
+    assert_eq!(items[2]["call_id"], json!(wire));
 }
 
 #[test]
-fn given_blocks_of_several_kinds_when_encoded_then_there_is_one_item_per_block_in_order() {
-    let items = with_assistant(vec![
-        AssistantBlock::Text {
-            text: text("let me look"),
-        },
-        call_block("a", "search", json!({})),
-        call_block("b", "fetch", json!({ "n": 1 })),
+fn given_parts_of_several_kinds_when_encoded_then_there_is_one_item_per_part_in_order() {
+    let found = call(Some("c1"), "search", "{}");
+    let items = input_of(vec![
+        say("hi"),
+        reply(vec![
+            response(vec![
+                text("first"),
+                ContentBlock::RuntimeToolCall(found.clone()),
+                text("second"),
+            ]),
+            results(vec![result_of(&found, Vec::new(), false)]),
+        ]),
     ]);
-    let kinds: Vec<&str> = items[1..4]
-        .iter()
-        .map(|item| item["type"].as_str().expect("type"))
-        .collect();
-    assert_eq!(kinds, ["message", "function_call", "function_call"]);
-    assert_eq!(items[3]["name"], json!("fetch"));
+    assert_eq!(
+        items[1..4],
+        [
+            assistant_text("first"),
+            expected_function_call("c1", "search", "{}"),
+            assistant_text("second"),
+        ]
+    );
 }
 
 #[test]
 fn given_a_redacted_thinking_block_when_encoded_then_it_is_not_sent() {
-    let items = with_assistant(vec![
-        AssistantBlock::RedactedThinking(RedactedThinking::new("opaque").expect("data")),
-        AssistantBlock::Text { text: text("hi") },
+    let items = input_of(vec![
+        say("hi"),
+        reply(vec![
+            response(vec![redacted("opaque"), text("answer")]),
+            notice("go on"),
+        ]),
     ]);
-    assert_eq!(items.len(), 3);
-    assert_eq!(items[1]["content"], json!("hi"));
+    assert_eq!(
+        items,
+        vec![
+            user_texts(&["hi"]),
+            assistant_text("answer"),
+            user_texts(&["<notice>go on</notice>"]),
+        ]
+    );
 }
 
 #[test]
-fn given_an_assistant_message_whose_blocks_all_drop_out_when_encoded_then_it_gives_no_item() {
-    let items = with_assistant(vec![
-        AssistantBlock::RedactedThinking(RedactedThinking::new("opaque").expect("data")),
-        thinking("x", None),
+fn given_an_assistant_message_whose_parts_all_drop_out_when_encoded_then_it_gives_no_item_and_its_neighbours_merge()
+ {
+    let items = input_of(vec![
+        say("hi"),
+        reply(vec![
+            response(vec![redacted("opaque"), thinking("no replay", None)]),
+            notice("go on"),
+        ]),
     ]);
-    assert_eq!(items.len(), 2);
-    assert_eq!(items[0]["role"], json!("user"));
-    assert_eq!(items[1]["role"], json!("user"));
+    assert_eq!(items, vec![user_texts(&["hi", "<notice>go on</notice>"])]);
+}
+
+#[test]
+fn given_two_assistant_messages_that_drop_out_when_encoded_then_the_three_user_messages_become_one()
+{
+    let items = input_of(vec![
+        say("one"),
+        reply(vec![
+            response(vec![thinking("a", None)]),
+            notice("two"),
+            response(vec![redacted("b")]),
+            notice("three"),
+        ]),
+    ]);
+    assert_eq!(
+        items,
+        vec![user_texts(&[
+            "one",
+            "<notice>two</notice>",
+            "<notice>three</notice>"
+        ])]
+    );
+}
+
+#[test]
+fn given_an_assistant_message_that_drops_out_before_a_tool_result_message_when_encoded_then_the_parts_follow_in_order()
+ {
+    let found = call(Some("c1"), "search", "{}");
+    let items = input_of(vec![
+        say("hi"),
+        reply(vec![
+            response(vec![ContentBlock::RuntimeToolCall(found.clone())]),
+            results(vec![result_of(&found, Vec::new(), false)]),
+            response(vec![thinking("x", None)]),
+            notice("after"),
+        ]),
+    ]);
+    let kinds: Vec<&str> = items
+        .iter()
+        .map(|item| item["type"].as_str().expect("type"))
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            "message",
+            "function_call",
+            "function_call_output",
+            "message"
+        ]
+    );
+    assert_eq!(items[3], user_texts(&["<notice>after</notice>"]));
 }
 
 #[test]
 fn given_a_history_call_to_an_undeclared_tool_when_encoded_then_it_is_not_refused() {
-    let items = with_assistant(vec![call_block("c", "never_declared", json!({}))]);
+    let found = call(Some("c1"), "never_declared", "{}");
+    let items = input_of(vec![
+        say("hi"),
+        earlier(vec![
+            response(vec![ContentBlock::RuntimeToolCall(found.clone())]),
+            results(vec![result_of(&found, Vec::new(), false)]),
+        ]),
+    ]);
     assert_eq!(items[1]["name"], json!("never_declared"));
 }
 
 #[test]
-fn given_a_thinking_block_of_the_turn_in_progress_when_encoded_then_a_reasoning_item_is_sent() {
-    let signature = envelope_text("rs_1", "ENC");
-    let messages = vec![
-        user_text("go"),
-        assistant(vec![
-            thinking("shown to the caller only", Some(&signature)),
-            call_block("c", "search", json!({})),
+fn given_a_text_block_with_replay_material_of_the_reply_turn_when_encoded_then_it_is_sent_as_a_text()
+ {
+    let block = br_llm_messages::TextBlock::new(fresh_block(), "carried")
+        .expect("text")
+        .with_replay(crate::test_history::envelope_replay("msg_1", "E"));
+    let items = input_of(vec![
+        say("hi"),
+        reply(vec![
+            response(vec![ContentBlock::Text(block)]),
+            notice("go"),
         ]),
-        user(vec![result_block("c", "search", &["r"], false)]),
-    ];
-    let items = input_of(messages);
-    assert_eq!(
-        items[1],
-        json!({ "type": "reasoning", "id": "rs_1", "summary": [], "encrypted_content": "ENC" })
-    );
-    assert_eq!(items[2]["type"], json!("function_call"));
+    ]);
+    assert_eq!(items[1], assistant_text("carried"));
 }

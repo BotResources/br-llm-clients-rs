@@ -80,7 +80,10 @@ async fn given_a_failed_response_with_usage_when_run_then_the_report_keeps_the_u
     let called = call_stream(&hello(), &[created("m"), event]).await;
     let (report, result) = called.outcome.into_parts();
     assert!(result.is_err());
-    assert_eq!(report.usage().map(|usage| usage.input_tokens), Some(7));
+    assert_eq!(
+        report.usage().and_then(|usage| usage.input_tokens()),
+        Some(7)
+    );
     assert_eq!(
         report.model().map(|model| model.as_str()),
         Some("gpt-5.1-2026-01-01")

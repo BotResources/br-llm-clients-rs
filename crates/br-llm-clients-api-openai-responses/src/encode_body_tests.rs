@@ -1,10 +1,10 @@
-use br_llm_clients_common_call::Dialect;
 use br_llm_clients_core::{CacheRequirement, ClientRequest, OutputMode, ReasoningLevel};
 use serde_json::{Value, json};
 
 use crate::OpenAiResponses;
 use crate::test_requests::{
-    body_of, dialect, encode_body, hello, parameter, request_with, settings, tool, user_text,
+    body_of, dialect, encode_body, encoded, hello, parameter, request_with, settings, tool,
+    user_text,
 };
 use br_llm_clients_core::ParameterKind;
 
@@ -98,9 +98,7 @@ fn given_a_plain_output_when_encoded_then_there_is_no_text_field() {
 
 #[test]
 fn given_a_request_when_encoded_then_the_only_header_is_content_type_json() {
-    let encoded = dialect(ReasoningLevel::Off)
-        .encode(&hello())
-        .expect("encoded");
+    let encoded = encoded(&dialect(ReasoningLevel::Off), &hello()).expect("encoded");
     assert_eq!(
         encoded.headers(),
         [("Content-Type".to_owned(), "application/json".to_owned())]
@@ -114,7 +112,7 @@ fn given_either_cache_requirement_when_encoded_then_the_body_is_identical_and_no
             &settings(ReasoningLevel::Medium, cache),
             crate::Options::default(),
         );
-        dialect.encode(&hello()).expect("never CacheNotSupported")
+        encoded(&dialect, &hello()).expect("never CacheNotSupported")
     };
     assert_eq!(
         encode_with(CacheRequirement::Required),
@@ -127,8 +125,8 @@ fn given_the_same_request_twice_when_encoded_then_the_bytes_are_identical() {
     let dialect = dialect(ReasoningLevel::High);
     let request: ClientRequest = hello();
     assert_eq!(
-        dialect.encode(&request).expect("first"),
-        dialect.encode(&request).expect("second")
+        encoded(&dialect, &request).expect("first"),
+        encoded(&dialect, &request).expect("second")
     );
 }
 

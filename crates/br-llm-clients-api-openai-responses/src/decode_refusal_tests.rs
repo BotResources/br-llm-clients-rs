@@ -1,5 +1,5 @@
 use br_llm_clients_common_call::ProviderEvent;
-use br_llm_messages::StopReason;
+use br_llm_messages::ResponseEnding;
 
 use crate::test_decoder::{end, feed, flat, plain_decoder, start_text, text};
 use crate::test_events::{
@@ -7,7 +7,7 @@ use crate::test_events::{
     refusal_done_part, refusal_part, text_delta, usage_object,
 };
 
-fn stop_of(events: &[ProviderEvent]) -> StopReason {
+fn stop_of(events: &[ProviderEvent]) -> ResponseEnding {
     events
         .iter()
         .find_map(|event| match event {
@@ -51,7 +51,7 @@ fn given_a_refusal_in_a_completed_response_when_finished_then_the_stop_is_refusa
         ],
     );
     let events = feed(&mut decoder, &completed("m", usage_object(1, 1)));
-    assert_eq!(stop_of(&events), StopReason::Refusal);
+    assert_eq!(stop_of(&events), ResponseEnding::refusal());
 }
 
 #[test]
@@ -62,7 +62,7 @@ fn given_a_refusal_delta_alone_when_finished_then_the_stop_is_refusal() {
         &[message_added(0), refusal_delta(0, 0, "No.")],
     );
     let events = feed(&mut decoder, &completed("m", usage_object(1, 1)));
-    assert_eq!(stop_of(&events), StopReason::Refusal);
+    assert_eq!(stop_of(&events), ResponseEnding::refusal());
 }
 
 #[test]
@@ -80,7 +80,7 @@ fn given_a_refusal_part_only_in_the_done_item_when_finished_then_the_stop_is_ref
         vec![start_text("0.0"), text("0.0", "No."), end("0.0")]
     );
     let finished = feed(&mut decoder, &completed("m", usage_object(1, 1)));
-    assert_eq!(stop_of(&finished), StopReason::Refusal);
+    assert_eq!(stop_of(&finished), ResponseEnding::refusal());
 }
 
 #[test]
@@ -91,7 +91,7 @@ fn given_a_refusal_part_added_alone_when_finished_then_the_stop_is_refusal() {
         &[message_added(0), part_added(0, 0, refusal_part())],
     );
     let events = feed(&mut decoder, &completed("m", usage_object(1, 1)));
-    assert_eq!(stop_of(&events), StopReason::Refusal);
+    assert_eq!(stop_of(&events), ResponseEnding::refusal());
 }
 
 #[test]
@@ -106,7 +106,7 @@ fn given_no_refusal_when_a_response_completes_then_the_stop_is_end_turn() {
         ],
     );
     let events = feed(&mut decoder, &completed("m", usage_object(1, 1)));
-    assert_eq!(stop_of(&events), StopReason::EndTurn);
+    assert_eq!(stop_of(&events), ResponseEnding::finished());
 }
 
 #[test]
@@ -122,7 +122,7 @@ fn given_a_refusal_in_an_incomplete_response_when_finished_then_the_reason_alone
             incomplete(Some("max_output_tokens"), usage_object(1, 1)),
         ],
     );
-    assert_eq!(stop_of(&events), StopReason::MaxTokens);
+    assert_eq!(stop_of(&events), ResponseEnding::output_exhaustion());
     assert!(events.contains(&text("0.0", "No.")));
     assert!(events.contains(&start_text("0.0")));
 }
@@ -137,9 +137,7 @@ fn given_a_refusal_in_an_incomplete_response_without_reason_when_finished_then_t
     let events = feed(&mut decoder, &incomplete(None, usage_object(1, 1)));
     assert_eq!(
         stop_of(&events),
-        StopReason::Other {
-            reason: "incomplete".to_owned()
-        }
+        crate::test_decoder::unclassified("incomplete")
     );
 }
 
