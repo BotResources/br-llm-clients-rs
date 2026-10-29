@@ -39,7 +39,7 @@ changed.
   `Value` of `serde_json`.
 - The decoder gives a `ResponseId` event with the `id` of the response of
   `response.created`, when that id is a text that is not empty. An id that is
-  not a text is a `PayloadError`.
+  present, not null and not a text is a `PayloadError`.
 - A tool result that holds an image is sent with an `output` array: one
   `input_text` part per text and one `input_image` part per image, in the order
   of the result, with a first part `Error: ` when the result is an error. A

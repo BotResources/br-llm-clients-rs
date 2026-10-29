@@ -64,7 +64,10 @@ fn given_a_provider_tool_block_of_the_reply_turn_when_encoded_then_the_messages_
         reply(vec![response(vec![block, text("x")]), notice("go")]),
     ]);
     assert!(
-        is_invalid(&error, "a block that this dialect cannot send"),
+        is_invalid(
+            &error,
+            "a block of kind provider_tool_call that this dialect cannot send"
+        ),
         "{error:?}"
     );
 }
