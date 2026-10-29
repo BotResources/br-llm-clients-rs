@@ -151,6 +151,22 @@ a tag of line 0.1 stays valid on that tag and is not changed.
   hold more than 2^30 - 1 bytes in total, or if the memory for the automaton
   cannot be reserved, no automaton is built and nothing aborts: every non-empty
   text is replaced by one `[redacted]`, and a cut refusal body keeps no byte.
+- A secret is also found when a text repeats it JSON-escaped, so a key that holds
+  `"`, `\`, `/`, a control character or a non-ASCII character is removed when an
+  error body repeats it inside a JSON string, whatever the encoder wrote for
+  each character (`\"`, `\/`, `\u0022` in either case, a surrogate pair), and
+  also when a proxy put that body inside another JSON string, up to three
+  times. The text is read as is and also decoded up to three times: each valid
+  escape is read as its character, and anything else is kept as it is. A secret
+  found in any of these readings is replaced in the text at the bytes that
+  wrote it. So a text that is not JSON can lose a little more than before: a
+  part such as `sk\u002d1` is replaced when `sk-1` is a secret. The trim of a
+  cut refusal body applies to every reading, and it also removes an escape
+  that the cut left incomplete at the end, such as `\u00`, a lone `\`, or the
+  first half of a surrogate pair, when a secret is in effect. A body with no
+  backslash is read once, as before. The test of the request id and of the
+  answered model finds these readings too. In 0.1.0 only the raw value was
+  found.
 - The text of a refusal that `error_code` and `refine_error` get is cut to
   64 KiB at a character boundary after the replacement. In 0.1.0 it was given
   uncut, so a replacement that made it longer gave the dialect up to ten times
