@@ -5,7 +5,7 @@ use crate::options_error::OptionsError;
 use crate::reasoning_table::ReasoningTable;
 use crate::tool_only_content::ToolOnlyContent;
 
-const RESERVED_REASONING_FIELDS: [&str; 6] = [
+const RESERVED_MESSAGE_FIELDS: [&str; 6] = [
     "content",
     "refusal",
     "tool_calls",
@@ -139,7 +139,9 @@ impl ChatCompletionsOptions {
     pub(crate) fn check(&self) -> Result<(), OptionsError> {
         self.reasoning_table.check(self.omit_effort_above_off)?;
         if let Some(field) = &self.reasoning_field {
-            check_reasoning_field(field)?;
+            check_message_field(field, OptionsError::BlankReasoningField, |field| {
+                OptionsError::ReservedReasoningField { field }
+            })?;
         }
         if let Some(field) = &self.cache_read_field
             && field.trim().is_empty()
@@ -147,7 +149,9 @@ impl ChatCompletionsOptions {
             return Err(OptionsError::BlankCacheReadField);
         }
         if let Some(field) = &self.reasoning_carry_back_field {
-            check_carry_back_field(field)?;
+            check_message_field(field, OptionsError::BlankCarryBackField, |field| {
+                OptionsError::ReservedCarryBackField { field }
+            })?;
         }
         if let Some(text) = &self.empty_tool_result_text
             && text.trim().is_empty()
@@ -166,26 +170,16 @@ impl ChatCompletionsOptions {
     }
 }
 
-fn check_carry_back_field(field: &str) -> Result<(), OptionsError> {
+fn check_message_field(
+    field: &str,
+    blank: OptionsError,
+    reserved: fn(String) -> OptionsError,
+) -> Result<(), OptionsError> {
     if field.trim().is_empty() {
-        return Err(OptionsError::BlankCarryBackField);
+        return Err(blank);
     }
-    if RESERVED_REASONING_FIELDS.contains(&field) {
-        return Err(OptionsError::ReservedCarryBackField {
-            field: field.to_owned(),
-        });
-    }
-    Ok(())
-}
-
-fn check_reasoning_field(field: &str) -> Result<(), OptionsError> {
-    if field.trim().is_empty() {
-        return Err(OptionsError::BlankReasoningField);
-    }
-    if RESERVED_REASONING_FIELDS.contains(&field) {
-        return Err(OptionsError::ReservedReasoningField {
-            field: field.to_owned(),
-        });
+    if RESERVED_MESSAGE_FIELDS.contains(&field) {
+        return Err(reserved(field.to_owned()));
     }
     Ok(())
 }

@@ -57,7 +57,7 @@ fn counts(
     )?;
     let cache_read = match (cached, cache_read_field) {
         (Some(cached), _) => Some(cached),
-        (None, Some(field)) => count_field(usage, field, &format!("usage.{field}"))?,
+        (None, Some(field)) => cache_field(usage, field)?,
         (None, None) => None,
     };
     Ok(Counts {
@@ -90,6 +90,16 @@ fn build(counts: Counts) -> Option<Usage> {
         usage = usage.with_thinking_tokens(thinking);
     }
     Some(usage)
+}
+
+fn cache_field(usage: &Map<String, Value>, field: &str) -> Result<Option<u64>, PayloadError> {
+    match present(usage, field) {
+        None => Ok(None),
+        Some(value) => value
+            .as_u64()
+            .map(Some)
+            .ok_or_else(|| wrong(&format!("usage.{field}"), "a non-negative integer")),
+    }
 }
 
 fn detail(
