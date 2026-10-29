@@ -15,6 +15,9 @@ pub(crate) enum Ended {
 
 impl Finish {
     pub(crate) fn of_reason(reason: &str) -> Option<Self> {
+        if reason.is_empty() {
+            return None;
+        }
         let ended = match reason {
             "error" => return Some(Finish::Error),
             "stop" => Ended::Stop,
