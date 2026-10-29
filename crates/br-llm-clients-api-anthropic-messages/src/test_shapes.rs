@@ -100,7 +100,7 @@ fn lookup(id: &str) -> br_llm_messages::RuntimeToolCall {
     call(id, "lookup", json!({}))
 }
 
-pub(crate) fn sealed_text() -> ContentBlock {
+fn sealed_text() -> ContentBlock {
     ContentBlock::Text(
         TextBlock::new(block_id(), "sealed")
             .expect("a text")
@@ -109,13 +109,13 @@ pub(crate) fn sealed_text() -> ContentBlock {
     )
 }
 
-pub(crate) fn sealed_call() -> br_llm_messages::RuntimeToolCall {
+fn sealed_call() -> br_llm_messages::RuntimeToolCall {
     call("t5", "lookup", json!({"q": 1}))
         .with_replay(material("other/format", "call-replay-secret"))
         .with_item_ref(item_ref("call-item-secret"))
 }
 
-pub(crate) fn sealed_turn() -> br_llm_messages::Turn {
+fn sealed_turn() -> br_llm_messages::Turn {
     let call = sealed_call();
     in_progress(vec![
         calling(vec![sealed_text(), call_block(&call)]),
