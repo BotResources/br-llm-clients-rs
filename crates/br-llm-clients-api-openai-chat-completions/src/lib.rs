@@ -11,7 +11,6 @@
 
 mod choice;
 mod decoder;
-mod delta;
 mod dialect;
 mod encode;
 mod encode_assistant;
@@ -24,7 +23,6 @@ mod encode_tools;
 mod encode_user;
 mod ending;
 mod error_code;
-mod finish;
 mod json_fields;
 mod max_tokens_field;
 mod options;

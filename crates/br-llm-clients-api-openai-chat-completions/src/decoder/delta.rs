@@ -1,7 +1,7 @@
 use br_llm_clients_common_call::{PayloadError, ProviderBlock, ProviderEvent};
 use serde_json::{Map, Value};
 
-use crate::decoder::ChatCompletionsDecoder;
+use super::ChatCompletionsDecoder;
 use crate::json_fields::{array_field, present, text_field, wrong};
 use crate::tool_fragments::hold;
 
@@ -18,7 +18,7 @@ struct DeltaText<'a> {
 }
 
 impl ChatCompletionsDecoder {
-    pub(crate) fn read_delta(
+    pub(super) fn read_delta(
         &mut self,
         delta: &Map<String, Value>,
         events: &mut Vec<ProviderEvent>,
@@ -94,7 +94,7 @@ impl ChatCompletionsDecoder {
         }
     }
 
-    pub(crate) fn close_open_block(&mut self, events: &mut Vec<ProviderEvent>) {
+    pub(super) fn close_open_block(&mut self, events: &mut Vec<ProviderEvent>) {
         if let Some(key) = self.open.take() {
             events.push(ProviderEvent::BlockEnd {
                 key: key.to_owned(),
