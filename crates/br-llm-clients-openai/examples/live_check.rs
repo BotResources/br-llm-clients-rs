@@ -4,10 +4,18 @@ use std::process::ExitCode;
 mod base;
 #[path = "live_check/checks.rs"]
 mod checks;
+#[path = "live_check/dialogue.rs"]
+mod dialogue;
+#[path = "live_check/picture_check.rs"]
+mod picture_check;
+#[path = "live_check/pictures.rs"]
+mod pictures;
 #[path = "live_check/setup.rs"]
 mod setup;
 #[path = "live_check/sink.rs"]
 mod sink;
+#[path = "live_check/thinking_check.rs"]
+mod thinking_check;
 #[path = "live_check/thread.rs"]
 mod thread;
 #[path = "live_check/tool_check.rs"]
@@ -49,17 +57,36 @@ async fn main() -> ExitCode {
         }
     };
     println!("model: {}", setup.model());
+    let mut passed = Vec::new();
     println!("(1) plain answer");
-    let plain = verdict("plain answer", checks::plain(&client).await);
+    passed.push(verdict("plain answer", checks::plain(&client).await));
     println!("(2) streaming");
-    let streaming = verdict("streaming", checks::streaming(&client).await);
+    passed.push(verdict("streaming", checks::streaming(&client).await));
     println!("(3) tool call");
-    let tool = verdict("tool call", tool_check::weather(&client).await);
+    passed.push(verdict("tool call", tool_check::weather(&client).await));
     println!("(4) usage");
-    let usage = verdict("usage", checks::usage(&client).await);
+    passed.push(verdict("usage", checks::usage(&client).await));
     println!("(5) unknown model");
-    let unknown = verdict("unknown model", checks::unknown_model(&setup).await);
-    if plain && streaming && tool && usage && unknown {
+    passed.push(verdict(
+        "unknown model",
+        checks::unknown_model(&setup).await,
+    ));
+    println!("(6) one picture");
+    passed.push(verdict(
+        "one picture",
+        picture_check::one_picture(&client).await,
+    ));
+    println!("(7) two pictures between text blocks");
+    passed.push(verdict(
+        "two pictures",
+        picture_check::two_pictures(&client).await,
+    ));
+    println!("(8) three-turn dialogue with thinking");
+    passed.push(verdict(
+        "dialogue with thinking",
+        thinking_check::dialogue(&setup).await,
+    ));
+    if passed.iter().all(|passed| *passed) {
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE

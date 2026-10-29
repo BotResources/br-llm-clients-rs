@@ -81,10 +81,14 @@ Dated 2026-10-30. First release. The library is built on
   `PromptCacheMode`, `Map` and `Value` of the dialect, and of `Accepted`,
   `Capabilities`, `CapabilitiesError`, `CapabilitiesSpec` and `IdSource` of
   `br-llm-clients-core`.
-- The example `live_check`, a developer tool that CI does not run, makes five
+- The example `live_check`, a developer tool that CI does not run, makes eight
   checks against the real service: a plain answer, streaming text deltas, a
   weather tool call answered with a fake result, the token counts of the usage,
-  and a call to an unknown model that must give `ModelNotFound`. It reads only
+  a call to an unknown model that must give `ModelNotFound`, one picture whose
+  quarters the model must name, two pictures between text blocks named in
+  order, and a three-turn dialogue at a reasoning level with a detailed summary,
+  whose thinking blocks are sent back in the history and whose last turn holds a
+  picture. The pictures are small PNG images embedded in the example. It reads only
   the environment variables `OPENAI_API_KEY` (required), `OPENAI_BASE_URL`
   (optional; unset or empty uses the default host of the library) and
   `OPENAI_MODEL` (optional, default `gpt-5.4-mini`; an id with no preset is
@@ -96,4 +100,6 @@ Dated 2026-10-30. First release. The library is built on
 ### Known gaps
 
 - The library has no test of its own: the `live_check` example is compiled, and
-  was not run against the real service for this release.
+  each of its eight checks passed against the real service with `gpt-5.4-mini`
+  on 2026-10-29. No single run passed all eight: the service answered some calls
+  with `insufficient_quota` while the credit of the account was settling.

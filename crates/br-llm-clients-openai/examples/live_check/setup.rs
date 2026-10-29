@@ -46,16 +46,19 @@ fn preset_of(model: &str) -> Option<ModelProfile> {
     }
 }
 
-fn level_for(profile: &ModelProfile) -> ReasoningLevel {
-    let accepts_low = match profile.capabilities().reasoning_levels() {
+fn accepts(profile: &ModelProfile, level: ReasoningLevel) -> bool {
+    match profile.capabilities().reasoning_levels() {
         Accepted::Any => true,
-        Accepted::Only(levels) => levels.contains(&ReasoningLevel::Low),
-    };
-    if accepts_low {
-        ReasoningLevel::Low
-    } else {
-        ReasoningLevel::Off
+        Accepted::Only(levels) => levels.contains(&level),
     }
+}
+
+fn first_accepted(profile: &ModelProfile, wanted: &[ReasoningLevel]) -> ReasoningLevel {
+    wanted
+        .iter()
+        .copied()
+        .find(|level| accepts(profile, *level))
+        .unwrap_or(ReasoningLevel::Off)
 }
 
 impl Setup {
@@ -93,10 +96,36 @@ impl Setup {
         self.client(&self.model, &self.profile)
     }
 
+    pub fn profile(&self) -> &ModelProfile {
+        &self.profile
+    }
+
+    pub fn thinking_level(&self, profile: &ModelProfile) -> ReasoningLevel {
+        first_accepted(profile, &[ReasoningLevel::Medium, ReasoningLevel::Low])
+    }
+
     pub fn client(&self, model: &str, profile: &ModelProfile) -> Result<OpenAiClient, Failure> {
+        let level = first_accepted(profile, &[ReasoningLevel::Low]);
+        self.build(model, profile, level)
+    }
+
+    pub fn client_at(
+        &self,
+        profile: &ModelProfile,
+        level: ReasoningLevel,
+    ) -> Result<OpenAiClient, Failure> {
+        self.build(&self.model, profile, level)
+    }
+
+    fn build(
+        &self,
+        model: &str,
+        profile: &ModelProfile,
+        level: ReasoningLevel,
+    ) -> Result<OpenAiClient, Failure> {
         let settings = ClientSettings::new(
             ModelName::new(model)?,
-            level_for(profile),
+            level,
             CacheRequirement::NotRequired,
             MaxOutputTokens::new(MAX_OUTPUT_TOKENS)?,
         );
