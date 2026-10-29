@@ -37,9 +37,10 @@ fn block_item(block: &ContentBlock) -> Result<Option<Value>, ClientError> {
         ContentBlock::Text(text) => Ok(Some(message_item(text.text().as_str()))),
         ContentBlock::Thinking(thinking) => Ok(reasoning_item(thinking)),
         ContentBlock::RedactedThinking(_) => Ok(None),
-        _ => Err(invalid_messages(
-            "an assistant message holds a block that this dialect cannot send",
-        )),
+        other => Err(invalid_messages(&format!(
+            "an assistant message holds a block of kind {} that this dialect cannot send",
+            other.kind().as_str()
+        ))),
     }
 }
 
