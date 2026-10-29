@@ -3,12 +3,16 @@ use br_llm_messages::{ToolResult, ToolResultBlock, WireUserBlock};
 use serde_json::Value;
 
 use crate::encode_parts::{message, text_part};
+use crate::options::ChatCompletionsOptions;
 
-pub(crate) fn user_messages(content: &[WireUserBlock]) -> Result<Vec<Value>, ClientError> {
+pub(crate) fn user_messages(
+    content: &[WireUserBlock],
+    options: &ChatCompletionsOptions,
+) -> Result<Vec<Value>, ClientError> {
     let mut messages = Vec::new();
     for block in content {
         if let WireUserBlock::ToolResult(result) = block {
-            messages.push(tool_message(result)?);
+            messages.push(tool_message(result, options)?);
         }
     }
     let parts: Vec<&WireUserBlock> = content
@@ -21,7 +25,10 @@ pub(crate) fn user_messages(content: &[WireUserBlock]) -> Result<Vec<Value>, Cli
     Ok(messages)
 }
 
-fn tool_message(result: &ToolResult) -> Result<Value, ClientError> {
+fn tool_message(
+    result: &ToolResult,
+    options: &ChatCompletionsOptions,
+) -> Result<Value, ClientError> {
     let mut texts = Vec::new();
     for block in &result.content {
         match block {
@@ -35,7 +42,7 @@ fn tool_message(result: &ToolResult) -> Result<Value, ClientError> {
         }
     }
     let content = match texts.as_slice() {
-        [] => Value::from(""),
+        [] => Value::from(options.empty_tool_result_text().unwrap_or("")),
         [only] => Value::from(*only),
         many => Value::Array(many.iter().map(|text| text_part(text)).collect()),
     };
@@ -45,6 +52,9 @@ fn tool_message(result: &ToolResult) -> Result<Value, ClientError> {
         Value::from(result.tool_call_id.as_str()),
     );
     tool.insert("content".to_owned(), content);
+    if options.tool_message_name() {
+        tool.insert("name".to_owned(), Value::from(result.tool_name.as_str()));
+    }
     Ok(Value::Object(tool))
 }
 
