@@ -210,12 +210,19 @@ async fn given_the_real_stream_split_in_two_writes_at_frame_edges_and_inside_cha
             &[("content-type", "text/event-stream")],
             REDACTED_THINKING_REAL.as_bytes(),
         )
-        .split_body_at(served.get(index).copied().unwrap_or(0))
+        .split_body_at(
+            served
+                .get(index)
+                .copied()
+                .expect("a split point for every request that the server gets"),
+        )
     })
     .await;
     let dialect = std::sync::Arc::new(plain_dialect());
     let http = http_client();
-    for offset in offsets {
+    let runs = offsets.len();
+    for (run, offset) in offsets.into_iter().enumerate() {
+        assert_eq!(server.requests().len(), run, "split at {offset}");
         let spec = spec_with(std::sync::Arc::clone(&dialect), &server, http.clone());
         let mut sink = crate::test_sink::RecordingSink::default();
         let outcome = br_llm_clients_common_call::run(&spec, &hello(), &mut sink).await;
@@ -225,4 +232,5 @@ async fn given_the_real_stream_split_in_two_writes_at_frame_edges_and_inside_cha
         );
         assert!(sink.deltas == whole.deltas, "split at {offset}");
     }
+    assert_eq!(server.requests().len(), runs);
 }

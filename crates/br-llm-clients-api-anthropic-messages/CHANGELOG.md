@@ -47,8 +47,6 @@ form to decide whether a version ships.
   `cache_creation_input_tokens`. A `Usage` event is given when the payload changed the record
   and the record holds an input count or an output count; a cache count comes only with an input
   count and a thinking count only with an output count.
-- `request_id` compares the header name `request-id` without regard to case and gives the first
-  such header when it is valid, non-empty text.
 - With the default options, the headers, the body bytes for a rendering that holds the same
   messages, the order of the headers and of the arrays, and the messages of the errors are those
   of 0.1. The closed field list and the never-sent list hold with the default options only.
