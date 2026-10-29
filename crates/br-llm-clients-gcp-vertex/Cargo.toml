@@ -1,0 +1,24 @@
+[package]
+name = "br-llm-clients-gcp-vertex"
+version = "0.1.0"
+description = "the Google Cloud Vertex AI client for Claude: a Client of br-llm-clients-core over the Anthropic Messages API that Vertex AI serves at streamRawPredict for a project and a location, authorized with the OAuth 2.0 access token of a service account key"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+base64 = { version = "0.23", default-features = false, features = ["alloc"] }
+br-llm-clients-api-anthropic-messages = { path = "../br-llm-clients-api-anthropic-messages", version = "0.2.0" }
+br-llm-clients-common-auth = { path = "../br-llm-clients-common-auth", version = "0.1.0" }
+br-llm-clients-common-call = { path = "../br-llm-clients-common-call", version = "0.2.0" }
+br-llm-clients-common-http = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-common-http/v0.2.0", version = "0.2.0" }
+br-llm-clients-core = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-core/v0.5.0", version = "0.5.0" }
+ring = { version = "0.17", default-features = false, features = ["alloc"] }
+rustls-pki-types = { version = "1.9", default-features = false, features = ["alloc"] }
+serde_json = "1"
+thiserror = "2"
+
+[dev-dependencies]
+br-llm-messages = { git = "https://github.com/BotResources/br-llm-messages-rs", tag = "br-llm-messages/v2.1.0", version = "2.1.0", features = ["mint"] }
+tokio = { version = "1", default-features = false, features = ["rt-multi-thread"] }

@@ -204,6 +204,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "br-llm-clients-gcp-vertex"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "br-llm-clients-api-anthropic-messages",
+ "br-llm-clients-common-auth",
+ "br-llm-clients-common-call",
+ "br-llm-clients-common-http 0.2.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-common-http%2Fv0.2.0)",
+ "br-llm-clients-core 0.5.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-core%2Fv0.5.0)",
+ "br-llm-messages",
+ "ring",
+ "rustls-pki-types",
+ "serde_json",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "br-llm-clients-mock"
 version = "0.6.0"
 dependencies = [
