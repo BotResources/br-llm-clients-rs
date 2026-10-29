@@ -36,7 +36,7 @@ br-llm-clients-common-auth = { git = "https://github.com/BotResources/br-llm-cli
 
 `br-llm-clients-api-openai-responses` (0.2.0) pins `br-llm-clients-common-call` at `br-llm-clients-common-call/v0.2.0`, `br-llm-clients-core` at `br-llm-clients-core/v0.5.0` and `br-llm-messages` at `br-llm-messages/v2.1.0`; a project that uses it pins common-call, core and messages at those same tags, or the types are two copies.
 
-`br-llm-clients-api-anthropic-messages` (0.1.0) still takes `br-llm-clients-common-call` 0.1.0, `br-llm-clients-core` 0.4.0 and `br-llm-clients-common-http` 0.1.0 from the tag `br-llm-clients-common-call/v0.1.0`, and `br-llm-messages` at `br-llm-messages/v0.5.0`; a project that uses it pins those, and does not mix them with the `br-llm-clients-core/v0.5.0` and `br-llm-clients-common-http/v0.2.0` pins above, until it moves to common-call 0.2.
+`br-llm-clients-api-anthropic-messages` (0.2.0) pins `br-llm-clients-common-call` at `br-llm-clients-common-call/v0.2.0`, `br-llm-clients-core` at `br-llm-clients-core/v0.5.0` and `br-llm-messages` at `br-llm-messages/v2.1.0`; a project that uses it pins common-call, core and messages at those same tags, or the types are two copies.
 
 `br-llm-clients-common-auth` (0.1.0) uses `br-llm-clients-common-http` 0.2.0 in its public API (`Secret`, `Authorizer`, `AuthorizerError`, `BoxFuture`, `HttpClient`, `Endpoint`); a project that uses it pins `br-llm-clients-common-http` at `br-llm-clients-common-http/v0.2.0`, or the types are two copies. `br-llm-clients-common-call` 0.2.0 uses the same pin, so a `TokenAuthorizer` can be given to it.
 
