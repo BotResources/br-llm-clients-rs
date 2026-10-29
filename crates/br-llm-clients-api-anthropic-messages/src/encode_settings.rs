@@ -1,21 +1,29 @@
 use br_llm_clients_core::{CacheRequirement, ClientError, ClientSettings, ReasoningLevel};
 use serde_json::{Value, json};
 
+use crate::options::MessagesOptions;
+
 pub(crate) struct EncodeSettings {
     model: String,
     max_tokens: u32,
     reasoning: ReasoningLevel,
     cache: CacheRequirement,
+    options: MessagesOptions,
 }
 
 impl EncodeSettings {
-    pub(crate) fn from_settings(settings: &ClientSettings) -> Self {
+    pub(crate) fn from_settings(settings: &ClientSettings, options: MessagesOptions) -> Self {
         Self {
             model: settings.model().as_str().to_owned(),
             max_tokens: settings.max_output_tokens().get(),
             reasoning: settings.reasoning(),
             cache: settings.cache(),
+            options,
         }
+    }
+
+    pub(crate) fn options(&self) -> &MessagesOptions {
+        &self.options
     }
 
     pub(crate) fn model(&self) -> &str {

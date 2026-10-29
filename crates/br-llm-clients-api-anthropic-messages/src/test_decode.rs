@@ -2,9 +2,10 @@ use br_llm_clients_common_call::{
     Dialect, End, Payload, PayloadDecoder, PayloadError, ProviderBlock, ProviderEvent,
 };
 use br_llm_clients_core::OutputMode;
-use br_llm_messages::{StopReason, Usage};
+use br_llm_messages::{ReplayFormat, ResponseEnding, Usage};
 use serde_json::Value;
 
+use crate::replay_formats::{REDACTED_DATA_FORMAT, SIGNATURE_FORMAT};
 use crate::test_fixtures::{dialect, structured};
 
 pub(crate) fn decoder(structured_mode: bool) -> Box<dyn PayloadDecoder> {
@@ -129,7 +130,16 @@ pub(crate) fn thinking_delta(index: &str, text: &str) -> ProviderEvent {
 pub(crate) fn signature_delta(index: &str, signature: &str) -> ProviderEvent {
     ProviderEvent::SignatureDelta {
         key: key(index),
+        format: ReplayFormat::new(SIGNATURE_FORMAT).expect("a format"),
         signature: signature.to_owned(),
+    }
+}
+
+pub(crate) fn redacted_data(index: &str, data: &str) -> ProviderEvent {
+    ProviderEvent::RedactedThinkingData {
+        key: key(index),
+        format: ReplayFormat::new(REDACTED_DATA_FORMAT).expect("a format"),
+        data: data.to_owned(),
     }
 }
 
@@ -145,17 +155,11 @@ pub(crate) fn end_of(index: &str) -> ProviderEvent {
 }
 
 pub(crate) fn usage(input: u64, output: u64) -> Usage {
-    Usage {
-        input_tokens: input,
-        output_tokens: output,
-        cache_read_tokens: None,
-        cache_write_tokens: None,
-        thinking_tokens: None,
-    }
+    Usage::of_input_tokens(input).with_output_tokens(output)
 }
 
-pub(crate) fn stop(reason: StopReason) -> ProviderEvent {
-    ProviderEvent::Stop(reason)
+pub(crate) fn stop(ending: ResponseEnding) -> ProviderEvent {
+    ProviderEvent::Stop(ending)
 }
 
 pub(crate) fn block_start(index: &str, block: &str) -> String {

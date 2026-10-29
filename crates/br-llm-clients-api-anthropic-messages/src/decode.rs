@@ -1,5 +1,5 @@
 use br_llm_clients_common_call::{End, Payload, PayloadDecoder, PayloadError, ProviderEvent};
-use br_llm_messages::StopReason;
+use br_llm_messages::ResponseEnding;
 
 use crate::decode_blocks::Blocks;
 use crate::decode_envelope::{Envelope, read};
@@ -9,7 +9,7 @@ use crate::decode_usage::UsageRecord;
 pub(crate) struct Decoder {
     pub(crate) blocks: Blocks,
     pub(crate) started: bool,
-    pub(crate) stop_reason: Option<StopReason>,
+    pub(crate) stop_reason: Option<ResponseEnding>,
     pub(crate) usage: UsageRecord,
 }
 

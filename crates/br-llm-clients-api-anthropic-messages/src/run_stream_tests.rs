@@ -1,84 +1,81 @@
 use br_llm_clients_core::ClientError;
-use br_llm_messages::{AssistantBlock, StopReason, Usage};
+use br_llm_messages::{ContentBlock, ResponseDeltaKind, ResponseEnding, Usage};
 use serde_json::json;
 
 use crate::test_call::*;
+use crate::test_response::{structured, texts, thinking, tool_calls};
 use crate::test_streams::*;
 use crate::test_streams_constructed::*;
-
-fn texts(blocks: &[AssistantBlock]) -> Vec<String> {
-    blocks
-        .iter()
-        .filter_map(|block| block.as_text().map(|text| text.as_str().to_owned()))
-        .collect()
-}
+use crate::test_thread::signature;
 
 #[tokio::test]
-async fn given_the_documented_basic_stream_when_run_then_the_step_holds_the_text_usage_and_model() {
+async fn given_the_documented_basic_stream_when_run_then_the_response_holds_the_text_usage_model_and_id()
+ {
     let called = call_stream(&hello(), BASIC).await;
-    let step = called.step();
-    assert_eq!(texts(step.content()), ["Hello!"]);
-    assert_eq!(step.stop_reason(), &StopReason::EndTurn);
+    let response = called.response();
+    assert_eq!(texts(response), ["Hello!"]);
+    assert_eq!(response.ending(), &ResponseEnding::finished());
     assert_eq!(
-        step.usage(),
-        Some(&Usage {
-            input_tokens: 25,
-            output_tokens: 15,
-            cache_read_tokens: None,
-            cache_write_tokens: None,
-            thinking_tokens: None,
-        })
+        response.usage(),
+        Some(&Usage::of_input_tokens(25).with_output_tokens(15))
     );
     assert_eq!(
-        step.model().map(|model| model.as_str()),
+        response.model().map(|model| model.as_str()),
         Some("claude-test-model")
     );
-    assert_eq!(called.outcome.report().usage(), step.usage());
+    assert_eq!(
+        response.provider_response_id().map(|id| id.as_str()),
+        Some("msg_test_basic")
+    );
+    assert_eq!(called.outcome.report().usage(), response.usage());
 }
 
 #[tokio::test]
-async fn given_the_documented_tool_stream_when_run_then_the_step_holds_text_and_the_parsed_call() {
+async fn given_the_documented_tool_stream_when_run_then_the_response_holds_text_and_the_parsed_call()
+ {
     let called = call_stream(&hello(), TOOL_USE).await;
-    let step = called.step();
-    assert_eq!(step.stop_reason(), &StopReason::AwaitingToolResults);
+    let response = called.response();
+    assert_eq!(response.ending(), &ResponseEnding::tool_use());
     assert_eq!(
-        texts(step.content()),
+        texts(response),
         ["Okay, let's check the weather for San Francisco, CA:"]
     );
-    let calls: Vec<_> = step.tool_calls().collect();
+    let calls = tool_calls(response);
     assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].id.as_str(), "toolu_01T1x1fJ34qAmk2tNTrN7Up6");
-    assert_eq!(calls[0].name.as_str(), "get_weather");
+    assert_eq!(calls[0].id.as_deref(), Some("toolu_test_weather"));
+    assert_eq!(calls[0].name, "get_weather");
     assert_eq!(calls[0].arguments, json!({"location": "San Francisco, CA"}));
-    assert_eq!(step.usage().map(|usage| usage.output_tokens), Some(89));
+    assert_eq!(
+        response.usage().and_then(|usage| usage.output_tokens()),
+        Some(89)
+    );
 }
 
 #[tokio::test]
-async fn given_the_documented_thinking_stream_when_run_then_the_step_holds_signed_thinking_and_no_usage()
+async fn given_the_documented_thinking_stream_when_run_then_the_response_holds_signed_thinking_and_no_usage()
  {
     let called = call_stream(&hello(), THINKING).await;
-    let step = called.step();
-    let thinking: Vec<_> = step.thinking().collect();
+    let response = called.response();
+    let thinking = thinking(response);
     assert_eq!(thinking.len(), 1);
     assert!(
         thinking[0]
-            .text
+            .0
             .starts_with("I need to find the GCD of 1071 and 462")
     );
-    assert!(thinking[0].text.contains("1071 = 2 × 462 + 147"));
-    assert!(thinking[0].text.ends_with("GCD(1071, 462) = 21."));
+    assert!(thinking[0].0.contains("1071 = 2 × 462 + 147"));
+    assert!(thinking[0].0.ends_with("GCD(1071, 462) = 21."));
     assert_eq!(
-        thinking[0]
-            .signature
-            .as_ref()
-            .map(|signature| signature.as_str()),
-        Some("EqQBCgIYAhIM1gbcDa9GJwZA2b3hGgxBdjrkzLoky3dl1pkiMOYds...")
+        thinking[0].1,
+        Some(signature(
+            "EqQBCgIYAhIM1gbcDa9GJwZA2b3hGgxBdjrkzLoky3dl1pkiMOYds..."
+        ))
     );
     assert_eq!(
-        texts(step.content()),
+        texts(response),
         ["The greatest common divisor of 1071 and 462 is **21**."]
     );
-    assert_eq!(step.usage(), None);
+    assert_eq!(response.usage(), None);
     assert_eq!(called.outcome.report().usage(), None);
 }
 
@@ -86,20 +83,20 @@ async fn given_the_documented_thinking_stream_when_run_then_the_step_holds_signe
 async fn given_the_omitted_thinking_shape_when_run_then_the_thinking_has_empty_text_and_a_signature()
  {
     let called = call_stream(&hello(), OMITTED_THINKING).await;
-    let thinking: Vec<_> = called.step().thinking().collect();
+    let thinking = thinking(called.response());
     assert_eq!(thinking.len(), 1);
-    assert_eq!(thinking[0].text, "");
-    assert!(thinking[0].signature.is_some());
+    assert_eq!(thinking[0].0, "");
+    assert_eq!(thinking[0].1, Some(signature("EqQBCgIYAhIM")));
 }
 
 #[tokio::test]
 async fn given_a_tool_call_with_no_arguments_when_run_then_the_arguments_are_the_empty_object() {
     let called = call_stream(&hello(), EMPTY_TOOL_CALL).await;
-    let step = called.step();
-    assert_eq!(step.stop_reason(), &StopReason::AwaitingToolResults);
-    let calls: Vec<_> = step.tool_calls().collect();
+    let response = called.response();
+    assert_eq!(response.ending(), &ResponseEnding::tool_use());
+    let calls = tool_calls(response);
     assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].name.as_str(), "ping");
+    assert_eq!(calls[0].name, "ping");
     assert_eq!(calls[0].arguments, json!({}));
 }
 
@@ -110,7 +107,7 @@ async fn given_a_cut_tool_call_with_max_tokens_when_run_then_it_is_never_read_as
     assert_eq!(
         called.error(),
         &ClientError::ReplyUnusable {
-            stop_reason: StopReason::MaxTokens
+            ending: ResponseEnding::output_exhaustion()
         }
     );
 }
@@ -122,57 +119,64 @@ async fn given_a_refusal_with_no_content_when_run_then_the_content_is_blocked() 
 }
 
 #[tokio::test]
-async fn given_a_structured_reply_in_structured_mode_when_run_then_the_step_holds_the_value() {
+async fn given_a_structured_reply_in_structured_mode_when_run_then_the_response_holds_the_value() {
     let called = call_with(plain_dialect(), &structured_hello(), |_| {
         crate::test_server::http("200 OK", &[], STRUCTURED_REPLY.as_bytes())
     })
     .await;
-    let values: Vec<_> = called.step().structured().cloned().collect();
-    assert_eq!(values, vec![json!({"value": "forty-two"})]);
+    assert_eq!(
+        structured(called.response()),
+        vec![json!({"value": "forty-two"})]
+    );
 }
 
 #[tokio::test]
-async fn given_a_redacted_thinking_stream_when_run_then_the_step_keeps_the_data_before_the_text() {
+async fn given_a_redacted_thinking_stream_when_run_then_the_response_keeps_the_data_before_the_text()
+ {
     let called = call_stream(&hello(), REDACTED_THINKING).await;
-    let content = called.step().content();
-    assert!(matches!(
-        content.first(),
-        Some(AssistantBlock::RedactedThinking(_))
-    ));
-    assert_eq!(texts(content), ["Hi."]);
+    let response = called.response();
+    match response.blocks().first() {
+        Some(ContentBlock::RedactedThinking(redacted)) => assert_eq!(
+            redacted.material(),
+            &crate::test_thread::redacted_data(
+                "EmwKAhgBEgy3va3pzix/LafPsn4aDFIT2Xlxh0L5L8rLVyIwxtE3rAFBa8cr3qpP"
+            )
+        ),
+        _ => panic!("the first block is not a redacted thinking block"),
+    }
+    assert_eq!(texts(response), ["Hi."]);
 }
 
 #[tokio::test]
 async fn given_a_constructed_stream_with_cache_counts_when_run_then_the_last_usage_carries_them() {
     let called = call_stream(&hello(), CACHE_COUNTS).await;
     assert_eq!(
-        called.step().usage(),
-        Some(&Usage {
-            input_tokens: 14802,
-            output_tokens: 510,
-            cache_read_tokens: Some(4000),
-            cache_write_tokens: Some(120),
-            thinking_tokens: None,
-        })
+        called.response().usage(),
+        Some(
+            &Usage::of_input_tokens(14802)
+                .with_output_tokens(510)
+                .with_cache_read_input_tokens(4000)
+                .with_cache_creation_input_tokens(120)
+        )
     );
 }
 
 #[tokio::test]
-async fn given_a_documented_stream_when_run_then_the_sink_gets_events_ending_with_the_finish() {
+async fn given_a_documented_stream_when_run_then_the_sink_gets_deltas_ending_with_the_completion() {
     let called = call_stream(&hello(), TOOL_USE).await;
-    assert!(matches!(
-        called.events.last(),
-        Some(br_llm_messages::StreamEvent::Finish { .. })
-    ));
-    assert!(called.events.len() > 5);
+    assert_eq!(
+        called.deltas.last().map(|delta| delta.kind()),
+        Some(ResponseDeltaKind::ResponseCompleted)
+    );
+    assert!(called.deltas.len() > 5);
 }
 
 #[tokio::test]
-async fn given_a_tool_use_stop_with_text_and_no_call_when_run_then_the_stop_is_corrected_to_end_turn()
+async fn given_a_tool_use_stop_with_text_and_no_call_when_run_then_the_ending_is_corrected_to_finished()
  {
     let stream = BASIC.replace("end_turn", "tool_use");
     let called = call_stream(&hello(), &stream).await;
-    assert_eq!(called.step().stop_reason(), &StopReason::EndTurn);
+    assert_eq!(called.response().ending(), &ResponseEnding::finished());
 }
 
 #[tokio::test]
@@ -182,27 +186,46 @@ async fn given_a_tool_use_stop_with_nothing_usable_when_run_then_the_reply_is_un
     assert_eq!(
         called.error(),
         &ClientError::ReplyUnusable {
-            stop_reason: StopReason::AwaitingToolResults
+            ending: ResponseEnding::tool_use()
         }
     );
 }
 
 #[tokio::test]
-async fn given_a_pause_turn_with_text_when_run_then_the_stop_reason_is_other() {
-    let stream = BASIC.replace("end_turn", "pause_turn");
+async fn given_a_pause_turn_or_a_context_window_stop_with_text_when_run_then_the_ending_is_unclassified()
+ {
+    for reason in ["pause_turn", "model_context_window_exceeded"] {
+        let stream = BASIC.replace("end_turn", reason);
+        let called = call_stream(&hello(), &stream).await;
+        assert_eq!(
+            called.response().ending(),
+            &ResponseEnding::unclassified(reason).expect("an ending")
+        );
+    }
+}
+
+#[tokio::test]
+async fn given_a_stop_sequence_stop_when_run_then_the_ending_is_a_stop_sequence_with_no_matched_sequence()
+ {
+    let stream = BASIC.replace(
+        r#""stop_reason": "end_turn", "stop_sequence":null"#,
+        r#""stop_reason": "stop_sequence", "stop_sequence":"END""#,
+    );
+    assert!(stream.contains("\"END\""));
     let called = call_stream(&hello(), &stream).await;
-    assert_eq!(
-        called.step().stop_reason(),
-        &StopReason::Other {
-            reason: "pause_turn".to_owned()
-        }
-    );
+    let ending = called.response().ending();
+    assert_eq!(ending, &ResponseEnding::stop_sequence());
+    assert_eq!(ending.matched_sequence(), None);
 }
 
 #[tokio::test]
-async fn given_a_max_tokens_stop_with_text_when_run_then_the_step_is_kept_with_max_tokens() {
+async fn given_a_max_tokens_stop_with_text_when_run_then_the_response_is_kept_with_output_exhaustion()
+ {
     let stream = BASIC.replace("end_turn", "max_tokens");
     let called = call_stream(&hello(), &stream).await;
-    assert_eq!(called.step().stop_reason(), &StopReason::MaxTokens);
-    assert_eq!(texts(called.step().content()), ["Hello!"]);
+    assert_eq!(
+        called.response().ending(),
+        &ResponseEnding::output_exhaustion()
+    );
+    assert_eq!(texts(called.response()), ["Hello!"]);
 }

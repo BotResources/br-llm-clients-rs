@@ -37,13 +37,9 @@ fn given_the_three_input_fields_when_decoded_then_input_is_their_sum_and_cache_f
     );
     assert_eq!(
         only_usage(events),
-        Usage {
-            input_tokens: 18,
-            output_tokens: 2,
-            cache_read_tokens: Some(5),
-            cache_write_tokens: Some(3),
-            thinking_tokens: None,
-        }
+        usage(18, 2)
+            .with_cache_read_input_tokens(5)
+            .with_cache_creation_input_tokens(3)
     );
 }
 
@@ -51,20 +47,20 @@ fn given_the_three_input_fields_when_decoded_then_input_is_their_sum_and_cache_f
 fn given_a_cache_field_never_present_when_decoded_then_it_is_none_and_a_zero_is_some_zero() {
     let (_, events) = start_with(r#"{"input_tokens":1,"output_tokens":1}"#);
     let usage = only_usage(events);
-    assert_eq!(usage.cache_read_tokens, None);
-    assert_eq!(usage.cache_write_tokens, None);
+    assert_eq!(usage.cache_read_input_tokens(), None);
+    assert_eq!(usage.cache_creation_input_tokens(), None);
     let (_, events) = start_with(
         r#"{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}"#,
     );
     let usage = only_usage(events);
-    assert_eq!(usage.cache_read_tokens, Some(0));
-    assert_eq!(usage.cache_write_tokens, Some(0));
+    assert_eq!(usage.cache_read_input_tokens(), Some(0));
+    assert_eq!(usage.cache_creation_input_tokens(), Some(0));
 }
 
 #[test]
-fn given_a_usage_without_output_when_decoded_then_none_is_given_until_both_have_been_present() {
+fn given_an_input_count_without_output_when_decoded_then_a_usage_with_the_input_only_is_given() {
     let (mut session, events) = start_with(r#"{"input_tokens":10}"#);
-    assert!(events.is_empty());
+    assert_eq!(only_usage(events), Usage::of_input_tokens(10));
     assert_eq!(
         only_usage(delta_usage(&mut session, r#"{"output_tokens":7}"#)),
         usage(10, 7)
@@ -72,12 +68,40 @@ fn given_a_usage_without_output_when_decoded_then_none_is_given_until_both_have_
 }
 
 #[test]
-fn given_a_usage_without_input_when_decoded_then_none_is_given_until_both_have_been_present() {
+fn given_an_output_count_without_input_when_decoded_then_a_usage_with_the_output_only_is_given() {
     let (mut session, events) = start_with(r#"{"output_tokens":4}"#);
-    assert!(events.is_empty());
+    assert_eq!(only_usage(events), Usage::of_output_tokens(4));
     assert_eq!(
         only_usage(delta_usage(&mut session, r#"{"input_tokens":9}"#)),
         usage(9, 4)
+    );
+}
+
+#[test]
+fn given_only_a_cache_field_when_decoded_then_it_is_an_input_count_and_the_cache_count_is_given() {
+    let (_, events) = start_with(r#"{"cache_read_input_tokens":5}"#);
+    assert_eq!(
+        only_usage(events),
+        Usage::of_input_tokens(5).with_cache_read_input_tokens(5)
+    );
+    let (_, events) = start_with(r#"{"cache_creation_input_tokens":0}"#);
+    assert_eq!(
+        only_usage(events),
+        Usage::of_input_tokens(0).with_cache_creation_input_tokens(0)
+    );
+}
+
+#[test]
+fn given_a_record_with_no_input_and_no_output_count_when_a_payload_changes_it_then_no_usage_is_given()
+ {
+    let (mut session, events) = start_with(r#"{"output_tokens_details":{"thinking_tokens":3}}"#);
+    assert!(events.is_empty());
+    assert!(
+        delta_usage(
+            &mut session,
+            r#"{"output_tokens_details":{"thinking_tokens":4}}"#
+        )
+        .is_empty()
     );
 }
 
@@ -125,16 +149,16 @@ fn given_a_usage_that_changes_nothing_when_decoded_then_no_event_is_given() {
 }
 
 #[test]
-fn given_only_a_cache_field_changing_after_completion_when_decoded_then_a_new_usage_is_given() {
+fn given_only_a_cache_field_changing_later_when_decoded_then_a_new_usage_is_given() {
     let (mut session, _) = start_with(r#"{"input_tokens":10,"output_tokens":5}"#);
     let events = delta_usage(&mut session, r#"{"cache_read_input_tokens":4}"#);
     let usage = only_usage(events);
-    assert_eq!(usage.input_tokens, 14);
-    assert_eq!(usage.cache_read_tokens, Some(4));
+    assert_eq!(usage.input_tokens(), Some(14));
+    assert_eq!(usage.cache_read_input_tokens(), Some(4));
 }
 
 #[test]
-fn given_a_message_delta_usage_when_message_start_had_none_then_it_can_complete_the_record() {
+fn given_a_message_delta_usage_when_message_start_had_none_then_it_gives_the_usage() {
     let mut session = Session::started();
     let events = delta_usage(&mut session, r#"{"input_tokens":3,"output_tokens":8}"#);
     assert_eq!(only_usage(events), usage(3, 8));
@@ -145,10 +169,7 @@ fn given_other_usage_fields_when_decoded_then_they_are_ignored() {
     let (_, events) = start_with(
         r#"{"input_tokens":1,"output_tokens":2,"cache_creation":{"ephemeral_5m_input_tokens":0},"service_tier":"standard","server_tool_use":{"web_search_requests":0},"thinking_tokens":9}"#,
     );
-    let usage = only_usage(events);
-    assert_eq!(usage.thinking_tokens, None);
-    assert_eq!(usage.cache_read_tokens, None);
-    assert_eq!((usage.input_tokens, usage.output_tokens), (1, 2));
+    assert_eq!(only_usage(events), usage(1, 2));
 }
 
 #[test]
@@ -186,11 +207,20 @@ fn given_a_usage_that_is_not_an_object_when_decoded_then_it_is_a_payload_error()
 
 #[test]
 fn given_a_sum_that_overflows_when_decoded_then_it_is_a_payload_error() {
-    let mut session = Session::plain();
-    session.rejected(&format!(
-        r#"{{"type":"message_start","message":{{"usage":{{"input_tokens":{},"cache_read_input_tokens":1,"output_tokens":1}}}}}}"#,
-        u64::MAX
-    ));
+    for usage in [
+        format!(
+            r#"{{"input_tokens":{},"cache_read_input_tokens":1,"output_tokens":1}}"#,
+            u64::MAX
+        ),
+        format!(
+            r#"{{"cache_read_input_tokens":{},"cache_creation_input_tokens":1}}"#,
+            u64::MAX
+        ),
+    ] {
+        Session::plain().rejected(&format!(
+            r#"{{"type":"message_start","message":{{"usage":{usage}}}}}"#
+        ));
+    }
 }
 
 #[test]
@@ -199,7 +229,7 @@ fn given_the_largest_exact_sum_when_decoded_then_it_is_accepted() {
         r#"{{"input_tokens":{},"cache_read_input_tokens":1,"output_tokens":1}}"#,
         u64::MAX - 1
     ));
-    assert_eq!(only_usage(events).input_tokens, u64::MAX);
+    assert_eq!(only_usage(events).input_tokens(), Some(u64::MAX));
 }
 
 #[test]
