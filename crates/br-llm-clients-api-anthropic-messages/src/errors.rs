@@ -26,11 +26,8 @@ pub(crate) fn error_code(body: &str) -> Option<String> {
 }
 
 pub(crate) fn request_id(headers: &Headers) -> Option<String> {
-    let (_, value) = headers
-        .iter()
-        .find(|(name, _)| name.eq_ignore_ascii_case(REQUEST_ID_HEADER))?;
-    std::str::from_utf8(value)
-        .ok()
+    headers
+        .get_text(REQUEST_ID_HEADER)
         .filter(|id| !id.is_empty())
         .map(str::to_owned)
 }
