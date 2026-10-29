@@ -2,18 +2,19 @@
 
 Provider clients for LLM calls: send a system prompt, tools and a chat history from `br-llm-messages`, get the reply. Provider clients are separate crates, versioned separately, each released by its own git tag `{crate}/v{version}`:
 
-- `br-llm-clients-common-http` — sends one HTTP POST and gives back the status, the headers and a stream of byte chunks, with every failure told apart; it is used by the provider client `br-llm-clients-openai`.
+- `br-llm-clients-common-http` — sends one HTTP POST and gives back the status, the headers and a stream of byte chunks, with every failure told apart; it is used by the provider clients `br-llm-clients-openai` and `br-llm-clients-anthropic`.
 - `br-llm-clients-core` — the core: provider-neutral request over a projected thread, settings, outcome, error, the rendering of a history, and the `Client`, `StreamSink` and `IdSource` traits every client library uses.
 - `br-llm-clients-mock` — a configurable mock `Client` for fast, parallel tests, used as a dev-dependency.
-- `br-llm-clients-common-call` — runs one call of a client: encodes the request through a dialect, sends it, and turns every failure into a `ClientError`, for any provider and any wire dialect; it is used by the provider client `br-llm-clients-openai`.
-- `br-llm-clients-api-anthropic-messages` — the Anthropic Messages wire dialect: encodes a request and decodes the streamed reply and the errors of the Anthropic Messages API for the shared call; no provider client uses it yet.
+- `br-llm-clients-common-call` — runs one call of a client: encodes the request through a dialect, sends it, and turns every failure into a `ClientError`, for any provider and any wire dialect; it is used by the provider clients `br-llm-clients-openai` and `br-llm-clients-anthropic`.
+- `br-llm-clients-api-anthropic-messages` — the Anthropic Messages wire dialect: encodes a request and decodes the streamed reply and the errors of the Anthropic Messages API for the shared call; it is used by the provider client `br-llm-clients-anthropic`.
 - `br-llm-clients-api-openai-responses` — the OpenAI Responses wire dialect: encodes a request and decodes the streamed reply and the errors of the OpenAI Responses API for the shared call; it is used by the provider client `br-llm-clients-openai`.
 - `br-llm-clients-api-openai-chat-completions` — the OpenAI Chat Completions wire dialect: encodes a request and decodes the streamed reply and the errors of the Chat Completions API for the shared call; no provider client uses it yet.
 - `br-llm-clients-openai` — the client for the first-party OpenAI API: sends every call to the Responses API with an API key, checks the capabilities of its model profile before each call, and gives the outcome of the shared call. Its optional base is the origin, with an optional path prefix, before `/v1`: the client adds `/v1/responses` itself.
+- `br-llm-clients-anthropic` — the client for the first-party Anthropic API: sends every call to the Messages API, with the key in `x-api-key` or, on request, in `authorization: Bearer`, checks the capabilities of the current Claude models before each call, and gives the outcome of the shared call. Its optional base is the origin, with an optional path prefix, before `/v1`: the client adds `/v1/messages` itself.
 - `br-llm-clients-common-sse` — a Server-Sent Events decoder: turns the bytes of a response body into frames, with a size limit and no hidden damage.
 - `br-llm-clients-common-auth` — gives a bearer token to a request: a token source, a cache that fetches a new token before the old one ends, an authorizer for `br-llm-clients-common-http` and a client for the form-encoded token request of OAuth 2.0; no provider client uses it yet.
 
-**Status:** `br-llm-clients-core` is at `0.5.0`, `br-llm-clients-mock` is at `0.6.0`, `br-llm-clients-common-http`, `br-llm-clients-common-call`, `br-llm-clients-api-anthropic-messages`, `br-llm-clients-api-openai-responses` and `br-llm-clients-api-openai-chat-completions` are at `0.2.0`, and `br-llm-clients-common-sse`, `br-llm-clients-common-auth` and `br-llm-clients-openai` are at `0.1.0`; the other crates are not written yet.
+**Status:** `br-llm-clients-core` is at `0.5.0`, `br-llm-clients-mock` is at `0.6.0`, `br-llm-clients-common-http`, `br-llm-clients-common-call`, `br-llm-clients-api-anthropic-messages`, `br-llm-clients-api-openai-responses` and `br-llm-clients-api-openai-chat-completions` are at `0.2.0`, and `br-llm-clients-common-sse`, `br-llm-clients-common-auth`, `br-llm-clients-openai` and `br-llm-clients-anthropic` are at `0.1.0`; the other crates are not written yet.
 
 Not on crates.io; pin the git tag with the matching `version` beside it (a tag-only git dependency carries a `*` version requirement, which `cargo-deny` rejects):
 
@@ -28,6 +29,7 @@ br-llm-clients-api-openai-chat-completions = { git = "https://github.com/BotReso
 br-llm-clients-common-http = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-common-http", tag = "br-llm-clients-common-http/v0.2.0", version = "0.2.0" }
 br-llm-clients-common-auth = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-common-auth", tag = "br-llm-clients-common-auth/v0.1.0", version = "0.1.0" }
 br-llm-clients-openai = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-openai", tag = "br-llm-clients-openai/v0.1.0", version = "0.1.0" }
+br-llm-clients-anthropic = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-anthropic", tag = "br-llm-clients-anthropic/v0.1.0", version = "0.1.0" }
 ```
 
 `br-llm-clients-mock` (0.6.0) pins `br-llm-clients-core` at `br-llm-clients-core/v0.5.0` and `br-llm-messages` at `br-llm-messages/v2.1.0`; a project that uses the mock and names core or messages pins those same two tags, or the types are two copies.
@@ -42,6 +44,8 @@ br-llm-clients-openai = { git = "https://github.com/BotResources/br-llm-clients-
 
 `br-llm-clients-openai` (0.1.0) pins `br-llm-clients-api-openai-responses` at `br-llm-clients-api-openai-responses/v0.2.0`, `br-llm-clients-common-call` at `br-llm-clients-common-call/v0.2.0`, `br-llm-clients-common-http` at `br-llm-clients-common-http/v0.2.0` and `br-llm-clients-core` at `br-llm-clients-core/v0.5.0`, and uses `br-llm-messages` 2.1.0 through them (a `ClientSettings` needs a `ModelName`); a project that uses it and names a type of these crates pins them at those same tags, and `br-llm-messages` at `br-llm-messages/v2.1.0` with `version = "2.1.0"`, or the types are two copies.
 
+`br-llm-clients-anthropic` (0.1.0) pins `br-llm-clients-api-anthropic-messages` at `br-llm-clients-api-anthropic-messages/v0.2.0`, `br-llm-clients-common-call` at `br-llm-clients-common-call/v0.2.0`, `br-llm-clients-common-http` at `br-llm-clients-common-http/v0.2.0` and `br-llm-clients-core` at `br-llm-clients-core/v0.5.0`, and uses `br-llm-messages` 2.1.0 through them; no type of common-call or of the dialect is in its public API. A project that uses it and names a type of core, common-http or messages (`ClientSettings`, `ClientRequest`, `Secret`, `Endpoint`, `HttpClient`, `PlainText`, `TurnId`, `EntryId`, `ModelResponse`) pins them at those same tags, and `br-llm-messages` at `br-llm-messages/v2.1.0` with `version = "2.1.0"`, or the types are two copies.
+
 `br-llm-clients-common-auth` (0.1.0) uses `br-llm-clients-common-http` 0.2.0 in its public API (`Secret`, `Authorizer`, `AuthorizerError`, `BoxFuture`, `HttpClient`, `Endpoint`); a project that uses it pins `br-llm-clients-common-http` at `br-llm-clients-common-http/v0.2.0`, or the types are two copies. `br-llm-clients-common-call` 0.2.0 uses the same pin, so a `TokenAuthorizer` can be given to it.
 
 ## Provider keys for real calls
@@ -55,5 +59,7 @@ cp .env.template .env
 Nothing in this repository reads `.env` by itself; a script that records a call loads it.
 
 The live check of `br-llm-clients-openai` (`cargo run -p br-llm-clients-openai --example live_check`) reads only the process environment: `OPENAI_API_KEY` is required, `OPENAI_BASE_URL` and `OPENAI_MODEL` are optional. Export them before you run it.
+
+The live check of `br-llm-clients-anthropic` (`cargo run -p br-llm-clients-anthropic --example live_check`) reads only the process environment: `ANTHROPIC_API_KEY` and `ANTHROPIC_BASE_URL` are required, `ANTHROPIC_MODEL`, `ANTHROPIC_WORKSPACE_ID` and `ANTHROPIC_AUTH` (`x-api-key` or `bearer`) are optional. Export them before you run it.
 
 No support is provided; paid support is available on request from BotResources. Apache-2.0. Generated by an AI system (Anthropic Claude) under the direction and review of BotResources, which takes full responsibility for it (EU AI Act, Regulation (EU) 2024/1689).

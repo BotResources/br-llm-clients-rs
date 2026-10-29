@@ -1,0 +1,19 @@
+[package]
+name = "br-llm-clients-anthropic"
+version = "0.1.0"
+description = "The Client of the Anthropic first-party API: the Messages API on api.anthropic.com, with streaming, for the current Claude models"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+br-llm-clients-api-anthropic-messages = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-api-anthropic-messages/v0.2.0", version = "0.2.0" }
+br-llm-clients-common-call = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-common-call/v0.2.0", version = "0.2.0" }
+br-llm-clients-common-http = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-common-http/v0.2.0", version = "0.2.0" }
+br-llm-clients-core = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-core/v0.5.0", version = "0.5.0" }
+thiserror = "2"
+
+[dev-dependencies]
+br-llm-messages = { git = "https://github.com/BotResources/br-llm-messages-rs", tag = "br-llm-messages/v2.1.0", version = "2.1.0", features = ["mint"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
