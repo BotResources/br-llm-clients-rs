@@ -1,10 +1,11 @@
 use br_llm_clients_core::{ClientError, ClientRequest};
-use br_llm_messages::WireMessage;
+use br_llm_messages::{WireMessage, WireUserBlock};
 use serde_json::Value;
 
 use crate::encode_assistant::assistant_message;
 use crate::encode_parts::{message, text_part};
 use crate::encode_user::user_messages;
+use crate::options::ChatCompletionsOptions;
 
 pub(crate) fn check_ends_with_user(request: &ClientRequest) -> Result<(), ClientError> {
     match request.messages().last() {
@@ -16,17 +17,33 @@ pub(crate) fn check_ends_with_user(request: &ClientRequest) -> Result<(), Client
     }
 }
 
-pub(crate) fn messages(request: &ClientRequest) -> Result<Vec<Value>, ClientError> {
+fn is_turn_boundary(message: &WireMessage) -> bool {
+    match message {
+        WireMessage::User { content } => !content
+            .iter()
+            .any(|block| matches!(block, WireUserBlock::ToolResult(_))),
+        _ => false,
+    }
+}
+
+pub(crate) fn messages(
+    request: &ClientRequest,
+    options: &ChatCompletionsOptions,
+) -> Result<Vec<Value>, ClientError> {
+    let boundary = request.messages().iter().rposition(is_turn_boundary);
     let mut encoded = Vec::new();
     if let Some(system) = request.system() {
         let mut system_message = message("system");
         system_message.insert("content".to_owned(), Value::from(system.as_str()));
         encoded.push(Value::Object(system_message));
     }
-    for wire in request.messages() {
+    for (index, wire) in request.messages().iter().enumerate() {
         match wire {
-            WireMessage::User { content } => encoded.extend(user_messages(content)?),
-            WireMessage::Assistant { content } => encoded.extend(assistant_message(content)?),
+            WireMessage::User { content } => encoded.extend(user_messages(content, options)?),
+            WireMessage::Assistant { content } => {
+                let in_turn = boundary.is_none_or(|last| index > last);
+                encoded.extend(assistant_message(content, options, in_turn)?)
+            }
             WireMessage::Relay { content } => encoded.push(relay_message(content)),
         }
     }

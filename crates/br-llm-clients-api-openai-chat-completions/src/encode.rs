@@ -16,7 +16,7 @@ pub(crate) fn encode(
 ) -> Result<EncodedRequest, ClientError> {
     let effort = reasoning_effort(settings, options)?;
     check_ends_with_user(request)?;
-    let messages = messages(request)?;
+    let messages = messages(request, options)?;
     let tools = tools(request.tools())?;
     let response_format = response_format(request.output())?;
 
@@ -26,7 +26,7 @@ pub(crate) fn encode(
     body.insert("stream".to_owned(), Value::Bool(true));
     body.insert("stream_options".to_owned(), json!({"include_usage": true}));
     body.insert(
-        "max_completion_tokens".to_owned(),
+        options.max_tokens_field().member().to_owned(),
         Value::from(settings.max_output_tokens().get()),
     );
     if let Some(effort) = effort {
