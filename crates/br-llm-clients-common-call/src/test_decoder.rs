@@ -2,7 +2,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use br_llm_messages::{StopReason, Usage};
+use br_llm_messages::{ReplayFormat, ResponseEnding, Usage};
 
 use crate::error_info::ErrorInfo;
 use crate::payload::{Payload, PayloadError};
@@ -85,17 +85,22 @@ fn optional<T>(text: &str, read: impl Fn(&str) -> Option<T>) -> Option<T> {
     if text == "-" { None } else { read(text) }
 }
 
-fn stop_reason(text: &str) -> Option<StopReason> {
+fn ending(text: &str) -> Option<ResponseEnding> {
     Some(match text {
-        "end_turn" => StopReason::EndTurn,
-        "tool" => StopReason::AwaitingToolResults,
-        "max" => StopReason::MaxTokens,
-        "seq" => StopReason::StopSequence,
-        "refusal" => StopReason::Refusal,
-        "filter" => StopReason::ContentFilter,
-        other => StopReason::Other {
-            reason: other.strip_prefix("other:")?.to_owned(),
-        },
+        "finished" => ResponseEnding::finished(),
+        "tool_use" => ResponseEnding::tool_use(),
+        "cont" => ResponseEnding::provider_continuation(),
+        "exhaust" => ResponseEnding::output_exhaustion(),
+        "seq" => ResponseEnding::stop_sequence(),
+        "refusal" => ResponseEnding::refusal(),
+        "filter" => ResponseEnding::filtering(),
+        other => {
+            if let Some(sequence) = other.strip_prefix("matched:") {
+                ResponseEnding::matched_stop_sequence(sequence).ok()?
+            } else {
+                ResponseEnding::unclassified(other.strip_prefix("other:")?).ok()?
+            }
+        }
     })
 }
 
@@ -136,11 +141,17 @@ fn error(line: &str) -> Option<ProviderEvent> {
 
 fn usage(line: &str) -> Option<ProviderEvent> {
     let mut parts = line.split(' ').skip(1);
-    Some(ProviderEvent::Usage(Usage {
-        input_tokens: parts.next()?.parse().ok()?,
-        output_tokens: parts.next()?.parse().ok()?,
-        ..Usage::default()
+    let input = parts.next()?.parse().ok()?;
+    let usage = Usage::of_input_tokens(input);
+    Some(ProviderEvent::Usage(match parts.next() {
+        Some(output) => usage.with_output_tokens(output.parse().ok()?),
+        None => usage,
     }))
+}
+
+fn format_and_text(rest: &str) -> Option<(ReplayFormat, String)> {
+    let (format, text) = rest.split_once(' ').unwrap_or((rest, ""));
+    Some((ReplayFormat::new(format).ok()?, text.to_owned()))
 }
 
 fn parse(line: &str) -> Result<ProviderEvent, PayloadError> {
@@ -160,14 +171,22 @@ fn read(line: &str) -> Option<ProviderEvent> {
         "end" => ProviderEvent::BlockEnd { key },
         "text" => ProviderEvent::TextDelta { key, text: rest },
         "think" => ProviderEvent::ThinkingDelta { key, text: rest },
-        "sig" => ProviderEvent::SignatureDelta {
-            key,
-            signature: rest,
-        },
+        "sig" => {
+            let (format, signature) = format_and_text(&rest)?;
+            ProviderEvent::SignatureDelta {
+                key,
+                format,
+                signature,
+            }
+        }
         "struct" => ProviderEvent::StructuredDelta { key, json: rest },
         "args" => ProviderEvent::ToolArgumentsDelta { key, json: rest },
-        "redact" => ProviderEvent::RedactedThinkingData { key, data: rest },
-        "stop" => ProviderEvent::Stop(stop_reason(&key)?),
+        "redact" => {
+            let (format, data) = format_and_text(&rest)?;
+            ProviderEvent::RedactedThinkingData { key, format, data }
+        }
+        "stop" => ProviderEvent::Stop(ending(&key)?),
+        "rid" => ProviderEvent::ResponseId(key),
         "usage" => return usage(line),
         "model" => ProviderEvent::Model(key),
         "error" => return error(line),

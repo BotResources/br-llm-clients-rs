@@ -1,7 +1,7 @@
 use br_llm_clients_common_http::{AuthorizerError, BodyError, SendError};
 use br_llm_clients_common_sse::DecodeError;
 use br_llm_clients_core::ClientError;
-use br_llm_messages::MessageError;
+use br_llm_messages::Error as MessageError;
 
 use crate::payload::PayloadError;
 

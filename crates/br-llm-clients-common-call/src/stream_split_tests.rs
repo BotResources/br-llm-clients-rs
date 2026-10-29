@@ -1,4 +1,4 @@
-use br_llm_messages::AssistantBlock;
+use br_llm_messages::ContentBlock;
 
 use crate::payload::Payload;
 use crate::test_decoder::EndScript;
@@ -20,7 +20,8 @@ const STREAM: &str = concat!(
     "data: end b\n",
     "data: usage 3 4\n",
     "data: model m-1\n",
-    "data: stop tool\n",
+    "data: stop tool_use
+",
     "\n",
 );
 
@@ -31,8 +32,8 @@ async fn given_a_stream_when_cut_at_every_byte_boundary_then_events_payloads_and
     let reference_dialect = dialect_ending(EndScript::Events(Vec::new()));
     let reference = drive_one(&reference_dialect, &user_request(), bytes.clone()).await;
     let step = reference.result.clone().expect("a step");
-    assert!(!reference.sink.events.is_empty());
-    assert_eq!(step.content().len(), 2);
+    assert!(!reference.sink.deltas.is_empty());
+    assert_eq!(step.blocks().len(), 2);
     let payloads = reference_dialect.log.payloads();
     assert_eq!(payloads.len(), 3);
     for cut in 1..bytes.len() {
@@ -40,7 +41,7 @@ async fn given_a_stream_when_cut_at_every_byte_boundary_then_events_payloads_and
         let chunks = [bytes[..cut].to_vec(), bytes[cut..].to_vec()];
         let driven = drive(&dialect, &user_request(), &chunks).await;
         assert_eq!(driven.result, Ok(step.clone()), "cut at {cut}");
-        assert_eq!(driven.sink.events, reference.sink.events, "cut at {cut}");
+        assert_eq!(driven.sink.deltas, reference.sink.deltas, "cut at {cut}");
         assert_eq!(dialect.log.payloads(), payloads, "cut at {cut}");
     }
 }
@@ -58,7 +59,7 @@ async fn given_a_stream_when_sent_one_byte_at_a_time_then_the_events_match_one_c
     let dialect = dialect_ending(EndScript::Events(Vec::new()));
     let driven = drive(&dialect, &user_request(), &chunks).await;
     assert_eq!(driven.result, reference.result);
-    assert_eq!(driven.sink.events, reference.sink.events);
+    assert_eq!(driven.sink.deltas, reference.sink.deltas);
 }
 
 #[tokio::test]
@@ -76,7 +77,7 @@ async fn given_the_frames_of_a_stream_when_read_then_each_payload_keeps_its_even
     drive_one(
         &silent,
         &user_request(),
-        body(&[&["start a text", "text a x", "end a", "stop end_turn"]]),
+        body(&[&["start a text", "text a x", "end a", "stop finished"]]),
     )
     .await;
     assert_eq!(silent.log.payloads()[0].event(), None);
@@ -88,17 +89,18 @@ async fn given_a_stream_when_read_then_the_decoder_sees_one_payload_only_after_t
     let dialect = dialect_ending(EndScript::Events(Vec::new()));
     let mut bytes = frame(&["start a text", "text a one"]);
     bytes.extend(frame(&["text a two", "end a"]));
-    bytes.extend(frame(&["stop end_turn"]));
+    bytes.extend(frame(&["stop finished"]));
     let driven = drive_one(&dialect, &user_request(), bytes).await;
-    assert_eq!(driven.sink.payloads_seen, vec![1, 1, 2, 2, 3]);
+    assert_eq!(driven.sink.payloads_seen, vec![1, 1, 1, 2, 2, 3]);
     assert_eq!(
-        kinds(&driven.sink.events),
+        kinds(&driven.sink.deltas),
         vec![
-            "start 0 Text",
-            "text 0 \"one\"",
-            "text 0 \"two\"",
-            "end 0",
-            "finish end_turn false"
+            "started",
+            "start 1 text",
+            "text 1 \"one\"",
+            "text 1 \"two\"",
+            "final 1",
+            "done Finished"
         ]
     );
 }
@@ -111,7 +113,7 @@ async fn given_a_stream_split_in_the_middle_of_a_multibyte_character_when_read_t
         "start a text",
         "text a \u{1f600}x",
         "end a",
-        "stop end_turn",
+        "stop finished",
     ]]);
     let cut = bytes
         .windows(4)
@@ -120,9 +122,9 @@ async fn given_a_stream_split_in_the_middle_of_a_multibyte_character_when_read_t
         + 2;
     let chunks = [bytes[..cut].to_vec(), bytes[cut..].to_vec()];
     let driven = drive(&dialect, &user_request(), &chunks).await;
-    let step = driven.result.expect("a step");
-    let Some(AssistantBlock::Text { text }) = step.content().first() else {
-        panic!("not text");
+    let response = driven.result.expect("a response");
+    let [ContentBlock::Text(block)] = response.blocks() else {
+        panic!("not one text block");
     };
-    assert_eq!(text.as_str(), "\u{1f600}x");
+    assert_eq!(block.text().as_str(), "\u{1f600}x");
 }

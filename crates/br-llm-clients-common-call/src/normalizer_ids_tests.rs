@@ -1,118 +1,142 @@
-use br_llm_messages::StreamEvent;
+use std::sync::Arc;
 
-use crate::generated_id::is_generated_id;
-use crate::test_normalize::{feed, fresh, fresh_for, is_malformed, refusal};
-use crate::test_requests::request_with_calls;
+use br_llm_messages::{BlockStart, DeltaOp, ResponseDelta};
 
-fn call_ids(events: &[StreamEvent]) -> Vec<String> {
-    events
+use crate::normalizer::Normalizer;
+use crate::test_decoder::script;
+use crate::test_fixtures::user_request;
+use crate::test_ids::{CountingIds, number_of};
+use crate::test_normalize::{feed, fresh, refusal};
+
+fn starts(deltas: &[ResponseDelta]) -> Vec<(u64, Option<String>)> {
+    deltas
         .iter()
-        .filter_map(|event| match event {
-            StreamEvent::ToolCallStart { id, .. } => Some(id.as_str().to_owned()),
+        .filter_map(|delta| match delta.op() {
+            DeltaOp::BlockStarted { block, start, .. } => {
+                let external = match start {
+                    BlockStart::RuntimeToolCall { external_id, .. } => {
+                        external_id.as_ref().map(|id| id.as_str().to_owned())
+                    }
+                    _ => None,
+                };
+                Some((number_of(*block), external))
+            }
             _ => None,
         })
         .collect()
 }
 
 #[test]
-fn given_an_id_from_the_provider_when_started_then_it_is_kept_exactly() {
-    let events = feed(&mut fresh(), &["start a tool search Call-Id.7:x"]);
-    assert_eq!(call_ids(&events), ["Call-Id.7:x"]);
+fn given_an_id_from_the_provider_when_started_then_it_is_the_external_id_exactly_as_received() {
+    let deltas = feed(&mut fresh(), &["start a tool search Call-Id.7:x"]);
+    assert_eq!(starts(&deltas), [(1, Some("Call-Id.7:x".to_owned()))]);
 }
 
 #[test]
-fn given_no_id_or_an_empty_id_when_started_then_the_id_starts_with_the_generated_prefix() {
-    let events = feed(
+fn given_no_id_or_an_empty_id_when_started_then_the_call_has_no_external_id() {
+    let deltas = feed(
         &mut fresh(),
         &["start a tool search", "end a", "start b tool search ~"],
     );
-    let ids = call_ids(&events);
-    assert_eq!(ids.len(), 2);
-    assert!(ids.iter().all(|id| is_generated_id(id)), "{ids:?}");
-    assert_ne!(ids[0], ids[1]);
+    assert_eq!(starts(&deltas), [(1, None), (2, None)]);
 }
 
 #[test]
-fn given_many_calls_without_an_id_when_started_then_every_generated_id_is_unique() {
-    let mut normalizer = fresh();
-    let mut ids = Vec::new();
-    for round in 0..40 {
-        let key = format!("k{round}");
-        let start = format!("start {key} tool search");
-        let end = format!("end {key}");
-        ids.extend(call_ids(&feed(
-            &mut normalizer,
-            &[start.as_str(), end.as_str()],
-        )));
-    }
-    let mut sorted = ids.clone();
-    sorted.sort();
-    sorted.dedup();
-    assert_eq!(sorted.len(), 40);
+fn given_an_id_with_the_old_generated_prefix_when_started_then_it_is_carried_as_received() {
+    let deltas = feed(&mut fresh(), &["start a tool search brgen_1"]);
+    assert_eq!(starts(&deltas), [(1, Some("brgen_1".to_owned()))]);
 }
 
 #[test]
-fn given_generated_ids_already_in_the_request_when_started_then_a_new_id_differs_from_all_of_them()
-{
-    let request = request_with_calls(&["brgen_0", "brgen_1", "call_x"]);
-    let events = feed(
-        &mut fresh_for(&request),
-        &["start a tool search", "end a", "start b tool search"],
+fn given_a_provider_id_used_twice_in_the_reply_when_started_then_both_calls_carry_it() {
+    let deltas = feed(
+        &mut fresh(),
+        &[
+            "start a tool search dup",
+            "args a {}",
+            "end a",
+            "start b tool search dup",
+            "args b {}",
+            "end b",
+        ],
     );
-    let ids = call_ids(&events);
-    for id in &ids {
-        assert!(is_generated_id(id));
-        assert!(
-            !["brgen_0", "brgen_1", "call_x"].contains(&id.as_str()),
-            "{id}"
-        );
-    }
-    assert_ne!(ids[0], ids[1]);
-}
-
-#[test]
-fn given_a_provider_id_with_the_generated_prefix_when_started_then_the_reply_is_malformed() {
-    for id in ["brgen_1", "brgen_", "brgen_anything"] {
-        let line = format!("start a tool search {id}");
-        assert!(is_malformed(&refusal(&[], &line)), "{id}");
-    }
-}
-
-#[test]
-fn given_a_provider_id_that_is_not_quite_the_prefix_when_started_then_it_is_kept() {
-    for id in ["brgen", "Brgen_1", "xbrgen_1", "brgen-1"] {
-        let line = format!("start a tool search {id}");
-        let events = feed(&mut fresh(), &[line.as_str()]);
-        assert_eq!(call_ids(&events), [id]);
-    }
-}
-
-#[test]
-fn given_a_provider_id_used_twice_in_the_reply_when_started_then_the_reply_is_malformed() {
-    let error = refusal(
-        &["start a tool search dup", "end a"],
-        "start b tool search dup",
+    assert_eq!(
+        starts(&deltas),
+        [(1, Some("dup".to_owned())), (2, Some("dup".to_owned()))]
     );
-    assert!(is_malformed(&error), "{error:?}");
 }
 
 #[test]
-fn given_a_provider_id_used_in_the_request_when_started_then_the_reply_is_malformed() {
-    let request = request_with_calls(&["call_1"]);
-    let mut normalizer = fresh_for(&request);
-    let event = crate::test_decoder::script(&["start a tool search call_1"]).remove(0);
-    let error = normalizer.accept(event).expect_err("refused");
-    assert!(is_malformed(&error), "{error:?}");
-    let event = crate::test_decoder::script(&["start a tool search call_2"]).remove(0);
-    assert!(normalizer.accept(event).is_ok());
+fn given_an_id_source_when_blocks_are_sent_then_the_ids_come_from_it_in_the_order_they_are_sent() {
+    let ids = Arc::new(CountingIds::from(40));
+    let mut normalizer = Normalizer::new(&user_request(), ids.clone(), None);
+    let lines = [
+        "start a text",
+        "start b tool search x",
+        "start c thinking",
+        "think c t",
+        "args b {}",
+        "text a Hi",
+        "end a",
+        "end b",
+        "end c",
+    ];
+    let deltas: Vec<_> = script(&lines)
+        .into_iter()
+        .flat_map(|event| normalizer.accept(event).expect("accepted"))
+        .collect();
+    let numbers: Vec<_> = starts(&deltas).into_iter().map(|start| start.0).collect();
+    assert_eq!(numbers, [40, 41, 42]);
+    assert_eq!(ids.taken(), 3);
 }
 
 #[test]
-fn given_the_prefix_when_asked_then_only_ids_that_start_with_it_are_generated() {
-    assert!(is_generated_id("brgen_"));
-    assert!(is_generated_id("brgen_0"));
-    assert!(!is_generated_id("brgen"));
-    assert!(!is_generated_id(" brgen_0"));
-    assert!(!is_generated_id("call_brgen_0"));
-    assert!(!is_generated_id(""));
+fn given_blocks_that_are_not_sent_when_the_stream_runs_then_no_id_is_taken() {
+    let ids = Arc::new(CountingIds::new());
+    let mut normalizer = Normalizer::new(&user_request(), ids.clone(), None);
+    let lines = [
+        "start a text",
+        "text a  ",
+        "end a",
+        "start b thinking",
+        "end b",
+    ];
+    for event in script(&lines) {
+        normalizer.accept(event).expect("accepted");
+    }
+    assert_eq!(ids.taken(), 0);
+}
+
+#[test]
+fn given_a_block_waiting_behind_an_open_one_when_nothing_is_sent_for_it_then_no_id_is_taken_yet() {
+    let ids = Arc::new(CountingIds::new());
+    let mut normalizer = Normalizer::new(&user_request(), ids.clone(), None);
+    for event in script(&["start a text", "start b tool search x", "args b {}"]) {
+        normalizer.accept(event).expect("accepted");
+    }
+    assert_eq!(ids.taken(), 0);
+}
+
+#[test]
+fn given_the_rehearsal_of_the_tail_when_blocks_are_closed_then_no_id_is_taken_from_the_source() {
+    let ids = Arc::new(CountingIds::new());
+    let mut normalizer = Normalizer::new(&user_request(), ids.clone(), None);
+    let lines = ["start a text", "text a  ", "start b thinking", "think b t"];
+    for event in script(&lines) {
+        normalizer.accept(event).expect("accepted");
+    }
+    let mut rehearsal = normalizer.rehearsal();
+    assert_eq!(starts(&rehearsal.close_all()).len(), 1);
+    assert_eq!(ids.taken(), 0);
+    assert_eq!(starts(&normalizer.close_all()), [(1, None)]);
+    assert_eq!(ids.taken(), 1);
+}
+
+#[test]
+fn given_a_tool_name_that_is_not_valid_when_started_then_the_reply_is_malformed() {
+    let error = refusal(&[], "start a tool bad.name id1");
+    assert!(matches!(
+        error,
+        br_llm_clients_core::ClientError::MalformedResponse { .. }
+    ));
 }

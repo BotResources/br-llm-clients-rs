@@ -1,34 +1,44 @@
+use std::sync::Arc;
+
 use br_llm_clients_core::{ClientError, ClientRequest};
-use br_llm_messages::StreamEvent;
+use br_llm_messages::ResponseDelta;
 
 use crate::normalizer::Normalizer;
 use crate::test_decoder::script;
 use crate::test_fixtures::user_request;
+use crate::test_ids::CountingIds;
 use crate::test_stream::kinds;
 
 pub(crate) fn fresh() -> Normalizer {
-    Normalizer::new(&user_request())
+    fresh_for(&user_request())
 }
 
 pub(crate) fn fresh_for(request: &ClientRequest) -> Normalizer {
-    Normalizer::new(request)
+    Normalizer::new(request, Arc::new(CountingIds::new()), None)
 }
 
-pub(crate) fn feed(normalizer: &mut Normalizer, lines: &[&str]) -> Vec<StreamEvent> {
+pub(crate) fn feed(normalizer: &mut Normalizer, lines: &[&str]) -> Vec<ResponseDelta> {
     script(lines)
         .into_iter()
         .flat_map(|event| normalizer.accept(event).expect("accepted"))
         .collect()
 }
 
+fn without_start(deltas: &[ResponseDelta]) -> Vec<String> {
+    kinds(deltas)
+        .into_iter()
+        .filter(|line| !line.starts_with("started"))
+        .collect()
+}
+
 pub(crate) fn fed(lines: &[&str]) -> Vec<String> {
-    kinds(&feed(&mut fresh(), lines))
+    without_start(&feed(&mut fresh(), lines))
 }
 
 pub(crate) fn steps(normalizer: &mut Normalizer, lines: &[&str]) -> Vec<Vec<String>> {
     script(lines)
         .into_iter()
-        .map(|event| kinds(&normalizer.accept(event).expect("accepted")))
+        .map(|event| without_start(&normalizer.accept(event).expect("accepted")))
         .collect()
 }
 

@@ -9,6 +9,189 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.2.0
+
+Dated 2026-10-28. This is a breaking line: the types of `br-llm-messages` 2.1 and
+of `br-llm-clients-core` 0.5 that the crate names are the new ones, so a dialect
+that compiles against 0.1.0 does not compile against 0.2.0. A library released on
+a tag of line 0.1 stays valid on that tag and is not changed.
+
+### Added
+
+- `CallSpec::with_id_source`: the `IdSource` of the call, shared as a trait
+  object. A `CallSpec` made with `new` holds the `DefaultIdSource` of the core.
+  The id of a block comes from it, in the order of the blocks, when the first
+  event of the block is sent.
+- `ProviderEvent::ResponseId(String)`: the id that the provider gives to the
+  response. An empty text is ignored entirely: it does not count as the first
+  event of the reply and does not send `ResponseStarted`. A later id replaces an
+  earlier one. It is sent as a metadata update and is the provider response id of
+  the `ModelResponse`.
+- `SecretLog`: the secrets that are made while a call runs, such as a token that
+  an authorizer fetches inside `send`. `SecretLog::new` (and `Default`) makes an
+  empty log; a clone shares the same list; `record` takes a `Secret` by
+  reference, keeps a clone, cannot fail, and keeps a secret that equals one it
+  holds only once. The log holds at most 1024 secrets and drops the one recorded
+  first when a new one comes. It is `Send` and `Sync`, and its `Debug` text is
+  its type name only. The library never records into a log and never empties one.
+- `CallSpec::with_secret_log` sets the log and replaces an earlier one. The
+  secrets in effect are the list of `with_secrets` and what the log holds at the
+  moment a text is cleaned.
+- `Dialect::answered_model`: takes the response headers and gives the model that
+  the provider says answered, as text, or nothing. The default gives nothing.
+  When the text is a valid `ModelName` and no secret in effect appears in it, it
+  is the model of the `ResponseStarted` delta, of the `ModelResponse` of a reply
+  with no `Model` event, and of the `CallReport`; a later `Model` event replaces
+  it. Any other text is read as absent and never makes a call fail.
+- `Layered<H>` and `DialectHooks`: a `Dialect` that puts a few changes over an
+  inner `Dialect`. The order is fixed: `check` of the hooks, then the inner
+  `encode`, then `after_encode`, and a `check` error means the inner dialect is
+  not asked; `decoder` wraps the decoder of the inner dialect with
+  `wrap_decoder`; `refine_error` asks the hooks first and the inner dialect
+  second; `error_code`, `request_id` and `answered_model` ask the inner dialect
+  first and give its answer to the hooks, whose answer is the answer. Every
+  method of `DialectHooks` has a default body that changes nothing.
+
+### Changed
+
+- Breaking: `CallSpec::new(dialect, endpoint, authorizer, http)` no longer takes
+  a model, and the model of the call no longer fills the model of the reply.
+- Breaking: `Dialect::encode(&self, &ClientRequest, &RenderedHistory)`. `run`
+  makes the rendering with `render_history` first; a history that cannot be
+  rendered gives `InvalidMessages` and nothing is sent. `DialectHooks::check`
+  gets the request; `after_encode` follows the new `encode`.
+- Breaking: `ProviderEvent::Stop` carries a `ResponseEnding`;
+  `ProviderEvent::SignatureDelta` and `ProviderEvent::RedactedThinkingData` carry
+  a `ReplayFormat`, which the library sends unchanged.
+- Breaking: the reply is a `br_llm_messages::ModelResponse` built from
+  `ResponseDelta` values. The library applies each delta to a `ResponseDraft` and
+  gives it to the `StreamSink` only after the draft accepts it; a refused delta is
+  not given and makes the reply `MalformedResponse`. `ResponseStarted` is the
+  first delta (sent when the first provider event other than `Error`, `Complete`
+  and an empty `ResponseId` is accepted) and `ResponseCompleted`, with the
+  corrected ending, is the last and only on success. `Model`, `Usage` and
+  `ResponseId` events are sent as metadata updates when they are applied. No
+  `observed_at` is set. A `Usage` event that holds one count is sent as it is.
+- Blocks are given to the sink in the order of their `BlockStart`; the events of a
+  later block are held until the earlier blocks close. A text block that is blank
+  and a thinking block that holds no text and no replay fragment are held and are
+  not sent. Held events are sent in order just before the first delta that
+  qualifies. At the end of the stream the judgement runs on copies of the
+  normalizer and of the draft, with ids of their own, so a failure never follows
+  the release of held events.
+- A block that the provider closes with complete JSON is finalized at once. A
+  block closed with incomplete JSON gets no finalization. A tool call or a
+  structured block still open at the end is incomplete JSON whatever its text.
+  Incomplete JSON is judged by the ending of the `Stop` event as the core states:
+  `ContentBlocked` for a `filtering` or `refusal` ending, `ReplyUnusable` carrying
+  the ending before correction for `output_exhaustion`, and `MalformedResponse`
+  for any other ending. JSON is classified as the draft reads it: a text that
+  stops early is incomplete, one that is wrong before its end or that the draft
+  refuses is malformed, and the arguments of a tool call must be an object. An
+  empty text is incomplete, so a tool call with no argument fragment is
+  incomplete.
+- A signature delta fits only a thinking block, redacted data only a redacted
+  thinking block, a structured delta only a structured block, and arguments only a
+  tool call block; any other pairing makes the reply `MalformedResponse`.
+  `ProviderContinuation` as an ending makes the reply `MalformedResponse`.
+- The id of a tool call from the provider is the external id of the call, as
+  received; an empty id is read as no id; a repeated id is no longer refused.
+- A payload that holds only metadata (a `Model`, a `Usage` or a non-empty
+  `ResponseId` event) now counts as the first event of the reply, because
+  `ResponseStarted` is the first sink call: the time to the first event of the
+  `CallReport` stops there.
+- The crate pins `br-llm-clients-core` 0.5.0, `br-llm-clients-common-http` 0.2.0
+  and `br-llm-clients-common-sse` 0.1.0 by git tag, each as `{crate}/v{version}`
+  of this repository, and `br-llm-messages` 2.1.0 by the tag
+  `br-llm-messages/v2.1.0` of `br-llm-messages-rs`, whose types `ProviderEvent`
+  and the reply expose. A library that names the types of these crates must pin
+  the same tags, so that one copy of each is resolved.
+- The line of `br-llm-clients-common-http` is 0.2, because `Secret::appears_in`
+  and `Response::retry_after_ms` are new in that line. `Secret`, `Endpoint`,
+  `Headers`, `HttpClient` and `Authorizer`, which this crate re-exports, are now
+  the types of `common-http` 0.2 and not the types of `common-http` 0.1: cargo
+  keeps two copies and a value of one is not accepted as a value of the other.
+  Every library that imports this crate in its line 0.2 and names one of these
+  types must use the same `common-http` in the same release.
+- A refusal body longer than 64 KiB is trimmed at its end before the secrets are
+  replaced. Let the open start be the longest suffix of the collected bytes that
+  equals the start of a secret in effect (at least one byte, fewer than the whole
+  secret). The trim removes at least the open start. When a secret that is whole
+  in the collected bytes reaches into the removed part, the trim goes further
+  back, to the last point where each kept byte of such a secret is also inside a
+  whole secret that is kept. So no byte of any secret, whole or crossing the cut,
+  stays in clear, whatever the rest of the body was. The trim never keeps a byte
+  that removing the open start removes, even when keeping it would be safe: with
+  the secrets `xxx`, `zxz` and `zzx`, the cut bytes `xxx` give an empty text.
+  Below that bound, it keeps the most bytes it can. In 0.1.0 the body was cut
+  first and the secrets were replaced after, so a secret that crossed the cut left
+  its first part in the text of the `ClientError` and in the text that
+  `error_code` and `refine_error` read. Nothing is trimmed when the collection is
+  not cut.
+- The secrets are replaced in one pass over the text. Every occurrence of every
+  secret in effect is found, also when occurrences overlap. Occurrences that
+  share at least one byte make one range, and each range becomes one
+  `[redacted]`. Occurrences that only touch, or that stand apart, keep one
+  `[redacted]` each. So no byte of any occurrence stays in clear. Within one
+  cleaning a placeholder is never scanned. A text that is cleaned twice is
+  scanned again the second time, placeholders included: a refusal text and the
+  code and the text of an `Error` event are cleaned before the dialect gets them
+  and again before the outcome is returned. So with the secret `red` and the
+  body `red`, the dialect gets `[redacted]` and the error holds
+  `[[redacted]acted]`. In 0.1.0 each secret was replaced in turn over the whole
+  text, so a secret that is a part of `[redacted]` rewrote the placeholders
+  already written, and two secrets that overlapped kept a part of one of them.
+- The secrets are found with an automaton over the secrets in effect, so the
+  cost of a cleaning grows with the length of the text and the total length of
+  the secrets, not with their product. Its storage is about 9 bytes per byte
+  of the secrets. A call builds it at most once for each state of the
+  `SecretLog`: the cleaning of a refusal or of an `Error` event and the cleaning
+  of the outcome share it, and a secret recorded between the two makes the
+  second cleaning build it again with that secret. If the secrets in effect
+  hold more than 2^30 - 1 bytes in total, or if the memory for the automaton
+  cannot be reserved, no automaton is built and nothing aborts: every non-empty
+  text is replaced by one `[redacted]`, and a cut refusal body keeps no byte.
+- A secret is also found when a text repeats it JSON-escaped, so a key that holds
+  `"`, `\`, `/`, a control character or a non-ASCII character is removed when an
+  error body repeats it inside a JSON string, whatever the encoder wrote for
+  each character (`\"`, `\/`, `\u0022` in either case, a surrogate pair), and
+  also when a proxy put that body inside another JSON string, up to three
+  times. The text is read as is and also decoded up to three times: each valid
+  escape is read as its character, and anything else is kept as it is. A secret
+  found in any of these readings is replaced in the text at the bytes that
+  wrote it. So a text that is not JSON can lose a little more than before: a
+  part such as `sk\u002d1` is replaced when `sk-1` is a secret. The trim of a
+  cut refusal body applies to every reading, and it also removes an escape
+  that the cut left incomplete at the end, such as `\u00`, a lone `\`, or the
+  first half of a surrogate pair, when a secret is in effect. A body with no
+  backslash is read once, as before. The test of the request id and of the
+  answered model finds these readings too. In 0.1.0 only the raw value was
+  found.
+- The text of a refusal that `error_code` and `refine_error` get is cut to
+  64 KiB at a character boundary after the replacement. In 0.1.0 it was given
+  uncut, so a replacement that made it longer gave the dialect up to ten times
+  64 KiB. The error text of the outcome is cut as before.
+- A secret recorded in the `SecretLog` is removed from every text of the outcome
+  before the cut to 64 KiB, as the secrets of the list. The code and the text of
+  an `Error` event are cleaned with the secrets in effect too, and so are the
+  reason of an `unclassified` ending and the matched sequence of a `stop_sequence`
+  ending inside a `ReplyUnusable`. The kind of the ending never changes: a cleaned
+  text is never empty, so the core always accepts it.
+- The delay of a refusal is read from `retry-after-ms` first, as
+  `Response::retry_after_ms` reads it, and from `Retry-After` when the first gives
+  nothing. In 0.1.0 only `Retry-After` was read. The delay of an error inside a
+  stream is not changed.
+- The request id of the `CallReport` is absent when a secret in effect appears in
+  it, at any place in the text. In 0.1.0 it was never tested.
+- An open block is found by its key in constant time, and a block that finished
+  is freed, so the cost of a reply no longer grows with the square of its number
+  of blocks. The deltas sent do not change.
+
+### Removed
+
+- `is_generated_id` and every `brgen_` id: an id is a `BlockId` from the
+  `IdSource`.
+
 ## 0.1.0
 
 ### Added

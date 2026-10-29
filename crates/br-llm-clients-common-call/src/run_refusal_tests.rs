@@ -207,7 +207,7 @@ async fn given_a_body_of_invalid_bytes_when_run_then_each_one_becomes_a_replacem
  {
     let dialect = Arc::new(ScriptedDialect::default());
     let (error, _) = refused(&dialect, "500 Bad", &[], &vec![0xFF; 65_536]).await;
-    assert_eq!(dialect.seen_bodies(), vec!["\u{FFFD}".repeat(65_536)]);
+    assert_eq!(dialect.seen_bodies(), vec!["\u{FFFD}".repeat(21_845)]);
     let ClientError::ProviderFailed { body, .. } = error else {
         panic!("not failed");
     };
@@ -215,7 +215,8 @@ async fn given_a_body_of_invalid_bytes_when_run_then_each_one_becomes_a_replacem
 }
 
 #[tokio::test]
-async fn given_a_replacement_that_grows_the_body_when_run_then_the_error_is_cut_to_the_cap() {
+async fn given_a_replacement_that_grows_the_body_when_run_then_the_dialect_and_the_error_get_the_cap()
+ {
     let dialect = Arc::new(ScriptedDialect::default());
     let server = TestServer::start(|_| http("500 Bad", &[], &vec![b'S'; 65_536])).await;
     let spec = spec_for(&dialect, server.endpoint("/v1/test")).with_secrets(vec![secret("S")]);
@@ -225,7 +226,8 @@ async fn given_a_replacement_that_grows_the_body_when_run_then_the_error_is_cut_
     };
     assert_eq!(body.len(), 65_536);
     assert!(body.starts_with("[redacted][redacted]"));
-    assert!(dialect.seen_bodies()[0].len() > 65_536);
+    assert_eq!(dialect.seen_bodies(), vec![body.clone()]);
+    assert_eq!(dialect.seen_infos()[0].text(), body);
 }
 
 fn broken_body(status: &str, headers: &str) -> Vec<u8> {

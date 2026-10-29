@@ -1,6 +1,7 @@
-use br_llm_clients_core::{CallOutcome, ClientError, ClientRequest, StreamSink};
-use br_llm_messages::Step;
+use br_llm_clients_core::{CallOutcome, ClientError, ClientRequest, StreamSink, render_history};
+use br_llm_messages::ModelResponse;
 
+use crate::answered_model::answered_model;
 use crate::call_record::CallRecord;
 use crate::call_spec::CallSpec;
 use crate::failure_map::send_failure;
@@ -8,25 +9,36 @@ use crate::outcome::outcome;
 use crate::read_reply::read_reply;
 use crate::refusal::refuse;
 use crate::request_build::build_request;
+use crate::secrets_cache::SecretsCache;
 
 pub async fn run(
     spec: &CallSpec,
     request: &ClientRequest,
     sink: &mut dyn StreamSink,
 ) -> CallOutcome {
+    run_with(spec, &SecretsCache::default(), request, sink).await
+}
+
+pub(crate) async fn run_with(
+    spec: &CallSpec,
+    secrets: &SecretsCache,
+    request: &ClientRequest,
+    sink: &mut dyn StreamSink,
+) -> CallOutcome {
     let mut record = CallRecord::start();
-    let result = exchange(spec, request, sink, &mut record).await;
-    outcome(&spec.secrets, record, result)
+    let result = exchange(spec, secrets, request, sink, &mut record).await;
+    outcome(&secrets.in_effect(spec), record, result)
 }
 
 async fn exchange(
     spec: &CallSpec,
+    secrets: &SecretsCache,
     request: &ClientRequest,
     sink: &mut dyn StreamSink,
     record: &mut CallRecord,
-) -> Result<Step, ClientError> {
-    request.check_messages()?;
-    let encoded = spec.dialect.encode(request)?;
+) -> Result<ModelResponse, ClientError> {
+    let rendered = render_history(request)?;
+    let encoded = spec.dialect.encode(request, &rendered)?;
     let http_request = build_request(spec, &encoded)?;
     let response = spec
         .http
@@ -34,9 +46,10 @@ async fn exchange(
         .await
         .map_err(|error| send_failure(&error))?;
     record.request_id = spec.dialect.request_id(response.headers());
+    record.answered_model = answered_model(spec, secrets, response.headers());
     if (200..300).contains(&response.status()) {
-        read_reply(spec, request, response, sink, record).await
+        read_reply(spec, secrets, request, response, sink, record).await
     } else {
-        Err(refuse(spec, response).await)
+        Err(refuse(spec, secrets, response).await)
     }
 }

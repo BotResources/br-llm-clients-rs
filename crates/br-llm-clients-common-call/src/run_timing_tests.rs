@@ -4,7 +4,7 @@ use std::time::Duration;
 use tokio::time::advance;
 
 use crate::test_dialect::ScriptedDialect;
-use crate::test_fixtures::{Busy, assistant_first_request, run_call, spec_for, user_request};
+use crate::test_fixtures::{Busy, run_call, spec_for, unrenderable_request, user_request};
 use crate::test_server::{TestServer, http};
 
 async fn slow_server(wait: Duration) -> TestServer {
@@ -46,7 +46,7 @@ async fn given_a_failure_before_anything_is_sent_when_run_then_the_total_duratio
     let server = slow_server(Duration::from_secs(5)).await;
     let dialect = Arc::new(ScriptedDialect::default());
     let spec = spec_for(&dialect, server.endpoint("/v1/test"));
-    let report = run_call(&spec, &assistant_first_request())
+    let report = run_call(&spec, &unrenderable_request())
         .await
         .into_parts()
         .0;
