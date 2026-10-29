@@ -1,10 +1,22 @@
-use br_llm_messages::{AssistantBlock, ImageMime, WireUserBlock};
+use br_llm_messages::{ContentBlock, MediaType, TextBlock, Turn};
 use serde_json::{Value, json};
 
 use crate::test_fixtures::*;
+use crate::test_thread::*;
 
-fn messages_of(messages: Vec<br_llm_messages::WireMessage>) -> Value {
-    body_of(&dialect(), &request(messages))["messages"].clone()
+fn messages_of(turns: Vec<Turn>) -> Value {
+    body_of(&dialect(), &request(turns))["messages"].clone()
+}
+
+pub(crate) fn one_call(id: &str, name: &str, arguments: Value, content: &[&str]) -> Vec<Turn> {
+    let call = call(id, name, arguments);
+    vec![
+        user("go"),
+        in_progress(vec![
+            calling(vec![call_block(&call)]),
+            results(vec![result_of(&call, texts(content), false)]),
+        ]),
+    ]
 }
 
 #[test]
@@ -31,15 +43,15 @@ fn given_a_text_with_whitespace_when_encoded_then_it_is_sent_as_it_is() {
 
 #[test]
 fn given_each_image_type_when_encoded_then_it_is_a_base64_source_with_its_media_type() {
-    for (mime, name) in [
-        (ImageMime::Jpeg, "image/jpeg"),
-        (ImageMime::Png, "image/png"),
-        (ImageMime::Gif, "image/gif"),
-        (ImageMime::Webp, "image/webp"),
+    for (media_type, name) in [
+        (MediaType::Jpeg, "image/jpeg"),
+        (MediaType::Png, "image/png"),
+        (MediaType::Gif, "image/gif"),
+        (MediaType::Webp, "image/webp"),
     ] {
-        let messages = messages_of(vec![user_blocks(vec![
-            image(mime, "QUJD"),
-            user_text_block("what"),
+        let messages = messages_of(vec![human_with(vec![
+            plain_image(media_type, "QUJD"),
+            plain_text("what"),
         ])]);
         assert_eq!(
             messages[0]["content"],
@@ -52,12 +64,8 @@ fn given_each_image_type_when_encoded_then_it_is_a_base64_source_with_its_media_
 }
 
 #[test]
-fn given_a_tool_result_when_encoded_then_it_holds_the_id_and_text_blocks_and_no_name() {
-    let messages = messages_of(vec![
-        user("go"),
-        assistant(vec![tool_call("t1", "lookup", json!({}))]),
-        user_blocks(vec![tool_result("t1", "lookup", &["one", " two "], false)]),
-    ]);
+fn given_a_tool_result_when_encoded_then_it_holds_the_wire_id_and_text_blocks_and_no_name() {
+    let messages = messages_of(one_call("t1", "lookup", json!({}), &["one", " two "]));
     assert_eq!(
         messages[2]["content"],
         json!([{
@@ -70,16 +78,38 @@ fn given_a_tool_result_when_encoded_then_it_holds_the_id_and_text_blocks_and_no_
 }
 
 #[test]
-fn given_an_error_result_when_encoded_then_is_error_is_true_and_a_success_has_no_such_field() {
+fn given_a_tool_result_with_an_image_when_encoded_then_its_content_holds_the_image_block_in_order()
+{
+    let call = call("t1", "snap", json!({}));
+    let content = vec![plain_text("before"), plain_image(MediaType::Png, "AAAA")];
     let messages = messages_of(vec![
         user("go"),
-        assistant(vec![
-            tool_call("t1", "lookup", json!({})),
-            tool_call("t2", "lookup", json!({})),
+        in_progress(vec![
+            calling(vec![call_block(&call)]),
+            results(vec![result_of(&call, content, false)]),
         ]),
-        user_blocks(vec![
-            tool_result("t1", "lookup", &["bad"], true),
-            tool_result("t2", "lookup", &["fine"], false),
+    ]);
+    assert_eq!(
+        messages[2]["content"][0]["content"],
+        json!([
+            {"type": "text", "text": "before"},
+            {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "AAAA"}},
+        ])
+    );
+}
+
+#[test]
+fn given_an_error_result_when_encoded_then_is_error_is_true_and_a_success_has_no_such_field() {
+    let first = call("t1", "lookup", json!({}));
+    let second = call("t2", "lookup", json!({}));
+    let messages = messages_of(vec![
+        user("go"),
+        in_progress(vec![
+            calling(vec![call_block(&first), call_block(&second)]),
+            results(vec![
+                result_of(&first, texts(&["bad"]), true),
+                result_of(&second, texts(&["fine"]), false),
+            ]),
         ]),
     ]);
     let results = &messages[2]["content"];
@@ -89,11 +119,7 @@ fn given_an_error_result_when_encoded_then_is_error_is_true_and_a_success_has_no
 
 #[test]
 fn given_a_result_with_no_block_when_encoded_then_content_is_absent() {
-    let messages = messages_of(vec![
-        user("go"),
-        assistant(vec![tool_call("t1", "lookup", json!({}))]),
-        user_blocks(vec![tool_result("t1", "lookup", &[], false)]),
-    ]);
+    let messages = messages_of(one_call("t1", "lookup", json!({}), &[]));
     assert_eq!(
         messages[2]["content"],
         json!([{"type": "tool_result", "tool_use_id": "t1"}])
@@ -101,20 +127,19 @@ fn given_a_result_with_no_block_when_encoded_then_content_is_absent() {
 }
 
 #[test]
-fn given_results_after_other_blocks_when_encoded_then_the_results_come_first_in_their_order() {
+fn given_results_and_a_later_message_when_encoded_then_the_rendering_order_is_kept() {
+    let first = call("t1", "lookup", json!({}));
+    let second = call("t2", "lookup", json!({}));
     let messages = messages_of(vec![
         user("go"),
-        assistant(vec![
-            tool_call("t1", "lookup", json!({})),
-            tool_call("t2", "lookup", json!({})),
+        in_progress(vec![
+            calling(vec![call_block(&first), call_block(&second)]),
+            results(vec![
+                result_of(&second, texts(&["r2"]), false),
+                result_of(&first, texts(&["r1"]), false),
+            ]),
         ]),
-        user_blocks(vec![
-            user_text_block("note one"),
-            tool_result("t1", "lookup", &["r1"], false),
-            image(ImageMime::Png, "AAAA"),
-            tool_result("t2", "lookup", &["r2"], false),
-            user_text_block("note two"),
-        ]),
+        user("note"),
     ]);
     let kinds: Vec<_> = messages[2]["content"]
         .as_array()
@@ -122,76 +147,20 @@ fn given_results_after_other_blocks_when_encoded_then_the_results_come_first_in_
         .iter()
         .map(|block| block["type"].as_str().expect("type").to_owned())
         .collect();
-    assert_eq!(
-        kinds,
-        ["tool_result", "tool_result", "text", "image", "text"]
-    );
+    assert_eq!(kinds, ["tool_result", "tool_result", "text"]);
     assert_eq!(messages[2]["content"][0]["tool_use_id"], json!("t1"));
     assert_eq!(messages[2]["content"][1]["tool_use_id"], json!("t2"));
-    assert_eq!(messages[2]["content"][2]["text"], json!("note one"));
-    assert_eq!(messages[2]["content"][4]["text"], json!("note two"));
+    assert_eq!(messages[2]["content"][2]["text"], json!("note"));
 }
 
 #[test]
-fn given_a_relay_after_a_user_message_when_encoded_then_its_texts_end_that_message_after_the_results()
- {
-    let messages = messages_of(vec![
-        user("go"),
-        assistant(vec![tool_call("t1", "lookup", json!({}))]),
-        user_blocks(vec![tool_result("t1", "lookup", &["r1"], false)]),
-        relay(&["first", "second"]),
-    ]);
-    assert_eq!(messages.as_array().expect("array").len(), 3);
-    assert_eq!(
-        messages[2]["content"],
-        json!([
-            {"type": "tool_result", "tool_use_id": "t1", "content": [{"type": "text", "text": "r1"}]},
-            {"type": "text", "text": "first"},
-            {"type": "text", "text": "second"},
-        ])
-    );
-}
-
-#[test]
-fn given_a_relay_text_with_whitespace_when_encoded_then_it_is_sent_as_it_is() {
-    let messages = messages_of(vec![user("go"), relay(&["  first\n", "\n second  "])]);
-    assert_eq!(
-        messages[0]["content"],
-        json!([
-            {"type": "text", "text": "go"},
-            {"type": "text", "text": "  first\n"},
-            {"type": "text", "text": "\n second  "},
-        ])
-    );
-}
-
-#[test]
-fn given_a_relay_after_an_assistant_message_when_encoded_then_it_is_a_new_user_message() {
-    let messages = messages_of(vec![user("a"), assistant_text("b"), relay(&["x", "y"])]);
-    assert_eq!(
-        messages,
-        json!([
-            {"role": "user", "content": [{"type": "text", "text": "a"}]},
-            {"role": "assistant", "content": [{"type": "text", "text": "b"}]},
-            {"role": "user", "content": [
-                {"type": "text", "text": "x"},
-                {"type": "text", "text": "y"},
-            ]},
-        ])
-    );
-}
-
-#[test]
-fn given_a_tool_call_when_encoded_then_it_is_a_tool_use_with_the_id_name_and_input_as_they_are() {
-    let messages = messages_of(vec![
-        user("go"),
-        assistant(vec![tool_call(
-            "brgen_x1",
-            "lookup",
-            json!({"q": [1, {"a": null}]}),
-        )]),
-        user_blocks(vec![tool_result("brgen_x1", "lookup", &["r"], false)]),
-    ]);
+fn given_a_tool_call_when_encoded_then_it_is_a_tool_use_with_the_wire_id_name_and_input() {
+    let messages = messages_of(one_call(
+        "brgen_x1",
+        "lookup",
+        json!({"q": [1, {"a": null}]}),
+        &["r"],
+    ));
     assert_eq!(
         messages[1]["content"],
         json!([{
@@ -206,39 +175,15 @@ fn given_a_tool_call_when_encoded_then_it_is_a_tool_use_with_the_id_name_and_inp
 
 #[test]
 fn given_an_id_the_api_would_refuse_when_encoded_then_it_is_sent_unchanged() {
-    let messages = messages_of(vec![
-        user("go"),
-        assistant(vec![tool_call("a b.c", "lookup", json!({}))]),
-        user_blocks(vec![tool_result("a b.c", "lookup", &["r"], false)]),
-    ]);
+    let messages = messages_of(one_call("a b.c", "lookup", json!({}), &["r"]));
     assert_eq!(messages[1]["content"][0]["id"], json!("a b.c"));
+    assert_eq!(messages[2]["content"][0]["tool_use_id"], json!("a b.c"));
 }
 
 #[test]
 fn given_a_tool_call_with_no_tool_declared_when_encoded_then_nothing_is_checked() {
-    let request = request(vec![
-        user("go"),
-        assistant(vec![tool_call("t1", "ghost", json!({}))]),
-        user_blocks(vec![tool_result("t1", "ghost", &["r"], false)]),
-    ]);
-    assert!(br_llm_clients_common_call::Dialect::encode(&dialect(), &request).is_ok());
-}
-
-#[test]
-fn given_a_structured_block_when_encoded_then_it_is_a_text_block_with_its_compact_json() {
-    let value = json!({"answer": {"nested": [1, 2.5, "x"]}, "ok": true});
-    let messages = messages_of(vec![
-        user("a"),
-        assistant(vec![AssistantBlock::Structured {
-            value: value.clone(),
-        }]),
-        user("b"),
-    ]);
-    let sent = messages[1]["content"][0]["text"].as_str().expect("text");
-    assert_eq!(messages[1]["content"][0]["type"], json!("text"));
-    assert_eq!(sent, value.to_string());
-    assert!(!sent.contains(": ") && !sent.contains(", "));
-    assert_eq!(serde_json::from_str::<Value>(sent).expect("json"), value);
+    let request = request(one_call("t1", "ghost", json!({}), &["r"]));
+    assert!(encode(&dialect(), &request).is_ok());
 }
 
 #[test]
@@ -251,10 +196,38 @@ fn given_an_assistant_text_block_when_encoded_then_it_stays_a_text_block() {
 }
 
 #[test]
-fn given_user_image_and_text_when_encoded_then_every_block_is_kept() {
-    let messages = messages_of(vec![user_blocks(vec![
-        WireUserBlock::Text { text: text("a") },
-        image(ImageMime::Gif, "AAAA"),
+fn given_a_text_block_with_replay_material_in_the_turn_in_progress_when_encoded_then_only_its_text_is_sent()
+ {
+    let call = call("t1", "lookup", json!({}));
+    let sealed = ContentBlock::Text(
+        TextBlock::new(block_id(), "sealed")
+            .expect("a text")
+            .with_replay(material("other/format", "hidden-material")),
+    );
+    let body = body_of(
+        &dialect(),
+        &request(vec![
+            user("go"),
+            in_progress(vec![
+                calling(vec![sealed, call_block(&call)]),
+                results(vec![result_of(&call, texts(&["r"]), false)]),
+            ]),
+        ]),
+    );
+    assert_eq!(
+        body["messages"][1]["content"][0],
+        json!({"type": "text", "text": "sealed"})
+    );
+    assert!(!body.to_string().contains("hidden-material"));
+}
+
+#[test]
+fn given_user_text_and_image_when_encoded_then_every_block_is_kept_in_order() {
+    let messages = messages_of(vec![human_with(vec![
+        plain_text("a"),
+        plain_image(MediaType::Gif, "AAAA"),
     ])]);
+    assert_eq!(messages[0]["content"][0]["type"], json!("text"));
+    assert_eq!(messages[0]["content"][1]["type"], json!("image"));
     assert_eq!(messages[0]["content"].as_array().expect("array").len(), 2);
 }

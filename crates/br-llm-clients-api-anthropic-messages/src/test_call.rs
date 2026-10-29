@@ -6,10 +6,11 @@ use br_llm_clients_common_http::{HttpClient, HttpConfig, NoAuthorizer};
 use br_llm_clients_core::{
     CacheRequirement, CallOutcome, ClientError, ClientRequest, OutputMode, ReasoningLevel,
 };
-use br_llm_messages::{ModelId, Step, StreamEvent};
+use br_llm_messages::{ModelResponse, ResponseDelta};
 
 use crate::AnthropicMessages;
-use crate::test_fixtures::{MODEL, dialect_with, request, request_with, structured, user};
+use crate::test_fixtures::{dialect_with, request, request_with, structured, user};
+use crate::test_ids::CountingIds;
 use crate::test_server::{Received, TestServer, Wire, http};
 use crate::test_sink::RecordingSink;
 
@@ -17,13 +18,13 @@ const LONG: Duration = Duration::from_secs(3600);
 
 pub(crate) struct Called {
     pub(crate) outcome: CallOutcome,
-    pub(crate) events: Vec<StreamEvent>,
+    pub(crate) deltas: Vec<ResponseDelta>,
     pub(crate) received: Vec<Received>,
 }
 
 impl Called {
-    pub(crate) fn step(&self) -> &Step {
-        self.outcome.result().expect("a step")
+    pub(crate) fn response(&self) -> &ModelResponse {
+        self.outcome.result().expect("a response")
     }
 
     pub(crate) fn error(&self) -> &ClientError {
@@ -47,14 +48,26 @@ pub(crate) fn plain_output() -> OutputMode {
     OutputMode::Plain
 }
 
+pub(crate) fn http_client() -> HttpClient {
+    HttpClient::new(HttpConfig::new(LONG, LONG, LONG)).expect("client")
+}
+
 pub(crate) fn spec(dialect: AnthropicMessages, server: &TestServer) -> CallSpec {
+    spec_with(Arc::new(dialect), server, http_client())
+}
+
+pub(crate) fn spec_with(
+    dialect: Arc<AnthropicMessages>,
+    server: &TestServer,
+    http: HttpClient,
+) -> CallSpec {
     CallSpec::new(
-        Arc::new(dialect),
+        dialect,
         server.endpoint("/v1/messages"),
         Arc::new(NoAuthorizer),
-        HttpClient::new(HttpConfig::new(LONG, LONG, LONG)).expect("client"),
-        ModelId::new(MODEL).expect("model"),
+        http,
     )
+    .with_id_source(Arc::new(CountingIds::new()))
 }
 
 pub(crate) async fn call_with(
@@ -68,7 +81,7 @@ pub(crate) async fn call_with(
     let outcome = run(&spec, request, &mut sink).await;
     Called {
         outcome,
-        events: sink.events,
+        deltas: sink.deltas,
         received: server.requests(),
     }
 }

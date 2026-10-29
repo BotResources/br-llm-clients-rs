@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use br_llm_clients_core::{CacheRequirement, ClientError, LimitKind, ReasoningLevel};
-use br_llm_messages::StopReason;
+use br_llm_messages::ResponseEnding;
 
 use crate::test_call::*;
 use crate::test_fixtures::dialect_with;
@@ -230,7 +230,7 @@ async fn given_a_mid_stream_overloaded_error_when_run_then_it_is_unavailable_and
 #[tokio::test]
 async fn given_a_stream_with_no_event_names_when_run_then_the_type_of_the_data_decides() {
     let called = call_stream(&hello(), &without_event_names(crate::test_streams::BASIC)).await;
-    assert_eq!(called.step().stop_reason(), &StopReason::EndTurn);
+    assert_eq!(called.response().ending(), &ResponseEnding::finished());
     let called = call_stream(
         &hello(),
         &without_event_names(crate::test_streams::MID_STREAM_ERROR),

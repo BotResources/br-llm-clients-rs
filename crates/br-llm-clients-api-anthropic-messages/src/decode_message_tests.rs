@@ -257,7 +257,7 @@ fn given_a_ping_in_a_message_when_decoded_then_it_gives_nothing() {
 fn given_an_extra_field_in_the_message_when_decoded_then_it_is_ignored() {
     let mut session = Session::plain();
     let events = session.ok(
-        r#"{"type":"message_start","extra":1,"message":{"id":"m","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"container":null}}"#,
+        r#"{"type":"message_start","extra":1,"message":{"role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"container":null,"stop_details":null}}"#,
     );
     assert!(events.is_empty());
 }
