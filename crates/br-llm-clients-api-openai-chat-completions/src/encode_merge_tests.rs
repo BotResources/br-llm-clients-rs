@@ -32,7 +32,7 @@ fn given_an_omitted_assistant_message_between_two_user_messages_when_encoded_the
 }
 
 #[test]
-fn given_an_omitted_assistant_message_after_tool_results_when_encoded_then_the_texts_join_one_user_message()
+fn given_an_omitted_assistant_message_between_a_user_message_with_results_and_a_user_message_when_encoded_then_their_texts_join_one_user_message()
  {
     let lookup = call("c1", "lookup", json!({}));
     let turns = vec![
@@ -40,10 +40,10 @@ fn given_an_omitted_assistant_message_after_tool_results_when_encoded_then_the_t
         in_progress(vec![
             calling(vec![call_block(&lookup)]),
             results(vec![result_of(&lookup, texts(&["x"]), false)]),
+            notice("own"),
             answer(vec![signed("sealed")]),
-            notice("first"),
+            notice("later"),
         ]),
-        user("second"),
     ];
     let messages = encoded(turns);
     assert_eq!(
@@ -51,8 +51,8 @@ fn given_an_omitted_assistant_message_after_tool_results_when_encoded_then_the_t
         [
             json!({"role": "tool", "tool_call_id": "c1", "content": "x"}),
             json!({"role": "user", "content": [
-                {"type": "text", "text": "<notice>first</notice>"},
-                {"type": "text", "text": "second"}
+                {"type": "text", "text": "<notice>own</notice>"},
+                {"type": "text", "text": "<notice>later</notice>"}
             ]}),
         ]
     );

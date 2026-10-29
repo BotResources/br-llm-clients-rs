@@ -3,8 +3,8 @@ use serde_json::{Value, json};
 
 use crate::test_support::{dialect_for, encode, messages_of, options, request_of};
 use crate::test_thread::{
-    answer, call, call_block, calling, earlier, in_progress, redacted, result_of, results, signed,
-    text, texts, thinking, user,
+    answer, call, call_block, calling, earlier, in_progress, notice, redacted, result_of, results,
+    signed, text, texts, thinking, user,
 };
 use crate::{ChatCompletionsOptions, ReasoningLevel};
 
@@ -165,4 +165,26 @@ fn given_the_option_set_when_encoded_twice_then_the_bytes_are_equal() {
     let first = encode(&dialect, &request).expect("first");
     let second = encode(&dialect, &request).expect("second");
     assert_eq!(first.body(), second.body());
+}
+
+#[test]
+fn given_an_omitted_message_before_a_kept_one_of_the_turn_when_encoded_then_its_thinking_is_never_moved_to_it()
+ {
+    let lookup = weather("c1");
+    let turns = vec![
+        user("go"),
+        in_progress(vec![
+            answer(vec![thinking("lost")]),
+            notice("between"),
+            calling(vec![call_block(&lookup)]),
+            results(vec![result_of(&lookup, texts(&["sunny"]), false)]),
+        ]),
+    ];
+    let messages = encoded(carrying(), turns);
+    assert!(!Value::Array(messages.clone()).to_string().contains("lost"));
+    let with_call = messages
+        .iter()
+        .find(|message| message.get("tool_calls").is_some())
+        .expect("the assistant message with the call");
+    assert!(with_call.get("reasoning_content").is_none());
 }
