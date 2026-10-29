@@ -32,7 +32,10 @@ messages; a test encodes six requests and compares the bytes with bodies made by
   chooses no format of replay material, sends none, and never gives `SignatureDelta` or
   `RedactedThinkingData`.
 - A message that holds no part after the drops is omitted, and its neighbours of the same role
-  are merged into one message before they are written, as the core asks for a dropped part.
+  are merged into one message before they are written. This follows the Thinking rule of
+  "Rendering of a history" in core 0.5: a `Block` part that the client library drops counts
+  as absent, merges the neighbours of the same role again and never sends an empty message.
+  The thinking of an omitted message is dropped and never moved to another message.
 - `InvalidMessages` when the last message that the dialect sends is an `assistant` message,
   when nothing is left to send, and, with a reason that names it, for an image in an
   `Assistant` message or in a tool result, for a block other than thinking, redacted thinking
