@@ -17,7 +17,9 @@ library built on 0.1.0 does not compile against it. With the six new options at 
 `encode` gives the same body bytes as 0.1.0 for a history whose rendering holds the same
 messages; a test encodes six requests and compares the bytes with bodies made by the tag
 `br-llm-clients-api-openai-chat-completions/v0.1.0`. The decoding and the errors are those of
-0.1.0, except for the ending, the response id and the four new quota codes below.
+0.1.0, except for the ending, the response id, the four new quota codes, and a `Usage` that is
+now given when one of `prompt_tokens` and `completion_tokens` is present, where 0.1.0 needed
+both; all are described below.
 
 ### Changed
 
@@ -68,8 +70,9 @@ messages; a test encodes six requests and compares the bytes with bodies made by
 - `ProviderEvent::ResponseId` with the `id` of a chunk when it is a non-empty string that
   differs from the last one given.
 - `ChatCompletionsOptions::with_max_tokens_field(MaxTokensField)`: `MaxCompletionTokens` (the
-  default) writes `max_completion_tokens`, `MaxTokens` writes `max_tokens`; the body holds that
-  one member only.
+  default) writes `max_completion_tokens`, `MaxTokens` writes `max_tokens`; the dialect writes
+  that one member and never the other. With `MaxCompletionTokens`, a `max_tokens` member of
+  `extra_body` is still added, as every member of `extra_body` is.
 - `with_reasoning_carry_back_field(name)`: each `assistant` message of the turn in progress
   gets that member, holding the texts of its thinking blocks that have no replay material,
   joined in order with nothing between them, when that string is not empty. The thinking of an
