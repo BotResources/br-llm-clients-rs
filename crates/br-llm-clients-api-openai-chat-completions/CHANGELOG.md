@@ -91,8 +91,12 @@ messages; a test encodes six requests and compares the bytes with bodies made by
 ### Verified
 
 The eight recordings of 0.1.0 are served again to `run` of common-call 0.2, whole and cut in
-two at every byte, and give the same outcome; the response id of each stream is the
-`provider_response_id` of the reply. The new options, the new quota codes, `cache_write_tokens`
+two at the start and the end of the body, at each line end and one byte on each side of it,
+and inside each multi-byte character, and every cut gives the same outcome; the response id of
+each stream is the `provider_response_id` of the reply. Splitting a body at every byte is pinned
+by the tests of `br-llm-clients-common-sse` and `br-llm-clients-common-call`; the decoder tests
+of this crate cut a payload at every byte, and a small stream is cut at every byte through
+`run`. The new options, the new quota codes, `cache_write_tokens`
 and the shapes of other hosts (`reasoning` and `reasoning_content` fields, a top-level
 `cached_tokens`, `max_tokens`, a nested extra body, a tool fragment with no `type` and no `id`)
 are tested from the documented shape only; no recording covers them.

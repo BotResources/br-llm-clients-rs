@@ -99,32 +99,38 @@ fn given_a_body_when_its_cuts_are_listed_then_they_hold_each_line_end_its_neighb
 }
 
 #[tokio::test]
-async fn given_the_recorded_text_stream_when_cut_at_every_byte_then_the_outcome_is_the_same() {
+async fn given_the_recorded_text_stream_when_cut_at_the_ends_the_line_ends_and_inside_wide_characters_then_the_outcome_is_the_same()
+ {
     assert_every_cut_gives_the_same_outcome(TEXT).await;
 }
 
 #[tokio::test]
-async fn given_the_recorded_tool_stream_when_cut_at_every_byte_then_the_outcome_is_the_same() {
+async fn given_the_recorded_tool_stream_when_cut_at_the_ends_the_line_ends_and_inside_wide_characters_then_the_outcome_is_the_same()
+ {
     assert_every_cut_gives_the_same_outcome(TOOL).await;
 }
 
 #[tokio::test]
-async fn given_the_recorded_length_stream_when_cut_at_every_byte_then_the_outcome_is_the_same() {
+async fn given_the_recorded_length_stream_when_cut_at_the_ends_the_line_ends_and_inside_wide_characters_then_the_outcome_is_the_same()
+ {
     assert_every_cut_gives_the_same_outcome(LENGTH).await;
 }
 
 #[tokio::test]
-async fn given_the_recorded_reasoning_stream_when_cut_at_every_byte_then_the_outcome_is_the_same() {
+async fn given_the_recorded_reasoning_stream_when_cut_at_the_ends_the_line_ends_and_inside_wide_characters_then_the_outcome_is_the_same()
+ {
     assert_every_cut_gives_the_same_outcome(REASONING).await;
 }
 
 #[tokio::test]
-async fn given_the_recorded_refusal_stream_when_cut_at_every_byte_then_the_outcome_is_the_same() {
+async fn given_the_recorded_refusal_stream_when_cut_at_the_ends_the_line_ends_and_inside_wide_characters_then_the_outcome_is_the_same()
+ {
     assert_every_cut_gives_the_same_outcome(REFUSAL).await;
 }
 
 #[tokio::test]
-async fn given_the_recorded_error_bodies_when_cut_at_every_byte_then_the_failure_is_the_same() {
+async fn given_the_recorded_error_bodies_when_cut_at_the_ends_the_line_ends_and_inside_wide_characters_then_the_failure_is_the_same()
+ {
     for recording in [BAD_KEY, BAD_MODEL, BAD_BODY] {
         assert_every_cut_gives_the_same_outcome(recording).await;
     }
