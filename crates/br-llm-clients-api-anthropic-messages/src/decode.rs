@@ -31,31 +31,20 @@ impl Decoder {
         match kind {
             "ping" => Ok(Vec::new()),
             "message_start" => self.message_start(fields),
-            "content_block_start"
-            | "content_block_delta"
-            | "content_block_stop"
-            | "message_delta"
-            | "message_stop" => {
-                if !self.started {
-                    return Err(malformed("an event arrived before message_start"));
-                }
-                self.in_message(kind, fields)
-            }
+            "content_block_start" => self.in_message()?.blocks.start(fields),
+            "content_block_delta" => self.in_message()?.blocks.delta(fields),
+            "content_block_stop" => self.in_message()?.blocks.stop(fields),
+            "message_delta" => self.in_message()?.message_delta(fields),
+            "message_stop" => Ok(self.in_message()?.message_stop()),
             _ => Ok(Vec::new()),
         }
     }
 
-    fn in_message(
-        &mut self,
-        kind: &str,
-        fields: &Fields,
-    ) -> Result<Vec<ProviderEvent>, PayloadError> {
-        match kind {
-            "content_block_start" => self.blocks.start(fields),
-            "content_block_delta" => self.blocks.delta(fields),
-            "content_block_stop" => self.blocks.stop(fields),
-            "message_delta" => self.message_delta(fields),
-            _ => Ok(self.message_stop()),
+    fn in_message(&mut self) -> Result<&mut Self, PayloadError> {
+        if self.started {
+            Ok(self)
+        } else {
+            Err(malformed("an event arrived before message_start"))
         }
     }
 }
