@@ -6,7 +6,7 @@ use crate::test_history::{
     call, envelope_replay, plain_image, plain_text, reply, response, result_of, results, say, text,
     thinking,
 };
-use crate::test_requests::{dialect, encode_body, encoded, parameter, request, request_with, tool};
+use crate::test_requests::{dialect, encode_body, parameter, request, request_with, tool};
 
 #[test]
 fn given_the_history_of_the_0_1_golden_when_encoded_then_the_whole_body_is_the_body_of_0_1() {
@@ -111,11 +111,13 @@ fn given_the_replayed_reasoning_item_when_serialized_then_the_text_is_the_golden
             results(vec![result_of(&found, vec![plain_text("r")], false)]),
         ]),
     ]);
-    let encoded = encoded(&dialect(ReasoningLevel::Off), &request).expect("encoded");
-    let body = String::from_utf8(encoded.body().to_vec()).expect("utf8");
-    assert!(body.contains(
-        "{\"encrypted_content\":\"ENC\",\"id\":\"rs_1\",\"summary\":[],\"type\":\"reasoning\"}"
-    ));
+    let body = encode_body(&dialect(ReasoningLevel::Off), &request).expect("encoded");
+    assert_eq!(
+        body["input"][1],
+        json!({ "type": "reasoning", "id": "rs_1", "summary": [], "encrypted_content": "ENC" })
+    );
+    let item = body["input"][1].as_object().expect("an object");
+    assert_eq!(item.len(), 4);
 }
 
 #[test]
@@ -156,4 +158,24 @@ fn given_a_tool_result_with_an_image_when_encoded_then_the_output_is_the_golden_
             }
         ])
     );
+}
+
+#[test]
+fn given_a_done_reasoning_item_when_decoded_then_the_envelope_text_is_the_golden_text() {
+    use br_llm_clients_common_call::ProviderEvent;
+
+    let mut decoder = crate::test_decoder::plain_decoder();
+    crate::test_decoder::flat(&mut decoder, &[crate::test_events::reasoning_added(0)]);
+    let events = crate::test_decoder::feed(
+        &mut decoder,
+        &crate::test_events::reasoning_done(0, "rs_1", Some("E\"N/C"), &[]),
+    );
+    let text = events
+        .iter()
+        .find_map(|event| match event {
+            ProviderEvent::SignatureDelta { signature, .. } => Some(signature.clone()),
+            _ => None,
+        })
+        .expect("a signature");
+    assert_eq!(text, "{\"id\":\"rs_1\",\"encrypted_content\":\"E\\\"N/C\"}");
 }

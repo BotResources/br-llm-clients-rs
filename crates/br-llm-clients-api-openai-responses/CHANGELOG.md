@@ -64,7 +64,8 @@ changed.
   of replay below, and a redacted thinking block is not sent. An image in an
   assistant message, a `Block` part with any other block, and a part, a result
   part or an image source that this version does not know are refused with
-  `InvalidMessages`.
+  `InvalidMessages`. The history is read in one pass, so the refusal names the
+  first fault in the order of the history.
 - An assistant message whose parts all drop out gives no item, and the user
   messages directly before and after it are encoded as one user message: the
   parts of the first, then the parts of the second. A rendering whose last
@@ -73,9 +74,12 @@ changed.
 - Breaking: the reasoning envelope (`id` and `encrypted_content` of the done
   `reasoning` item) is the replay material of the thinking block, a text payload
   in the format `br-llm-clients-api-openai-responses/reasoning`, in place of the
-  `Signature` of 0.1. The `SignatureDelta` of the decoder carries that format. A
-  thinking block of the reply turn whose material has this format and holds a
-  valid envelope goes back as a `reasoning` item; every other thinking block is
+  `Signature` of 0.1. The envelope is written as `{"id":…,"encrypted_content":…}`
+  in that fixed order, whatever the map order of `serde_json`. The
+  `SignatureDelta` of the decoder carries that format. A thinking block of the
+  reply turn whose material has this format and holds a valid envelope (the two
+  fields in compact form, in either order, with no repeated key) goes back as a
+  `reasoning` item; every other thinking block is
   dropped without error, also a block whose material has another format or a
   JSON payload.
 - Breaking: the `Stop` event carries a `ResponseEnding`. `response.completed`

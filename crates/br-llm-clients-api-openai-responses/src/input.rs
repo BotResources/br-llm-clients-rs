@@ -10,31 +10,25 @@ pub(crate) fn invalid_messages(reason: &str) -> ClientError {
     }
 }
 
-enum Segment<'a> {
-    User(Vec<&'a RenderedPart>),
-    Assistant(Vec<Value>),
-}
-
-fn segments(history: &RenderedHistory) -> Result<Vec<Segment<'_>>, ClientError> {
-    let mut segments: Vec<Segment<'_>> = Vec::new();
+pub(crate) fn items(history: &RenderedHistory) -> Result<Vec<Value>, ClientError> {
+    let mut items = Vec::new();
+    let mut pending: Vec<&RenderedPart> = Vec::new();
     for message in history.messages() {
         match message.role() {
-            RenderedRole::User => match segments.last_mut() {
-                Some(Segment::User(parts)) => parts.extend(message.parts()),
-                _ => segments.push(Segment::User(message.parts().iter().collect())),
-            },
+            RenderedRole::User => {
+                pending.extend(message.parts());
+                user_items(&pending)?;
+            }
             RenderedRole::Assistant => {
-                let items = assistant_items(message.parts())?;
-                if !items.is_empty() {
-                    segments.push(Segment::Assistant(items));
+                let found = assistant_items(message.parts())?;
+                if !found.is_empty() {
+                    items.extend(user_items(&pending)?);
+                    pending.clear();
+                    items.extend(found);
                 }
             }
         }
     }
-    Ok(segments)
-}
-
-pub(crate) fn items(history: &RenderedHistory) -> Result<Vec<Value>, ClientError> {
     if history
         .messages()
         .last()
@@ -44,12 +38,6 @@ pub(crate) fn items(history: &RenderedHistory) -> Result<Vec<Value>, ClientError
             "the last message is an assistant message, so the model has nothing to answer",
         ));
     }
-    let mut items = Vec::new();
-    for segment in segments(history)? {
-        match segment {
-            Segment::User(parts) => items.extend(user_items(&parts)?),
-            Segment::Assistant(found) => items.extend(found),
-        }
-    }
+    items.extend(user_items(&pending)?);
     Ok(items)
 }

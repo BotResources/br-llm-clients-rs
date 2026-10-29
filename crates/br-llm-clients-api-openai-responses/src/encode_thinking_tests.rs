@@ -118,6 +118,11 @@ fn given_replay_material_of_this_format_that_is_not_an_envelope_when_encoded_the
         "{\"id\":\"rs_1\",\"encrypted_content\":null}",
         "{\"id\":\"rs_1\",\"encrypted_content\":\"E\",\"extra\":1}",
         "{\"id\":\"rs_1\",\"other\":\"E\"}",
+        "{\"id\":\"a\",\"id\":\"b\",\"encrypted_content\":\"E\"}",
+        "{\"id\":\"rs_1\",\"encrypted_content\":\"E\",\"id\":\"rs_1\"}",
+        "{\"encrypted_content\":\"E\",\"id\":\"rs_1\",\"encrypted_content\":\"E\"}",
+        "{\"id\": \"rs_1\", \"encrypted_content\": \"E\"}",
+        " {\"id\":\"rs_1\",\"encrypted_content\":\"E\"}",
     ];
     for value in texts {
         let material = replay(REPLAY_FORMAT, ReplayPayload::text(value));
@@ -160,4 +165,12 @@ fn given_a_thinking_block_that_drops_out_beside_a_text_when_encoded_then_the_tex
         json!({ "type": "message", "role": "assistant", "content": "answer" })
     );
     assert_eq!(items.len(), 3);
+}
+
+#[test]
+fn given_the_envelope_that_the_decoder_writes_when_encoded_then_it_is_accepted() {
+    let written = crate::envelope::make("rs_\u{e9}\"q", "E/+=").expect("written");
+    let material = replay(REPLAY_FORMAT, ReplayPayload::text(written));
+    let items = with_thinking(thinking("t", Some(material)));
+    assert_eq!(items[1], reasoning("rs_\u{e9}\"q", "E/+="));
 }
