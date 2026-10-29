@@ -2,17 +2,18 @@
 
 Provider clients for LLM calls: send a system prompt, tools and a chat history from `br-llm-messages`, get the reply. Provider clients are separate crates, versioned separately, each released by its own git tag `{crate}/v{version}`:
 
-- `br-llm-clients-common-http` — sends one HTTP POST and gives back the status, the headers and a stream of byte chunks, with every failure told apart; it is meant to be shared by the provider clients (none exists yet).
+- `br-llm-clients-common-http` — sends one HTTP POST and gives back the status, the headers and a stream of byte chunks, with every failure told apart; it is used by the provider client `br-llm-clients-azure-openai`.
 - `br-llm-clients-core` — the core: provider-neutral request over a projected thread, settings, outcome, error, the rendering of a history, and the `Client`, `StreamSink` and `IdSource` traits every client library uses.
 - `br-llm-clients-mock` — a configurable mock `Client` for fast, parallel tests, used as a dev-dependency.
-- `br-llm-clients-common-call` — runs one call of a client: encodes the request through a dialect, sends it, and turns every failure into a `ClientError`, for any provider and any wire dialect; it is meant to be shared by the provider clients (none exists yet).
-- `br-llm-clients-api-anthropic-messages` — the Anthropic Messages wire dialect: encodes a request and decodes the streamed reply and the errors of the Anthropic Messages API for the shared call; it is meant to be used by the provider clients (none exists yet).
-- `br-llm-clients-api-openai-responses` — the OpenAI Responses wire dialect: encodes a request and decodes the streamed reply and the errors of the OpenAI Responses API for the shared call; it is meant to be used by the provider clients (none exists yet).
-- `br-llm-clients-api-openai-chat-completions` — the OpenAI Chat Completions wire dialect: encodes a request and decodes the streamed reply and the errors of the Chat Completions API for the shared call; it is meant to be used by the provider clients (none exists yet).
+- `br-llm-clients-common-call` — runs one call of a client: encodes the request through a dialect, sends it, and turns every failure into a `ClientError`, for any provider and any wire dialect; it is used by the provider client `br-llm-clients-azure-openai`.
+- `br-llm-clients-api-anthropic-messages` — the Anthropic Messages wire dialect: encodes a request and decodes the streamed reply and the errors of the Anthropic Messages API for the shared call; no provider client uses it yet.
+- `br-llm-clients-api-openai-responses` — the OpenAI Responses wire dialect: encodes a request and decodes the streamed reply and the errors of the OpenAI Responses API for the shared call; it is used by the provider client `br-llm-clients-azure-openai`.
+- `br-llm-clients-api-openai-chat-completions` — the OpenAI Chat Completions wire dialect: encodes a request and decodes the streamed reply and the errors of the Chat Completions API for the shared call; it is used by the provider client `br-llm-clients-azure-openai`.
+- `br-llm-clients-azure-openai` — the client for a classic Azure OpenAI resource: sends each call to the Chat Completions route or the Responses route of the resource, in the v1 form or the dated form (`api-version`) of the API, with an API key in the header `api-key`, checks the capabilities of its config before each call when it has some, and gives the outcome of the shared call. Its endpoint is the address of the resource, such as `https://{name}.openai.azure.com`: the client adds the path of the route itself.
 - `br-llm-clients-common-sse` — a Server-Sent Events decoder: turns the bytes of a response body into frames, with a size limit and no hidden damage.
-- `br-llm-clients-common-auth` — gives a bearer token to a request: a token source, a cache that fetches a new token before the old one ends, an authorizer for `br-llm-clients-common-http` and a client for the form-encoded token request of OAuth 2.0; it is meant to be shared by the provider clients (none exists yet).
+- `br-llm-clients-common-auth` — gives a bearer token to a request: a token source, a cache that fetches a new token before the old one ends, an authorizer for `br-llm-clients-common-http` and a client for the form-encoded token request of OAuth 2.0; no provider client uses it yet.
 
-**Status:** `br-llm-clients-core` is at `0.5.0`, `br-llm-clients-mock` is at `0.6.0`, `br-llm-clients-common-http`, `br-llm-clients-common-call`, `br-llm-clients-api-anthropic-messages`, `br-llm-clients-api-openai-responses` and `br-llm-clients-api-openai-chat-completions` are at `0.2.0`, and `br-llm-clients-common-sse` and `br-llm-clients-common-auth` are at `0.1.0`; the other crates are not written yet.
+**Status:** `br-llm-clients-core` is at `0.5.0`, `br-llm-clients-mock` is at `0.6.0`, `br-llm-clients-common-http`, `br-llm-clients-common-call`, `br-llm-clients-api-anthropic-messages`, `br-llm-clients-api-openai-responses` and `br-llm-clients-api-openai-chat-completions` are at `0.2.0`, and `br-llm-clients-common-sse`, `br-llm-clients-common-auth` and `br-llm-clients-azure-openai` are at `0.1.0`; the other crates are not written yet.
 
 Not on crates.io; pin the git tag with the matching `version` beside it (a tag-only git dependency carries a `*` version requirement, which `cargo-deny` rejects):
 
@@ -26,6 +27,7 @@ br-llm-clients-api-openai-responses = { git = "https://github.com/BotResources/b
 br-llm-clients-api-openai-chat-completions = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-api-openai-chat-completions", tag = "br-llm-clients-api-openai-chat-completions/v0.2.0", version = "0.2.0" }
 br-llm-clients-common-http = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-common-http", tag = "br-llm-clients-common-http/v0.2.0", version = "0.2.0" }
 br-llm-clients-common-auth = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-common-auth", tag = "br-llm-clients-common-auth/v0.1.0", version = "0.1.0" }
+br-llm-clients-azure-openai = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-azure-openai", tag = "br-llm-clients-azure-openai/v0.1.0", version = "0.1.0" }
 ```
 
 `br-llm-clients-mock` (0.6.0) pins `br-llm-clients-core` at `br-llm-clients-core/v0.5.0` and `br-llm-messages` at `br-llm-messages/v2.1.0`; a project that uses the mock and names core or messages pins those same two tags, or the types are two copies.
@@ -33,6 +35,8 @@ br-llm-clients-common-auth = { git = "https://github.com/BotResources/br-llm-cli
 `br-llm-clients-common-call` (0.2.0) pins `br-llm-clients-core` at `br-llm-clients-core/v0.5.0`, `br-llm-clients-common-http` at `br-llm-clients-common-http/v0.2.0`, `br-llm-clients-common-sse` at `br-llm-clients-common-sse/v0.1.0` and `br-llm-messages` at `br-llm-messages/v2.1.0`, and it re-exports `Authorizer`, `Endpoint`, `Headers`, `HttpClient` and `Secret` of `br-llm-clients-common-http`; a project that uses common-call and names a type of these crates pins those same tags, or the types are two copies.
 
 The three `br-llm-clients-api-*` libraries (0.2.0) pin `br-llm-clients-core` at `br-llm-clients-core/v0.5.0` and `br-llm-messages` at `br-llm-messages/v2.1.0`, and take `br-llm-clients-common-call` 0.2.0 by path, because the common-call 0.2.0 tag does not exist yet; until that tag exists and they pin it, a project that uses one of them takes common-call from the same tag as that library, with `package = "br-llm-clients-common-call"`, or common-call is two copies.
+
+`br-llm-clients-azure-openai` (0.1.0) pins `br-llm-clients-core` at `br-llm-clients-core/v0.5.0` and `br-llm-clients-common-http` at `br-llm-clients-common-http/v0.2.0`, uses `br-llm-messages` 2.1.0 through them (a `ClientSettings` needs a `ModelName`), and takes `br-llm-clients-common-call` 0.2.0, `br-llm-clients-api-openai-chat-completions` 0.2.0 and `br-llm-clients-api-openai-responses` 0.2.0 by path, like the dialects; a project that uses it and names a type of these crates pins core and common-http at those same tags, pins `br-llm-messages` at `br-llm-messages/v2.1.0` with `version = "2.1.0"`, and takes common-call and the two dialects from the tag `br-llm-clients-azure-openai/v0.1.0`, with their `package`, or the types are two copies.
 
 `br-llm-clients-common-auth` (0.1.0) uses `br-llm-clients-common-http` 0.2.0 in its public API (`Secret`, `Authorizer`, `AuthorizerError`, `BoxFuture`, `HttpClient`, `Endpoint`); a project that uses it pins `br-llm-clients-common-http` at `br-llm-clients-common-http/v0.2.0`, or the types are two copies.
 
@@ -45,5 +49,7 @@ cp .env.template .env
 ```
 
 Nothing in this repository reads `.env` by itself; a script that records a call loads it.
+
+The live check of `br-llm-clients-azure-openai` (`cargo run -p br-llm-clients-azure-openai --example live_check`) reads only the process environment: `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_API_VERSION` (`v1`, or a dated value such as `2024-12-01-preview`) and `AZURE_OPENAI_CHAT_DEPLOYMENT` are required; `AZURE_OPENAI_RESPONSES_DEPLOYMENT` is optional, and the Responses route is skipped when it is not set. Export them before you run it.
 
 No support is provided; paid support is available on request from BotResources. Apache-2.0. Generated by an AI system (Anthropic Claude) under the direction and review of BotResources, which takes full responsibility for it (EU AI Act, Regulation (EU) 2024/1689).

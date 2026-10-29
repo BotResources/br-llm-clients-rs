@@ -1,0 +1,20 @@
+[package]
+name = "br-llm-clients-azure-openai"
+version = "0.1.0"
+description = "Client for a classic Azure OpenAI resource: sends each call to its Chat Completions or Responses route, in the v1 or the dated form of the API, with an API key"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+br-llm-clients-api-openai-chat-completions = { path = "../br-llm-clients-api-openai-chat-completions", version = "0.2.0" }
+br-llm-clients-api-openai-responses = { path = "../br-llm-clients-api-openai-responses", version = "0.2.0" }
+br-llm-clients-common-call = { path = "../br-llm-clients-common-call", version = "0.2.0" }
+br-llm-clients-common-http = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-common-http/v0.2.0", version = "0.2.0" }
+br-llm-clients-core = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-core/v0.5.0", version = "0.5.0" }
+thiserror = "2"
+
+[dev-dependencies]
+br-llm-messages = { git = "https://github.com/BotResources/br-llm-messages-rs", tag = "br-llm-messages/v2.1.0", version = "2.1.0", features = ["mint"] }
+tokio = { version = "1", features = ["macros", "rt"] }

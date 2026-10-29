@@ -112,6 +112,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "br-llm-clients-azure-openai"
+version = "0.1.0"
+dependencies = [
+ "br-llm-clients-api-openai-chat-completions",
+ "br-llm-clients-api-openai-responses",
+ "br-llm-clients-common-call",
+ "br-llm-clients-common-http 0.2.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-common-http%2Fv0.2.0)",
+ "br-llm-clients-core 0.5.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-core%2Fv0.5.0)",
+ "br-llm-messages",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "br-llm-clients-common-auth"
 version = "0.1.0"
 dependencies = [
