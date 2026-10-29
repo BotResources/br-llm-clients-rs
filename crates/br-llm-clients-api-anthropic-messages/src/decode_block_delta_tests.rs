@@ -1,4 +1,4 @@
-use br_llm_clients_common_call::{ProviderBlock, ProviderEvent};
+use br_llm_clients_common_call::ProviderBlock;
 
 use crate::test_decode::*;
 
@@ -14,10 +14,7 @@ fn given_a_redacted_thinking_start_when_decoded_then_the_data_is_given_and_the_b
         events,
         vec![
             start("3", ProviderBlock::RedactedThinking),
-            ProviderEvent::RedactedThinkingData {
-                key: key("3"),
-                data: "abc".to_owned()
-            },
+            redacted_data("3", "abc"),
         ]
     );
     assert_eq!(session.ok(&stop_of(3)), vec![end_of("3")]);

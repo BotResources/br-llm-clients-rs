@@ -1,23 +1,22 @@
 use br_llm_clients_common_call::{ProviderBlock, ProviderEvent};
-use br_llm_messages::{AssistantBlock, StopReason, StreamEvent, Usage};
+use br_llm_messages::{ContentBlock, ReplayMaterial, ResponseDeltaKind, ResponseEnding, Usage};
 
 use crate::test_call::*;
 use crate::test_decode::*;
-use crate::test_fixtures::redacted;
 use crate::test_recorded::*;
+use crate::test_thread::redacted_data as redacted_material;
 
-const RECORDED_MODEL: &str = "claude-sonnet-4-6";
+const RECORDED_MODEL: &str = "claude-test-model";
+const RECORDED_ID: &str = "msg_test_redacted_thinking";
 
 fn index_key(position: usize) -> String {
     position.to_string()
 }
 
 fn counted(input: u64, output: u64) -> Usage {
-    Usage {
-        cache_read_tokens: Some(0),
-        cache_write_tokens: Some(0),
-        ..usage(input, output)
-    }
+    usage(input, output)
+        .with_cache_read_input_tokens(0)
+        .with_cache_creation_input_tokens(0)
 }
 
 fn assert_same_events(actual: &[ProviderEvent], expected: &[ProviderEvent]) {
@@ -30,15 +29,13 @@ fn assert_same_events(actual: &[ProviderEvent], expected: &[ProviderEvent]) {
 fn expected_events(stream: &str) -> Vec<ProviderEvent> {
     let mut events = vec![
         ProviderEvent::Model(RECORDED_MODEL.to_owned()),
+        ProviderEvent::ResponseId(RECORDED_ID.to_owned()),
         ProviderEvent::Usage(counted(93, 4)),
     ];
     for (position, data) in recorded_redacted_data(stream).into_iter().enumerate() {
         let key = index_key(position);
         events.push(start(&key, ProviderBlock::RedactedThinking));
-        events.push(ProviderEvent::RedactedThinkingData {
-            key: key.clone(),
-            data,
-        });
+        events.push(redacted_data(&key, &data));
         events.push(end_of(&key));
     }
     let text_key = index_key(REDACTED_BLOCK_COUNT);
@@ -47,19 +44,18 @@ fn expected_events(stream: &str) -> Vec<ProviderEvent> {
         events.push(text_delta(&text_key, &piece));
     }
     events.push(end_of(&text_key));
-    events.push(ProviderEvent::Usage(Usage {
-        thinking_tokens: Some(41),
-        ..counted(93, 99)
-    }));
-    events.push(stop(StopReason::EndTurn));
+    events.push(ProviderEvent::Usage(
+        counted(93, 99).with_thinking_tokens(41),
+    ));
+    events.push(stop(ResponseEnding::finished()));
     events.push(ProviderEvent::Complete);
     events
 }
 
-fn expected_redacted_blocks(stream: &str) -> Vec<AssistantBlock> {
+fn expected_redacted_materials(stream: &str) -> Vec<ReplayMaterial> {
     recorded_redacted_data(stream)
         .iter()
-        .map(|data| redacted(data))
+        .map(|data| redacted_material(data))
         .collect()
 }
 
@@ -104,9 +100,14 @@ fn given_the_real_stream_when_fed_frame_by_frame_then_each_frame_gives_what_the_
                 match &events[1] {
                     ProviderEvent::RedactedThinkingData {
                         key: data_key,
+                        format,
                         data,
                     } => {
                         assert_eq!(data_key, &key);
+                        assert_eq!(
+                            format.as_str(),
+                            "br-llm-clients-api-anthropic-messages/redacted-data"
+                        );
                         seen_data.push(data.clone());
                     }
                     _ => panic!("not a redacted data event"),
@@ -122,58 +123,114 @@ fn given_the_real_stream_when_fed_frame_by_frame_then_each_frame_gives_what_the_
 }
 
 #[tokio::test]
-async fn given_the_real_stream_when_run_then_the_step_holds_the_redacted_blocks_in_order_then_the_text()
+async fn given_the_real_stream_when_run_then_the_response_holds_the_redacted_blocks_in_order_then_the_text()
  {
     let called = call_stream(&hello(), REDACTED_THINKING_REAL).await;
-    let step = called.step();
-    let content = step.content();
-    let expected = expected_redacted_blocks(REDACTED_THINKING_REAL);
-    assert_eq!(content.len(), expected.len() + 1);
-    assert!(content[..expected.len()] == *expected.as_slice());
+    let response = called.response();
+    let blocks = response.blocks();
+    let expected = expected_redacted_materials(REDACTED_THINKING_REAL);
+    assert_eq!(blocks.len(), expected.len() + 1);
+    for (block, material) in blocks.iter().zip(&expected) {
+        match block {
+            ContentBlock::RedactedThinking(redacted) => {
+                assert!(redacted.material() == material);
+            }
+            _ => panic!("not a redacted thinking block"),
+        }
+    }
+    match blocks.last() {
+        Some(ContentBlock::Text(text)) => assert_eq!(
+            text.text().as_str(),
+            recorded_text_pieces(REDACTED_THINKING_REAL).concat()
+        ),
+        _ => panic!("the last block is not a text"),
+    }
+    assert_eq!(response.ending(), &ResponseEnding::finished());
     assert_eq!(
-        content[expected.len()].as_text().map(|text| text.as_str()),
-        Some(
-            recorded_text_pieces(REDACTED_THINKING_REAL)
-                .concat()
-                .as_str()
-        )
-    );
-    assert_eq!(step.stop_reason(), &StopReason::EndTurn);
-    assert_eq!(
-        step.model().map(|model| model.as_str()),
+        response.model().map(|model| model.as_str()),
         Some(RECORDED_MODEL)
     );
-    let usage = step.usage().expect("a usage");
-    assert_eq!((usage.input_tokens, usage.output_tokens), (93, 99));
-    assert_eq!(usage.thinking_tokens, Some(41));
+    assert_eq!(
+        response.provider_response_id().map(|id| id.as_str()),
+        Some(RECORDED_ID)
+    );
+    let usage = response.usage().expect("a usage");
+    assert_eq!(usage, &counted(93, 99).with_thinking_tokens(41));
     assert_eq!(called.outcome.report().usage(), Some(usage));
-    assert!(matches!(
-        called.events.last(),
-        Some(StreamEvent::Finish { .. })
-    ));
+    assert_eq!(
+        called.deltas.last().map(|delta| delta.kind()),
+        Some(ResponseDeltaKind::ResponseCompleted)
+    );
+}
+
+fn split_offsets(stream: &str) -> Vec<usize> {
+    let mut offsets = vec![0, stream.len()];
+    for (end, _) in stream.match_indices("\n\n") {
+        let boundary = end.saturating_add(2);
+        offsets.extend([
+            boundary.saturating_sub(1),
+            boundary,
+            boundary.saturating_add(1),
+        ]);
+    }
+    for (start, character) in stream.char_indices() {
+        offsets.extend((1..character.len_utf8()).map(|inner| start.saturating_add(inner)));
+    }
+    offsets.retain(|offset| *offset <= stream.len());
+    offsets.sort_unstable();
+    offsets.dedup();
+    offsets
+}
+
+#[test]
+fn given_the_real_stream_when_split_points_are_listed_then_they_hold_every_frame_edge_and_every_inner_byte()
+ {
+    let offsets = split_offsets(REDACTED_THINKING_REAL);
+    let frames = REDACTED_THINKING_REAL.matches("\n\n").count();
+    assert!(frames > REDACTED_BLOCK_COUNT);
+    let inner: Vec<usize> = REDACTED_THINKING_REAL
+        .char_indices()
+        .flat_map(|(start, character)| (1..character.len_utf8()).map(move |inner| start + inner))
+        .collect();
+    assert!(!inner.is_empty());
+    assert!(inner.iter().all(|offset| offsets.contains(offset)));
+    assert!(offsets.len() >= frames * 3);
+    assert!(offsets.len() < REDACTED_THINKING_REAL.len() / 10);
 }
 
 #[tokio::test]
-async fn given_the_real_stream_split_in_two_writes_at_every_byte_when_run_then_the_outcome_never_changes()
+async fn given_the_real_stream_split_in_two_writes_at_frame_edges_and_inside_characters_when_run_then_the_outcome_never_changes()
  {
     let whole = call_stream(&hello(), REDACTED_THINKING_REAL).await;
-    let server = crate::test_server::TestServer::start(|index| {
+    let offsets = split_offsets(REDACTED_THINKING_REAL);
+    let served = offsets.clone();
+    let server = crate::test_server::TestServer::start(move |index| {
         crate::test_server::http(
             "200 OK",
             &[("content-type", "text/event-stream")],
             REDACTED_THINKING_REAL.as_bytes(),
         )
-        .split_body_at(index)
+        .split_body_at(
+            served
+                .get(index)
+                .copied()
+                .expect("a split point for every request that the server gets"),
+        )
     })
     .await;
-    let spec = spec(plain_dialect(), &server);
-    for offset in 0..REDACTED_THINKING_REAL.len() {
+    let dialect = std::sync::Arc::new(plain_dialect());
+    let http = http_client();
+    let runs = offsets.len();
+    for (run, offset) in offsets.into_iter().enumerate() {
+        assert_eq!(server.requests().len(), run, "split at {offset}");
+        let spec = spec_with(std::sync::Arc::clone(&dialect), &server, http.clone());
         let mut sink = crate::test_sink::RecordingSink::default();
         let outcome = br_llm_clients_common_call::run(&spec, &hello(), &mut sink).await;
         assert!(
             outcome.result() == whole.outcome.result(),
             "split at {offset}"
         );
-        assert!(sink.events == whole.events, "split at {offset}");
+        assert!(sink.deltas == whole.deltas, "split at {offset}");
     }
+    assert_eq!(server.requests().len(), runs);
 }

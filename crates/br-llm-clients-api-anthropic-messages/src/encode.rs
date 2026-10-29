@@ -1,29 +1,34 @@
 use br_llm_clients_common_call::EncodedRequest;
-use br_llm_clients_core::{ClientError, ClientRequest, OutputMode};
+use br_llm_clients_core::{ClientError, ClientRequest, OutputMode, RenderedHistory};
 use serde_json::{Map, Value, json};
 
 use crate::encode_messages::encode_messages;
 pub(crate) use crate::encode_settings::EncodeSettings;
 use crate::encode_settings::{cache_control, thinking};
 use crate::encode_tools::{structured_format, tool_values};
+use crate::options::VersionPlacement;
 
 const API_VERSION: &str = "2023-06-01";
 
 pub(crate) fn encode(
     settings: &EncodeSettings,
     request: &ClientRequest,
+    history: &RenderedHistory,
 ) -> Result<EncodedRequest, ClientError> {
     let thinking = thinking(settings.reasoning())?;
     let cache = cache_control(settings.cache())?;
     if matches!(request.output(), OutputMode::Structured(_)) && !request.tools().is_empty() {
         return Err(ClientError::StructuredOutputWithToolsNotSupported);
     }
-    let messages = encode_messages(request.messages())?;
+    let messages = encode_messages(history)?;
     let tools = tool_values(request.tools())?;
     let format = structured_format(request.output())?;
 
+    let options = settings.options();
     let mut body = Map::new();
-    body.insert("model".to_owned(), json!(settings.model()));
+    if options.model().writes_model() {
+        body.insert("model".to_owned(), json!(settings.model()));
+    }
     body.insert("max_tokens".to_owned(), json!(settings.max_tokens()));
     body.insert("stream".to_owned(), Value::Bool(true));
     body.insert("messages".to_owned(), Value::Array(messages));
@@ -47,9 +52,16 @@ pub(crate) fn encode(
     if let Some(cache) = cache {
         body.insert("cache_control".to_owned(), cache);
     }
-    Ok(
-        EncodedRequest::new(Value::Object(body).to_string().into_bytes())
-            .with_header("content-type", "application/json")
-            .with_header("anthropic-version", API_VERSION),
-    )
+    if let VersionPlacement::Body(version) = options.version() {
+        body.insert("anthropic_version".to_owned(), json!(version));
+    }
+    for (member, value) in options.extra_body() {
+        body.insert(member.clone(), value.clone());
+    }
+    let encoded = EncodedRequest::new(Value::Object(body).to_string().into_bytes())
+        .with_header("content-type", "application/json");
+    Ok(match options.version() {
+        VersionPlacement::Header => encoded.with_header("anthropic-version", API_VERSION),
+        VersionPlacement::Body(_) => encoded,
+    })
 }

@@ -115,24 +115,25 @@ fn given_a_wrong_nested_value_in_a_block_start_when_decoded_then_it_is_a_payload
 }
 
 #[test]
-fn given_every_documented_stream_when_cut_at_every_frame_boundary_then_the_outcome_is_defined() {
-    for (_, stream, _) in RECORDINGS {
+fn given_every_documented_stream_when_cut_at_every_frame_boundary_then_every_payload_decodes_and_the_marker_is_missing()
+ {
+    for (name, stream, _) in RECORDINGS {
         let all = payloads(stream);
+        assert!(!all.is_empty(), "{name}");
         for cut in 0..=all.len() {
             let mut decoder = decoder(false);
-            let mut outcome = Ok(());
-            for payload in all.iter().take(cut).cloned() {
-                if let Err(error) = decoder.payload(payload) {
-                    outcome = Err(error);
-                    break;
-                }
-            }
-            if outcome.is_ok() {
-                assert_eq!(
-                    decoder.end(),
-                    Ok(br_llm_clients_common_call::End::MarkerMissing)
+            for (position, payload) in all.iter().take(cut).cloned().enumerate() {
+                let result = decoder.payload(payload);
+                assert!(
+                    result.is_ok(),
+                    "{name}: payload {position} of a cut at {cut}: {result:?}"
                 );
             }
+            assert_eq!(
+                decoder.end(),
+                Ok(br_llm_clients_common_call::End::MarkerMissing),
+                "{name}: cut at {cut}"
+            );
         }
     }
 }

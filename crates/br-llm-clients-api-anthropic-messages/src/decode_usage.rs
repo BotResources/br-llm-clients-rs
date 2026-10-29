@@ -37,20 +37,41 @@ impl UsageRecord {
         }
     }
 
-    pub(crate) fn complete(&self) -> Result<Option<Usage>, PayloadError> {
-        let (Some(input), Some(output)) = (self.input, self.output) else {
+    fn input_count(&self) -> Result<Option<u64>, PayloadError> {
+        let parts = [self.input, self.cache_read, self.cache_creation];
+        if parts.iter().all(Option::is_none) {
             return Ok(None);
+        }
+        parts
+            .iter()
+            .try_fold(0u64, |sum, part| sum.checked_add(part.unwrap_or(0)))
+            .map(Some)
+            .ok_or_else(|| malformed("the input token count overflows"))
+    }
+
+    pub(crate) fn usage(&self) -> Result<Option<Usage>, PayloadError> {
+        let input = self.input_count()?;
+        let with_input = input.map(|count| {
+            let usage = Usage::of_input_tokens(count);
+            let usage = match self.cache_read {
+                Some(count) => usage.with_cache_read_input_tokens(count),
+                None => usage,
+            };
+            match self.cache_creation {
+                Some(count) => usage.with_cache_creation_input_tokens(count),
+                None => usage,
+            }
+        });
+        let Some(output) = self.output else {
+            return Ok(with_input);
         };
-        let total_input = input
-            .checked_add(self.cache_read.unwrap_or(0))
-            .and_then(|sum| sum.checked_add(self.cache_creation.unwrap_or(0)))
-            .ok_or_else(|| malformed("the input token count overflows"))?;
-        Ok(Some(Usage {
-            input_tokens: total_input,
-            output_tokens: output,
-            cache_read_tokens: self.cache_read,
-            cache_write_tokens: self.cache_creation,
-            thinking_tokens: self.thinking,
+        let usage = match with_input {
+            Some(usage) => usage.with_output_tokens(output),
+            None => Usage::of_output_tokens(output),
+        };
+        Ok(Some(match self.thinking {
+            Some(count) => usage.with_thinking_tokens(count),
+            None => usage,
         }))
     }
 }

@@ -7,6 +7,7 @@ use crate::decode_fields::{
     Fields, index_of, malformed, non_empty_text, object_field, optional_text, required_text,
     type_of,
 };
+use crate::replay_formats::{REDACTED_DATA_FORMAT, SIGNATURE_FORMAT, replay_format};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Open {
@@ -104,7 +105,15 @@ impl Blocks {
             }
             ("signature_delta", Open::Thinking) => {
                 let signature = required_text(delta, "signature")?.to_owned();
-                (!signature.is_empty()).then_some(ProviderEvent::SignatureDelta { key, signature })
+                if signature.is_empty() {
+                    None
+                } else {
+                    Some(ProviderEvent::SignatureDelta {
+                        key,
+                        format: replay_format(SIGNATURE_FORMAT)?,
+                        signature,
+                    })
+                }
             }
             ("input_json_delta", Open::ToolCall { received_arguments }) => {
                 let json = required_text(delta, "partial_json")?.to_owned();
@@ -175,10 +184,13 @@ fn start_thinking(key: &str, block: &Fields) -> Result<(Open, Vec<ProviderEvent>
         key: key.to_owned(),
         text: text.to_owned(),
     }));
-    events.extend(signature.map(|signature| ProviderEvent::SignatureDelta {
-        key: key.to_owned(),
-        signature: signature.to_owned(),
-    }));
+    if let Some(signature) = signature {
+        events.push(ProviderEvent::SignatureDelta {
+            key: key.to_owned(),
+            format: replay_format(SIGNATURE_FORMAT)?,
+            signature: signature.to_owned(),
+        });
+    }
     Ok((Open::Thinking, events))
 }
 
@@ -193,6 +205,7 @@ fn start_redacted(key: &str, block: &Fields) -> Result<(Open, Vec<ProviderEvent>
             },
             ProviderEvent::RedactedThinkingData {
                 key: key.to_owned(),
+                format: replay_format(REDACTED_DATA_FORMAT)?,
                 data: data.to_owned(),
             },
         ],

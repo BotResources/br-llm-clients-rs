@@ -1,5 +1,5 @@
 use br_llm_clients_core::ClientError;
-use br_llm_messages::StopReason;
+use br_llm_messages::ResponseEnding;
 
 use crate::test_call::*;
 use crate::test_streams::BASIC;
@@ -101,7 +101,7 @@ async fn given_a_held_tool_call_when_the_stop_reason_is_not_tool_use_then_common
     assert_eq!(
         max_tokens.error(),
         &ClientError::ReplyUnusable {
-            stop_reason: StopReason::MaxTokens
+            ending: ResponseEnding::output_exhaustion()
         }
     );
 }
@@ -109,7 +109,7 @@ async fn given_a_held_tool_call_when_the_stop_reason_is_not_tool_use_then_common
 #[tokio::test]
 async fn given_a_held_tool_call_under_tool_use_when_run_then_the_call_has_the_empty_object() {
     let called = call_stream(&hello(), EMPTY_TOOL_CALL).await;
-    assert_eq!(called.step().tool_calls().count(), 1);
+    assert_eq!(crate::test_response::tool_calls(called.response()).len(), 1);
 }
 
 #[tokio::test]
@@ -137,32 +137,25 @@ async fn given_a_tool_call_with_complete_arguments_left_open_when_message_stop_a
 }
 
 #[tokio::test]
-async fn given_a_text_block_left_open_when_message_stop_arrives_under_end_turn_then_the_step_holds_the_text()
+async fn given_a_text_block_left_open_when_message_stop_arrives_under_end_turn_then_the_response_holds_the_text()
  {
     let stream = message_start() + &text_block("Hello there", false) + &finish(Some("end_turn"));
     let called = call_stream(&hello(), &stream).await;
-    let texts: Vec<_> = called
-        .step()
-        .text()
-        .map(|text| text.as_str().to_owned())
-        .collect();
+    let texts: Vec<_> = crate::test_response::texts(called.response());
     assert_eq!(texts, ["Hello there"]);
-    assert_eq!(called.step().stop_reason(), &StopReason::EndTurn);
+    assert_eq!(called.response().ending(), &ResponseEnding::finished());
 }
 
 #[tokio::test]
-async fn given_a_basic_stream_without_its_content_block_stop_when_run_then_the_step_is_the_same() {
+async fn given_a_basic_stream_without_its_content_block_stop_when_run_then_the_response_is_the_same()
+ {
     let without_stop = BASIC.replace(
         "event: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}\n\n",
         "",
     );
     assert_ne!(without_stop, BASIC);
     let called = call_stream(&hello(), &without_stop).await;
-    let texts: Vec<_> = called
-        .step()
-        .text()
-        .map(|text| text.as_str().to_owned())
-        .collect();
+    let texts: Vec<_> = crate::test_response::texts(called.response());
     assert_eq!(texts, ["Hello!"]);
 }
 
@@ -191,12 +184,12 @@ async fn given_the_structured_mode_and_a_refusal_when_run_then_the_text_decides_
 }
 
 #[tokio::test]
-async fn given_the_plain_mode_and_a_refusal_with_prose_when_run_then_the_step_keeps_the_prose_and_the_refusal()
+async fn given_the_plain_mode_and_a_refusal_with_prose_when_run_then_the_response_keeps_the_prose_and_the_refusal()
  {
     let prose = message_start() + &text_block("I can't help", true) + &finish(Some("refusal"));
     let called = call_stream(&hello(), &prose).await;
-    assert_eq!(called.step().stop_reason(), &StopReason::Refusal);
-    assert_eq!(called.step().text().count(), 1);
+    assert_eq!(called.response().ending(), &ResponseEnding::refusal());
+    assert_eq!(crate::test_response::texts(called.response()).len(), 1);
 }
 
 #[tokio::test]

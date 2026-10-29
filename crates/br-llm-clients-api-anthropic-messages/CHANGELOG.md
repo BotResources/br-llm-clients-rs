@@ -9,6 +9,53 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.2.0
+
+### Added
+
+- `MessagesOptions`, `ModelPlacement`, `VersionPlacement` and `OptionsError` are exported, and
+  `Map` and `Value` of `serde_json` are re-exported. `AnthropicMessages::with_options` takes the
+  settings and a `MessagesOptions`; for the default options it gives the same dialect as `new`.
+  `new` still takes no option.
+- `ModelPlacement::Omitted` leaves the member `model` out of the body. `VersionPlacement::Body`
+  writes the member `anthropic_version` with its text and drops the header `anthropic-version`.
+  `with_extra_body` adds members to the top level of every body and refuses, with
+  `OptionsError::ReservedExtraBodyMember`, the ten members that the dialect writes or may write.
+  The `Debug` of the options and the text of the error never show a value of the extra body.
+- `OptionsError` is the only error type of the crate; 0.1 defined none.
+- The decoder gives a `ResponseId` event when `message.id` of `message_start` is a non-empty
+  string.
+
+### Changed
+
+- The `Dialect` implemented is the one of `br-llm-clients-common-call` 0.2. `encode` takes the
+  `RenderedHistory` that `run` made and encodes it in its order; the crate renders nothing. The
+  rendering replaces the 0.1 rules on relayed texts, on the order of the tool results, on the
+  structured block and on the turn in progress. A tool result holds image blocks as well as text
+  blocks.
+- The signature of a thinking block and the data of a redacted thinking block are replay
+  material, in the formats `br-llm-clients-api-anthropic-messages/signature` and
+  `br-llm-clients-api-anthropic-messages/redacted-data`. `SignatureDelta` and
+  `RedactedThinkingData` carry their format. A thinking or redacted thinking block of the turn in
+  progress whose replay material is missing or in another format is refused with
+  `InvalidMessages`.
+- The decoder gives a `ResponseEnding` where 0.1 gave a stop reason: `end_turn` is `finished`,
+  `max_tokens` is `output_exhaustion`, `stop_sequence` is `stop_sequence` with no matched
+  sequence, `tool_use` is `tool_use`, `refusal` is `refusal`, and any other non-empty string
+  (`pause_turn` and `model_context_window_exceeded` included) is `unclassified` with the string.
+- Usage: the cache fields of the `Usage` are `cache_read_input_tokens` and
+  `cache_creation_input_tokens`. A `Usage` event is given when the payload changed the record
+  and the record holds an input count or an output count; a cache count comes only with an input
+  count and a thinking count only with an output count.
+- With the default options, the headers, the body bytes for a rendering that holds the same
+  messages, the order of the headers and of the arrays, and the messages of the errors are those
+  of 0.1. The closed field list and the never-sent list hold with the default options only.
+
+### Removed
+
+- The 0.1 refusals of a message with no block and of tool call arguments that are not a JSON
+  object: the rendering holds no empty message and the arguments are always a JSON object.
+
 ## 0.1.0
 
 ### Added

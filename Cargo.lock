@@ -76,12 +76,12 @@ checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
 
 [[package]]
 name = "br-llm-clients-api-anthropic-messages"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
- "br-llm-clients-common-call 0.1.0",
- "br-llm-clients-common-http 0.1.0",
- "br-llm-clients-core 0.4.0",
- "br-llm-messages 0.5.0",
+ "br-llm-clients-common-call 0.2.0",
+ "br-llm-clients-common-http 0.2.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-common-http%2Fv0.2.0)",
+ "br-llm-clients-core 0.5.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-core%2Fv0.5.0)",
+ "br-llm-messages 2.1.0",
  "serde_json",
  "tokio",
 ]

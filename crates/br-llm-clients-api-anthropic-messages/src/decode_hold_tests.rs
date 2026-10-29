@@ -1,5 +1,5 @@
 use br_llm_clients_common_call::ProviderEvent;
-use br_llm_messages::StopReason;
+use br_llm_messages::ResponseEnding;
 
 use crate::test_decode::*;
 
@@ -48,7 +48,7 @@ fn given_a_held_tool_call_when_the_stop_reason_is_tool_use_then_message_stop_giv
         vec![
             args_delta("0", "{}"),
             end_of("0"),
-            stop(StopReason::AwaitingToolResults),
+            stop(ResponseEnding::tool_use()),
             ProviderEvent::Complete,
         ]
     );
@@ -82,7 +82,7 @@ fn given_several_held_calls_when_message_stop_arrives_then_they_come_in_the_orde
             end_of("0"),
             args_delta("1", "{}"),
             end_of("1"),
-            stop(StopReason::AwaitingToolResults),
+            stop(ResponseEnding::tool_use()),
             ProviderEvent::Complete,
         ]
     );
@@ -101,7 +101,7 @@ fn given_a_call_with_arguments_beside_a_held_one_when_decoded_then_only_the_held
         vec![
             args_delta("0", "{}"),
             end_of("0"),
-            stop(StopReason::AwaitingToolResults),
+            stop(ResponseEnding::tool_use()),
             ProviderEvent::Complete,
         ]
     );
@@ -111,27 +111,21 @@ fn given_a_call_with_arguments_beside_a_held_one_when_decoded_then_only_the_held
 fn given_a_held_call_when_the_stop_reason_is_not_tool_use_then_neither_the_object_nor_the_end_is_given()
  {
     let reasons = [
-        ("max_tokens", StopReason::MaxTokens),
-        ("end_turn", StopReason::EndTurn),
-        ("refusal", StopReason::Refusal),
-        ("stop_sequence", StopReason::StopSequence),
+        ("max_tokens", ResponseEnding::output_exhaustion()),
+        ("end_turn", ResponseEnding::finished()),
+        ("refusal", ResponseEnding::refusal()),
+        ("stop_sequence", ResponseEnding::stop_sequence()),
         (
             "pause_turn",
-            StopReason::Other {
-                reason: "pause_turn".to_owned(),
-            },
+            ResponseEnding::unclassified("pause_turn").expect("an ending"),
         ),
         (
             "model_context_window_exceeded",
-            StopReason::Other {
-                reason: "model_context_window_exceeded".to_owned(),
-            },
+            ResponseEnding::unclassified("model_context_window_exceeded").expect("an ending"),
         ),
         (
             "brand_new",
-            StopReason::Other {
-                reason: "brand_new".to_owned(),
-            },
+            ResponseEnding::unclassified("brand_new").expect("an ending"),
         ),
     ];
     for (reason, mapped) in reasons {
@@ -163,7 +157,7 @@ fn given_a_later_stop_reason_when_tool_use_was_recorded_first_then_the_last_one_
     session.ok(r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"}}"#);
     assert_eq!(
         session.ok(r#"{"type":"message_stop"}"#),
-        vec![stop(StopReason::EndTurn), ProviderEvent::Complete]
+        vec![stop(ResponseEnding::finished()), ProviderEvent::Complete]
     );
 }
 
@@ -190,7 +184,10 @@ fn given_blocks_left_open_when_message_stop_arrives_then_no_end_is_given_for_the
     session.ok(r#"{"type":"content_block_start","index":1,"content_block":{"type":"text"}}"#);
     assert_eq!(
         finish(&mut session, Some("max_tokens")),
-        vec![stop(StopReason::MaxTokens), ProviderEvent::Complete]
+        vec![
+            stop(ResponseEnding::output_exhaustion()),
+            ProviderEvent::Complete
+        ]
     );
 }
 
