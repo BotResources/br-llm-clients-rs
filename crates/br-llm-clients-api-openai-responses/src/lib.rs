@@ -75,6 +75,8 @@ mod encode_options_tests;
 #[cfg(test)]
 mod encode_reasoning_tests;
 #[cfg(test)]
+mod encode_refusal_tests;
+#[cfg(test)]
 mod encode_structured_tests;
 #[cfg(test)]
 mod encode_thinking_tests;
