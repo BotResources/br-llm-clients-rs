@@ -11,7 +11,7 @@ Provider clients for LLM calls: send a system prompt, tools and a chat history f
 - `br-llm-clients-api-openai-chat-completions` — the OpenAI Chat Completions wire dialect: encodes a request and decodes the streamed reply and the errors of the Chat Completions API for the shared call; it is meant to be used by the provider clients (none exists yet).
 - `br-llm-clients-common-sse` — a Server-Sent Events decoder: turns the bytes of a response body into frames, with a size limit and no hidden damage.
 
-**Status:** `br-llm-clients-core` is at `0.5.0`, `br-llm-clients-mock` is at `0.6.0`, `br-llm-clients-common-http` and `br-llm-clients-common-call` are at `0.2.0`, and `br-llm-clients-common-sse`, `br-llm-clients-api-anthropic-messages`, `br-llm-clients-api-openai-responses` and `br-llm-clients-api-openai-chat-completions` are at `0.1.0`; the other crates are not written yet.
+**Status:** `br-llm-clients-core` is at `0.5.0`, `br-llm-clients-mock` is at `0.6.0`, `br-llm-clients-common-http`, `br-llm-clients-common-call` and `br-llm-clients-api-openai-chat-completions` are at `0.2.0`, and `br-llm-clients-common-sse`, `br-llm-clients-api-anthropic-messages` and `br-llm-clients-api-openai-responses` are at `0.1.0`; the other crates are not written yet.
 
 Not on crates.io; pin the git tag with the matching `version` beside it (a tag-only git dependency carries a `*` version requirement, which `cargo-deny` rejects):
 
@@ -22,7 +22,7 @@ br-llm-clients-common-sse = { git = "https://github.com/BotResources/br-llm-clie
 br-llm-clients-common-call = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-common-call", tag = "br-llm-clients-common-call/v0.2.0", version = "0.2.0" }
 br-llm-clients-api-anthropic-messages = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-api-anthropic-messages", tag = "br-llm-clients-api-anthropic-messages/v0.1.0", version = "0.1.0" }
 br-llm-clients-api-openai-responses = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-api-openai-responses", tag = "br-llm-clients-api-openai-responses/v0.1.0", version = "0.1.0" }
-br-llm-clients-api-openai-chat-completions = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-api-openai-chat-completions", tag = "br-llm-clients-api-openai-chat-completions/v0.1.0", version = "0.1.0" }
+br-llm-clients-api-openai-chat-completions = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-api-openai-chat-completions", tag = "br-llm-clients-api-openai-chat-completions/v0.2.0", version = "0.2.0" }
 br-llm-clients-common-http = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-common-http", tag = "br-llm-clients-common-http/v0.2.0", version = "0.2.0" }
 ```
 
@@ -30,7 +30,9 @@ br-llm-clients-common-http = { git = "https://github.com/BotResources/br-llm-cli
 
 `br-llm-clients-common-call` (0.2.0) pins `br-llm-clients-core` at `br-llm-clients-core/v0.5.0`, `br-llm-clients-common-http` at `br-llm-clients-common-http/v0.2.0`, `br-llm-clients-common-sse` at `br-llm-clients-common-sse/v0.1.0` and `br-llm-messages` at `br-llm-messages/v2.1.0`, and it re-exports `Authorizer`, `Endpoint`, `Headers`, `HttpClient` and `Secret` of `br-llm-clients-common-http`; a project that uses common-call and names a type of these crates pins those same tags, or the types are two copies.
 
-The three `br-llm-clients-api-*` libraries (0.1.0) still take `br-llm-clients-common-call` 0.1.0, `br-llm-clients-core` 0.4.0 and `br-llm-clients-common-http` 0.1.0 from the tag `br-llm-clients-common-call/v0.1.0`, and `br-llm-messages` at `br-llm-messages/v0.5.0`; a project that uses one of them pins those, and does not mix them with the `br-llm-clients-core/v0.5.0` and `br-llm-clients-common-http/v0.2.0` pins above, until the api libraries move to common-call 0.2.
+`br-llm-clients-api-openai-chat-completions` (0.2.0) takes `br-llm-clients-common-call` 0.2.0 from this repository at the same commit, `br-llm-clients-core` at `br-llm-clients-core/v0.5.0` and `br-llm-messages` at `br-llm-messages/v2.1.0`, and it re-exports the types of common-call, core and messages that a provider library needs to build and wrap the dialect, `Headers` of `br-llm-clients-common-http` 0.2 included; a project that uses it pins core and messages at those same tags and takes the types of common-call through these re-exports, or the types are two copies.
+
+The two other `br-llm-clients-api-*` libraries (0.1.0) still take `br-llm-clients-common-call` 0.1.0, `br-llm-clients-core` 0.4.0 and `br-llm-clients-common-http` 0.1.0 from the tag `br-llm-clients-common-call/v0.1.0`, and `br-llm-messages` at `br-llm-messages/v0.5.0`; a project that uses one of them pins those, and does not mix them with the `br-llm-clients-core/v0.5.0` and `br-llm-clients-common-http/v0.2.0` pins above, until they move to common-call 0.2.
 
 ## Provider keys for real calls
 

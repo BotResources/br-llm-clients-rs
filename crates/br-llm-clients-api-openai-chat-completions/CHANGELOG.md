@@ -11,52 +11,88 @@ form to decide whether a version ships.
 
 ## 0.2.0
 
-With the six new options at their defaults, `encode` gives the same body bytes and the same
-headers as 0.1.0, and the decoder and the errors are unchanged; a test compares the bytes with
-bodies recorded from 0.1.0. The line of `br-llm-clients-common-call` that this crate imports
-moves from 0.1 to 0.2: `Dialect`, `EncodedRequest`, `End`, `ErrorInfo`, `Headers`, `Payload`,
-`PayloadDecoder`, `PayloadError`, `ProviderBlock` and `ProviderEvent` re-exported here are the
-types of that line, not the types of 0.1, and `Headers` is the type of
-`br-llm-clients-common-http` 0.2. An importer must use `br-llm-clients-common-call` 0.2 to give
-the dialect to a `CallSpec`. The dialect does not write `answered_model`.
-
-### Added
-
-- `ChatCompletionsOptions::with_max_tokens_field(MaxTokensField)`: `MaxCompletionTokens` (the
-  default) writes `max_completion_tokens`, `MaxTokens` writes `max_tokens`; the body holds that
-  one member only. `MaxTokensField` is `Debug`, `Clone`, `Copy`, `PartialEq` and
-  `#[non_exhaustive]`.
-- `with_reasoning_carry_back_field(name)`: when set, an `assistant` message of the turn in
-  progress gets that member, holding the texts of its thinking blocks that have no signature,
-  joined in block order with nothing between them, when that string is not empty. Thinking with a
-  signature, redacted thinking and every earlier turn add nothing; the thinking of a message
-  that is omitted from the body is dropped. The turn in progress is the `Assistant` messages
-  after the last `User` message that holds no tool result; a `Relay` is not a `User` message.
-  The option does not look at the reasoning level. Without it no thinking is written, as in 0.1.0.
-- `with_tool_message_name(bool)`: when on, each `tool` message holds `name`, the tool name of its
-  result. Off by default.
-- `with_omit_effort_above_off(bool)`: when on, the reasoning table may hold `Omit` for a level
-  above `Off`; the order check of the `Send` values, `Off` mapped above none and a level above
-  `Off` mapped to none stay errors. Off by default.
-- `with_tool_only_content(ToolOnlyContent)`: `Omitted` (the default) or `EmptyText`, which writes
-  `content` as the empty string on an `assistant` message that has a tool call and no text.
-  `ToolOnlyContent` is `Debug`, `Clone`, `Copy`, `PartialEq` and `#[non_exhaustive]`.
-- `with_empty_tool_result_text(text)`: a tool result that holds no text is written with this
-  text in place of the empty string.
-- `OptionsError` cases `BlankCarryBackField`, `ReservedCarryBackField { field }` (`content`,
-  `refusal`, `tool_calls`, `role`, `audio`, `function_call`) and `BlankEmptyToolResultText`.
+Built on `br-llm-clients-common-call` 0.2, `br-llm-clients-core` 0.5 and `br-llm-messages` 2.1.
+The `Dialect` it implements is the one of common-call 0.2, not the one of 0.1, so a provider
+library built on 0.1.0 does not compile against it. With the six new options at their defaults,
+`encode` gives the same body bytes as 0.1.0 for a history whose rendering holds the same
+messages; a test encodes six requests and compares the bytes with bodies made by the tag
+`br-llm-clients-api-openai-chat-completions/v0.1.0`. The decoding and the errors are those of
+0.1.0, except for the ending, the response id and the four new quota codes below.
 
 ### Changed
 
-- Breaking: the re-exported common-call types are the types of common-call 0.2 and
-  `Headers` is the type of common-http 0.2 (see above).
-- The extra body refuses the member `max_tokens` when `max_tokens_field` is `MaxTokens`, and only
-  then; an extra body that was valid in 0.1.0 is valid with the default options. The refusal is
-  made by `ChatCompletionsDialect::new` as before.
+- Breaking: `encode` takes the `RenderedHistory` that `run` of common-call made with
+  `render_history` of the core, beside the request, and encodes it. The dialect no longer builds
+  the history itself. A `User` message becomes one `tool` message per tool result, in the order
+  of the parts, then one `user` message for its text and image parts when it has any. An
+  `Assistant` message becomes one `assistant` message; its text parts and the text of its text
+  blocks are its content, its tool calls are `tool_calls` with the wire id of the rendering.
+- Thinking, thinking that has replay material and redacted thinking are dropped. The replay
+  material and the item reference of a text block or a tool call are not sent. This dialect
+  chooses no format of replay material, sends none, and never gives `SignatureDelta` or
+  `RedactedThinkingData`.
+- A message that holds no part after the drops is omitted, and its neighbours of the same role
+  are merged into one message before they are written, as the core asks for a dropped part.
+- `InvalidMessages` when the last message that the dialect sends is an `assistant` message,
+  when nothing is left to send, and, with a reason that names it, for an image in an
+  `Assistant` message or in a tool result, for a block other than thinking, redacted thinking
+  or text (for example a provider tool block), and for a kind of part, block or image source
+  that this version does not know.
+- Breaking: `ProviderEvent::Stop` carries a `ResponseEnding`: `stop` is `finished`, `length` is
+  `output_exhaustion`, `tool_calls` is `tool_use`, `content_filter` is `filtering`, any other
+  non-empty finish reason, `function_call` included, is `unclassified` with the reason as
+  received, and `finished` after a refusal is `refusal`. The finish reason `error` still gives
+  one `Error` event and no `Stop`.
+- A `Usage` event is given as soon as `prompt_tokens` or `completion_tokens` is present. The
+  cache counts come only with `prompt_tokens`, the thinking count only with
+  `completion_tokens`. `prompt_tokens_details.cache_write_tokens` is the cache creation count.
+- `refine_error` gives `QuotaExceeded`, with any status, for the codes `insufficient_quota`,
+  `credit_balance_exhausted`, `organization_spend_limit_exceeded`,
+  `project_spend_limit_exceeded` and `organization_usage_limit_exceeded`, and nothing else.
+- Re-exports: `Usage` stays; `ModelId` and `StopReason` are gone. Added from common-call
+  `DialectHooks` and `Layered`, from the core `RenderedHistory`, and from `br-llm-messages`
+  `ModelName` and `ResponseEnding`, so that a provider library can build and wrap the dialect.
+  The re-exported `Headers` is the type of `br-llm-clients-common-http` 0.2.
+- The extra body refuses the member `max_tokens` when `max_tokens_field` is `MaxTokens`, and
+  only then; an extra body that was valid in 0.1.0 is valid with the default options.
 - `OptionsError::OmitAboveOff` is given only while `omit_effort_above_off` is off, which is the
   default.
 - The derived `Debug` of `ChatCompletionsOptions` shows the six new fields, and `PartialEq`
   compares them.
+
+### Added
+
+- `ProviderEvent::ResponseId` with the `id` of a chunk when it is a non-empty string that
+  differs from the last one given.
+- `ChatCompletionsOptions::with_max_tokens_field(MaxTokensField)`: `MaxCompletionTokens` (the
+  default) writes `max_completion_tokens`, `MaxTokens` writes `max_tokens`; the body holds that
+  one member only.
+- `with_reasoning_carry_back_field(name)`: each `assistant` message of the turn in progress
+  gets that member, holding the texts of its thinking blocks that have no replay material,
+  joined in order with nothing between them, when that string is not empty. The thinking of an
+  omitted message is dropped. The option does not look at the reasoning level.
+- `with_tool_message_name(bool)`: when on, each `tool` message holds `name`, the tool name of
+  its result.
+- `with_omit_effort_above_off(bool)`: when on, the reasoning table may hold `Omit` for a level
+  above `Off`; the other checks of the table stay.
+- `with_tool_only_content(ToolOnlyContent)`: `Omitted` (the default) or `EmptyText`, which
+  writes `content` as the empty string on an `assistant` message that has a tool call and no
+  text.
+- `with_empty_tool_result_text(text)`: a tool result that holds no text is written with this
+  text in place of the empty string.
+- `MaxTokensField` and `ToolOnlyContent` are `Debug`, `Clone`, `Copy`, `PartialEq` and
+  `#[non_exhaustive]`.
+- `OptionsError` cases `BlankCarryBackField`, `ReservedCarryBackField { field }` and
+  `BlankEmptyToolResultText`.
+
+### Verified
+
+The eight recordings of 0.1.0 are served again to `run` of common-call 0.2, whole and cut in
+two at every byte, and give the same outcome; the response id of each stream is the
+`provider_response_id` of the reply. The new options, the new quota codes, `cache_write_tokens`
+and the shapes of other hosts (`reasoning` and `reasoning_content` fields, a top-level
+`cached_tokens`, `max_tokens`, a nested extra body, a tool fragment with no `type` and no `id`)
+are tested from the documented shape only; no recording covers them.
 
 ## 0.1.0
 
