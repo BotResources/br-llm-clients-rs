@@ -103,9 +103,17 @@ fn given_a_different_id_or_name_for_a_held_index_when_decoded_then_it_is_a_paylo
     let mut decoder = plain_decoder();
     feed(decoder.as_mut(), &first(0, "c1", "f")).expect("first");
     let other_id = feed(decoder.as_mut(), &first(0, "c2", "f")).expect_err("id");
-    assert!(other_id.text().contains("id"));
+    assert!(
+        other_id
+            .text()
+            .contains("`choices[].delta.tool_calls[].id`")
+    );
     let other_name = feed(decoder.as_mut(), &first(0, "c1", "g")).expect_err("name");
-    assert!(other_name.text().contains("name"));
+    assert!(
+        other_name
+            .text()
+            .contains("`choices[].delta.tool_calls[].function.name`")
+    );
 }
 
 #[test]
@@ -121,10 +129,19 @@ fn given_an_index_that_is_missing_null_or_not_an_integer_when_decoded_then_it_is
     ];
     for index in bad {
         let data = tool_chunk(json!([{"index": index, "function": {"name": "f"}}]), None);
-        assert!(fails(&data).text().contains("index"), "{index}");
+        assert!(
+            fails(&data)
+                .text()
+                .contains("`choices[].delta.tool_calls[].index`"),
+            "{index}"
+        );
     }
     let missing = tool_chunk(json!([{"id": "c", "function": {"name": "f"}}]), None);
-    assert!(fails(&missing).text().contains("index"));
+    assert!(
+        fails(&missing)
+            .text()
+            .contains("`choices[].delta.tool_calls[].index`")
+    );
 }
 
 #[test]
@@ -161,7 +178,12 @@ fn given_a_call_of_another_type_when_decoded_then_it_is_a_payload_error() {
             json!([{"index": 0, "type": kind, "function": {"name": "f"}}]),
             None,
         );
-        assert!(fails(&data).text().contains("function"), "{kind}");
+        assert!(
+            fails(&data)
+                .text()
+                .contains("`choices[].delta.tool_calls[].type`"),
+            "{kind}"
+        );
     }
 }
 
@@ -171,7 +193,7 @@ fn given_a_fragment_that_is_not_an_object_when_decoded_then_it_is_a_payload_erro
         assert!(
             fails(&tool_chunk(json!([fragment]), None))
                 .text()
-                .contains("tool_calls")
+                .contains("`choices[].delta.tool_calls[]`")
         );
     }
 }
@@ -180,10 +202,13 @@ fn given_a_fragment_that_is_not_an_object_when_decoded_then_it_is_a_payload_erro
 fn given_a_function_of_the_wrong_type_when_decoded_then_the_field_is_named() {
     let cases = [
         (json!({"index": 0, "function": 1}), "function"),
-        (json!({"index": 0, "function": {"name": 1}}), "name"),
+        (
+            json!({"index": 0, "function": {"name": 1}}),
+            "function.name",
+        ),
         (
             json!({"index": 0, "function": {"arguments": {}}}),
-            "arguments",
+            "function.arguments",
         ),
         (
             json!({"index": 0, "id": 5, "function": {"name": "f"}}),
@@ -192,6 +217,7 @@ fn given_a_function_of_the_wrong_type_when_decoded_then_the_field_is_named() {
     ];
     for (fragment, field) in cases {
         let error = fails(&tool_chunk(json!([fragment]), None));
-        assert!(error.text().contains(field), "{error}");
+        let place = format!("`choices[].delta.tool_calls[].{field}`");
+        assert!(error.text().contains(&place), "{error}");
     }
 }
