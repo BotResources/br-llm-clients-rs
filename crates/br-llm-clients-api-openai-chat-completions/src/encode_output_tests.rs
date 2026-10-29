@@ -1,10 +1,11 @@
 use br_llm_clients_core::{OutputMode, ParameterKind};
 use serde_json::{Value, json};
 
-use crate::test_support::{dialect, encoded_body, parameter, request_with, shape, tool, user_text};
+use crate::test_support::{dialect, encoded_body, parameter, request_with, shape, tool};
+use crate::test_thread::user;
 
 fn format_of(output: OutputMode) -> Value {
-    let request = request_with(None, vec![user_text("hello")], Vec::new(), output);
+    let request = request_with(None, vec![user("hello")], Vec::new(), output);
     encoded_body(&dialect(), &request)["response_format"].clone()
 }
 
@@ -54,12 +55,7 @@ fn given_a_shape_with_no_parameter_when_encoded_then_the_schema_is_an_empty_obje
 
 #[test]
 fn given_plain_output_when_encoded_then_no_response_format_is_written() {
-    let request = request_with(
-        None,
-        vec![user_text("hello")],
-        Vec::new(),
-        OutputMode::Plain,
-    );
+    let request = request_with(None, vec![user("hello")], Vec::new(), OutputMode::Plain);
     assert!(
         encoded_body(&dialect(), &request)
             .get("response_format")
@@ -71,7 +67,7 @@ fn given_plain_output_when_encoded_then_no_response_format_is_written() {
 fn given_a_shape_and_tools_when_encoded_then_both_members_are_written() {
     let request = request_with(
         None,
-        vec![user_text("hello")],
+        vec![user("hello")],
         vec![tool("lookup", "", Vec::new())],
         shape("answer", None, Vec::new()),
     );
@@ -84,7 +80,7 @@ fn given_a_shape_and_tools_when_encoded_then_both_members_are_written() {
 fn given_a_shape_when_encoded_then_the_strict_flag_is_nowhere_in_the_body() {
     let request = request_with(
         None,
-        vec![user_text("hello")],
+        vec![user("hello")],
         Vec::new(),
         shape(
             "answer",

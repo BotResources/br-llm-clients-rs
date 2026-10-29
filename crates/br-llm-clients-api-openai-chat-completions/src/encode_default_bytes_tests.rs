@@ -1,7 +1,5 @@
-use br_llm_clients_common_call::Dialect;
-
 use crate::golden_cases::{GoldenCase, golden_cases};
-use crate::test_support::dialect_for;
+use crate::test_support::{dialect_for, encode};
 use crate::{ChatCompletionsOptions, MaxTokensField, ToolOnlyContent};
 
 fn golden(name: &str) -> &'static str {
@@ -11,13 +9,13 @@ fn golden(name: &str) -> &'static str {
         "tool_loop_with_tools" => include_str!("golden/tool_loop_with_tools.json"),
         "tool_loop_extra_body" => include_str!("golden/tool_loop_extra_body.json"),
         "structured_with_tools" => include_str!("golden/structured_with_tools.json"),
+        "two_texts" => include_str!("golden/two_texts.json"),
         other => panic!("no golden file for {other}"),
     }
 }
 
 fn bytes_of(case: &GoldenCase, options: ChatCompletionsOptions) -> Vec<u8> {
-    dialect_for(case.level, options)
-        .encode(&case.request)
+    encode(&dialect_for(case.level, options), &case.request)
         .expect("encoded")
         .body()
         .to_vec()
@@ -36,7 +34,7 @@ fn with_every_defaulted_option_set_by_hand(
 #[test]
 fn given_the_options_of_0_1_when_encoding_the_recorded_requests_then_the_bytes_are_those_of_0_1() {
     let cases = golden_cases();
-    assert_eq!(cases.len(), 5);
+    assert_eq!(cases.len(), 6);
     for case in cases {
         assert_eq!(
             bytes_of(&case, case.options.clone()),
@@ -48,7 +46,7 @@ fn given_the_options_of_0_1_when_encoding_the_recorded_requests_then_the_bytes_a
 }
 
 #[test]
-fn given_the_four_switchable_new_options_set_to_their_defaults_when_encoding_then_the_bytes_are_those_of_0_1()
+fn given_the_four_switchable_new_options_set_to_their_defaults_by_hand_when_encoding_then_the_bytes_are_those_of_0_1()
  {
     for case in golden_cases() {
         let options = with_every_defaulted_option_set_by_hand(case.options.clone());

@@ -1,8 +1,8 @@
 use br_llm_clients_common_call::run;
 use br_llm_clients_core::ClientError;
-use br_llm_messages::{Step, StreamEvent};
+use br_llm_messages::{ModelResponse, ResponseDelta};
 
-use crate::run_support::spec_for;
+use crate::run_support::counted_spec_for;
 use crate::test_recordings::{
     BAD_BODY, BAD_KEY, BAD_MODEL, LENGTH, REASONING, REFUSAL, Recording, TEXT, TOOL,
 };
@@ -12,8 +12,8 @@ use crate::test_support::{dialect, hello};
 
 #[derive(Debug, PartialEq)]
 struct Summary {
-    result: Result<Step, ClientError>,
-    events: Vec<StreamEvent>,
+    result: Result<ModelResponse, ClientError>,
+    deltas: Vec<ResponseDelta>,
     request_id: Option<String>,
 }
 
@@ -39,18 +39,18 @@ fn cut_wire(recording: Recording, cut: usize) -> crate::test_server::Wire {
 
 async fn summaries(recording: Recording) -> Vec<Summary> {
     let server = TestServer::start(move |index| cut_wire(recording, index)).await;
-    let spec = spec_for(dialect(), &server);
     let mut found = Vec::new();
     for _ in 0..=recording.body.len() {
+        let spec = counted_spec_for(dialect(), &server);
         let mut sink = RecordingSink::default();
         let outcome = run(&spec, &hello(), &mut sink).await;
         found.push(Summary {
             request_id: outcome.report().request_id().map(str::to_owned),
             result: match outcome.result() {
-                Ok(step) => Ok(step.clone()),
+                Ok(response) => Ok(response.clone()),
                 Err(error) => Err(error.clone()),
             },
-            events: sink.events,
+            deltas: sink.deltas,
         });
     }
     found

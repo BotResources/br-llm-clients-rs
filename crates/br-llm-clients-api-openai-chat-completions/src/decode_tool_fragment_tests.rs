@@ -1,5 +1,5 @@
 use br_llm_clients_common_call::{ProviderBlock, ProviderEvent};
-use br_llm_messages::StopReason;
+use br_llm_messages::ResponseEnding;
 use serde_json::{Value, json};
 
 use crate::test_support::{
@@ -53,7 +53,7 @@ fn given_two_calls_with_interleaved_fragments_when_finished_then_they_come_in_in
             start("1", call("second", Some("call_b"))),
             arguments("1", "{\"b\":2}"),
             end("1"),
-            ProviderEvent::Stop(StopReason::AwaitingToolResults),
+            ProviderEvent::Stop(ResponseEnding::tool_use()),
         ]
     );
 }

@@ -1,21 +1,19 @@
-use br_llm_clients_core::{OutputMode, ParameterKind, ReasoningLevel};
-use br_llm_messages::{
-    AssistantBlock, ImageMime, RedactedThinking, Signature, Thinking, WireMessage, WireUserBlock,
-};
+use br_llm_clients_core::{ClientRequest, OutputMode, ParameterKind, ReasoningLevel, ToolSpec};
+use br_llm_messages::{MediaType, Turn};
 use serde_json::json;
 
-use crate::ChatCompletionsOptions;
-use crate::ReasoningTable;
-use crate::test_support::{
-    assistant, assistant_call, assistant_text, image, parameter, request_of, request_with, shape,
-    text, tool, tool_result, user, user_text,
+use crate::test_support::{parameter, request_of, request_with, shape, tool};
+use crate::test_thread::{
+    answer, call, call_block, calling, earlier, human, in_progress, plain_image, plain_text,
+    redacted, result_of, results, signed, structured, text, texts, thinking, user,
 };
+use crate::{ChatCompletionsOptions, ReasoningTable};
 
 pub(crate) struct GoldenCase {
     pub(crate) name: &'static str,
     pub(crate) level: ReasoningLevel,
     pub(crate) options: ChatCompletionsOptions,
-    pub(crate) request: br_llm_clients_core::ClientRequest,
+    pub(crate) request: ClientRequest,
 }
 
 fn plain_options() -> ChatCompletionsOptions {
@@ -32,45 +30,32 @@ fn extra_options() -> ChatCompletionsOptions {
         .with_cache_read_field("cached")
 }
 
-fn thinking(signature: Option<&str>) -> AssistantBlock {
-    AssistantBlock::Thinking(Thinking {
-        text: "pondering".to_owned(),
-        signature: signature.map(|value| Signature::new(value).expect("signature")),
-    })
-}
-
-fn tool_loop() -> Vec<WireMessage> {
+fn tool_loop() -> Vec<Turn> {
+    let weather = call("call_1", "weather", json!({"city": "Paris"}));
+    let time = call("call_2", "time", json!({}));
+    let rome = call("call_3", "weather", json!({"city": "Rome"}));
     vec![
-        user_text("weather in Paris?"),
-        assistant(vec![
-            thinking(None),
-            thinking(Some("sig==")),
-            assistant_text("let me check"),
-            assistant_call("call_1", "weather", json!({"city": "Paris"})),
-            assistant_call("call_2", "time", json!({})),
+        user("weather in Paris?"),
+        in_progress(vec![
+            calling(vec![
+                thinking("pondering"),
+                signed("pondering"),
+                text("let me check"),
+                call_block(&weather),
+                call_block(&time),
+            ]),
+            results(vec![
+                result_of(&weather, texts(&["sunny"]), false),
+                result_of(&time, Vec::new(), true),
+            ]),
+            calling(vec![thinking("pondering"), redacted(), call_block(&rome)]),
+            results(vec![result_of(&rome, texts(&["a", "b"]), false)]),
         ]),
-        user(vec![
-            tool_result("call_1", "weather", &["sunny"], false),
-            tool_result("call_2", "time", &[], true),
-            tool_result("call_3", "other", &["a", "b"], false),
-        ]),
-        assistant(vec![
-            thinking(None),
-            AssistantBlock::RedactedThinking(RedactedThinking::new("opaque").expect("redacted")),
-        ]),
-        assistant(vec![assistant_call(
-            "call_4",
-            "weather",
-            json!({"city": "Rome"}),
-        )]),
-        WireMessage::Relay {
-            content: vec![text("note one"), text("note two")],
-        },
     ]
 }
 
-pub(crate) fn golden_cases() -> Vec<GoldenCase> {
-    let tools = vec![
+fn tools() -> Vec<ToolSpec> {
+    vec![
         tool(
             "weather",
             "gives the weather",
@@ -80,13 +65,16 @@ pub(crate) fn golden_cases() -> Vec<GoldenCase> {
             ],
         ),
         tool("time", "", vec![]),
-    ];
+    ]
+}
+
+pub(crate) fn golden_cases() -> Vec<GoldenCase> {
     vec![
         GoldenCase {
             name: "hello",
             level: ReasoningLevel::Off,
             options: plain_options(),
-            request: request_of(vec![user_text("hello")]),
+            request: request_of(vec![user("hello")]),
         },
         GoldenCase {
             name: "system_and_images",
@@ -94,12 +82,10 @@ pub(crate) fn golden_cases() -> Vec<GoldenCase> {
             options: plain_options(),
             request: request_with(
                 Some("be brief"),
-                vec![user(vec![
-                    WireUserBlock::Text { text: text("look") },
-                    image(ImageMime::Png, "QUJD"),
-                    WireUserBlock::Text {
-                        text: text("and this"),
-                    },
+                vec![human(vec![
+                    plain_text("look"),
+                    plain_image(MediaType::Png, "QUJD"),
+                    plain_text("and this"),
                 ])],
                 Vec::new(),
                 OutputMode::Plain,
@@ -109,7 +95,7 @@ pub(crate) fn golden_cases() -> Vec<GoldenCase> {
             name: "tool_loop_with_tools",
             level: ReasoningLevel::High,
             options: plain_options(),
-            request: request_with(Some("sys"), tool_loop(), tools.clone(), OutputMode::Plain),
+            request: request_with(Some("sys"), tool_loop(), tools(), OutputMode::Plain),
         },
         GoldenCase {
             name: "tool_loop_extra_body",
@@ -124,23 +110,27 @@ pub(crate) fn golden_cases() -> Vec<GoldenCase> {
             request: request_with(
                 None,
                 vec![
-                    user_text("go"),
-                    assistant(vec![
-                        assistant_text("a"),
-                        assistant_text("b"),
-                        AssistantBlock::Structured {
-                            value: json!({"k": [1, 2]}),
-                        },
-                    ]),
-                    user_text("again"),
+                    user("go"),
+                    earlier(vec![answer(vec![
+                        text("a"),
+                        text("b"),
+                        structured(json!({"k": [1, 2]})),
+                    ])]),
+                    user("again"),
                 ],
-                tools,
+                tools(),
                 shape(
                     "answer",
                     Some("the answer"),
                     vec![parameter("value", "the value", true, ParameterKind::String)],
                 ),
             ),
+        },
+        GoldenCase {
+            name: "two_texts",
+            level: ReasoningLevel::Max,
+            options: plain_options(),
+            request: request_of(vec![human(texts(&["note one", "note two"]))]),
         },
     ]
 }
