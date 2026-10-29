@@ -1,9 +1,16 @@
+use br_llm_clients_common_call::PayloadError;
 use br_llm_messages::Usage;
 use serde_json::{Map, Value};
 
-use br_llm_clients_common_call::PayloadError;
-
 use crate::json_fields::{count_field, object_field, present, wrong};
+
+struct Counts {
+    input: Option<u64>,
+    output: Option<u64>,
+    cache_read: Option<u64>,
+    cache_creation: Option<u64>,
+    thinking: Option<u64>,
+}
 
 pub(crate) fn read(
     chunk: &Map<String, Value>,
@@ -14,6 +21,13 @@ pub(crate) fn read(
         Some(Value::Object(usage)) => usage,
         Some(_) => return Err(wrong("usage", "an object")),
     };
+    Ok(build(counts(usage, cache_read_field)?))
+}
+
+fn counts(
+    usage: &Map<String, Value>,
+    cache_read_field: Option<&str>,
+) -> Result<Counts, PayloadError> {
     let input = count_field(usage, "prompt_tokens", "usage.prompt_tokens")?;
     let output = count_field(usage, "completion_tokens", "usage.completion_tokens")?;
     let prompt_details = object_field(
@@ -31,7 +45,7 @@ pub(crate) fn read(
         "cached_tokens",
         "usage.prompt_tokens_details.cached_tokens",
     )?;
-    let cache_write = detail(
+    let cache_creation = detail(
         prompt_details,
         "cache_write_tokens",
         "usage.prompt_tokens_details.cache_write_tokens",
@@ -46,16 +60,36 @@ pub(crate) fn read(
         (None, Some(field)) => count_field(usage, field, &format!("usage.{field}"))?,
         (None, None) => None,
     };
-    let (Some(input_tokens), Some(output_tokens)) = (input, output) else {
-        return Ok(None);
+    Ok(Counts {
+        input,
+        output,
+        cache_read,
+        cache_creation,
+        thinking,
+    })
+}
+
+fn build(counts: Counts) -> Option<Usage> {
+    let mut usage = match (counts.input, counts.output) {
+        (Some(input), Some(output)) => Usage::of_input_tokens(input).with_output_tokens(output),
+        (Some(input), None) => Usage::of_input_tokens(input),
+        (None, Some(output)) => Usage::of_output_tokens(output),
+        (None, None) => return None,
     };
-    Ok(Some(Usage {
-        input_tokens,
-        output_tokens,
-        cache_read_tokens: cache_read,
-        cache_write_tokens: cache_write,
-        thinking_tokens: thinking,
-    }))
+    if counts.input.is_some() {
+        if let Some(cache_read) = counts.cache_read {
+            usage = usage.with_cache_read_input_tokens(cache_read);
+        }
+        if let Some(cache_creation) = counts.cache_creation {
+            usage = usage.with_cache_creation_input_tokens(cache_creation);
+        }
+    }
+    if counts.output.is_some()
+        && let Some(thinking) = counts.thinking
+    {
+        usage = usage.with_thinking_tokens(thinking);
+    }
+    Some(usage)
 }
 
 fn detail(

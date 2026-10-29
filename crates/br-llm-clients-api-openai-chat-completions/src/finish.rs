@@ -1,7 +1,7 @@
 use br_llm_clients_common_call::{PayloadError, ProviderBlock, ProviderEvent};
 
 use crate::decoder::ChatCompletionsDecoder;
-use crate::stop_reason::stop_reason;
+use crate::ending::ending_of;
 use crate::stream_error::finish_error_info;
 use crate::tool_fragments::HeldCall;
 
@@ -28,7 +28,7 @@ impl ChatCompletionsDecoder {
         }
         self.close_open_block(events);
         self.emit_held_calls(reason, events)?;
-        events.push(ProviderEvent::Stop(stop_reason(reason, self.refusal_seen)));
+        events.push(ProviderEvent::Stop(ending_of(reason, self.refusal_seen)?));
         Ok(())
     }
 
