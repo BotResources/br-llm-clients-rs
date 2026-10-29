@@ -1,0 +1,23 @@
+[package]
+name = "br-llm-clients-aws-bedrock"
+version = "0.1.0"
+description = "the Amazon Bedrock client for Claude: a Client of br-llm-clients-core over the Anthropic Messages API of the Bedrock runtime host of a region, signed with AWS Signature Version 4 or sent with a Bedrock API key"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+aws-credential-types = { version = "~1.2", default-features = false }
+aws-sigv4 = { version = "~1.3", default-features = false, features = ["http1", "sign-http"] }
+br-llm-clients-api-anthropic-messages = { path = "../br-llm-clients-api-anthropic-messages", version = "0.2.0" }
+br-llm-clients-common-call = { path = "../br-llm-clients-common-call", version = "0.2.0" }
+br-llm-clients-common-http = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-common-http/v0.2.0", version = "0.2.0" }
+br-llm-clients-core = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-core/v0.5.0", version = "0.5.0" }
+thiserror = "2"
+tracing = { version = "0.1", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+br-llm-messages = { git = "https://github.com/BotResources/br-llm-messages-rs", tag = "br-llm-messages/v2.1.0", version = "2.1.0", features = ["mint"] }
+serde_json = "1"
+tokio = { version = "1", default-features = false, features = ["rt-multi-thread"] }

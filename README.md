@@ -11,8 +11,9 @@ Provider clients for LLM calls: send a system prompt, tools and a chat history f
 - `br-llm-clients-api-openai-chat-completions` — the OpenAI Chat Completions wire dialect: encodes a request and decodes the streamed reply and the errors of the Chat Completions API for the shared call; it is meant to be used by the provider clients (none exists yet).
 - `br-llm-clients-common-sse` — a Server-Sent Events decoder: turns the bytes of a response body into frames, with a size limit and no hidden damage.
 - `br-llm-clients-common-auth` — gives a bearer token to a request: a token source, a cache that fetches a new token before the old one ends, an authorizer for `br-llm-clients-common-http` and a client for the form-encoded token request of OAuth 2.0; it is meant to be shared by the provider clients (none exists yet).
+- `br-llm-clients-aws-bedrock` — the Amazon Bedrock client for Claude: a `Client` over the Anthropic Messages API of the Bedrock runtime host of a region, signed with AWS Signature Version 4 or sent with a Bedrock API key.
 
-**Status:** `br-llm-clients-core` is at `0.5.0`, `br-llm-clients-mock` is at `0.6.0`, `br-llm-clients-common-http`, `br-llm-clients-common-call`, `br-llm-clients-api-anthropic-messages`, `br-llm-clients-api-openai-responses` and `br-llm-clients-api-openai-chat-completions` are at `0.2.0`, and `br-llm-clients-common-sse` and `br-llm-clients-common-auth` are at `0.1.0`; the other crates are not written yet.
+**Status:** `br-llm-clients-core` is at `0.5.0`, `br-llm-clients-mock` is at `0.6.0`, `br-llm-clients-common-http`, `br-llm-clients-common-call`, `br-llm-clients-api-anthropic-messages`, `br-llm-clients-api-openai-responses` and `br-llm-clients-api-openai-chat-completions` are at `0.2.0`, and `br-llm-clients-common-sse`, `br-llm-clients-common-auth` and `br-llm-clients-aws-bedrock` are at `0.1.0`; the other crates are not written yet.
 
 Not on crates.io; pin the git tag with the matching `version` beside it (a tag-only git dependency carries a `*` version requirement, which `cargo-deny` rejects):
 
@@ -26,6 +27,7 @@ br-llm-clients-api-openai-responses = { git = "https://github.com/BotResources/b
 br-llm-clients-api-openai-chat-completions = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-api-openai-chat-completions", tag = "br-llm-clients-api-openai-chat-completions/v0.2.0", version = "0.2.0" }
 br-llm-clients-common-http = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-common-http", tag = "br-llm-clients-common-http/v0.2.0", version = "0.2.0" }
 br-llm-clients-common-auth = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-common-auth", tag = "br-llm-clients-common-auth/v0.1.0", version = "0.1.0" }
+br-llm-clients-aws-bedrock = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-aws-bedrock", tag = "br-llm-clients-aws-bedrock/v0.1.0", version = "0.1.0" }
 ```
 
 `br-llm-clients-mock` (0.6.0) pins `br-llm-clients-core` at `br-llm-clients-core/v0.5.0` and `br-llm-messages` at `br-llm-messages/v2.1.0`; a project that uses the mock and names core or messages pins those same two tags, or the types are two copies.
@@ -35,6 +37,8 @@ br-llm-clients-common-auth = { git = "https://github.com/BotResources/br-llm-cli
 The three `br-llm-clients-api-*` libraries (0.2.0) pin `br-llm-clients-core` at `br-llm-clients-core/v0.5.0` and `br-llm-messages` at `br-llm-messages/v2.1.0`, and take `br-llm-clients-common-call` 0.2.0 by path, because the common-call 0.2.0 tag does not exist yet; until that tag exists and they pin it, a project that uses one of them takes common-call from the same tag as that library, with `package = "br-llm-clients-common-call"`, or common-call is two copies.
 
 `br-llm-clients-common-auth` (0.1.0) uses `br-llm-clients-common-http` 0.2.0 in its public API (`Secret`, `Authorizer`, `AuthorizerError`, `BoxFuture`, `HttpClient`, `Endpoint`); a project that uses it pins `br-llm-clients-common-http` at `br-llm-clients-common-http/v0.2.0`, or the types are two copies.
+
+`br-llm-clients-aws-bedrock` (0.1.0) takes `br-llm-clients-common-call` 0.2.0 and `br-llm-clients-api-anthropic-messages` 0.2.0 by path, pins `br-llm-clients-core` at `br-llm-clients-core/v0.5.0` and `br-llm-clients-common-http` at `br-llm-clients-common-http/v0.2.0`, and re-exports `AuthorizerError`, `BoxFuture`, `Endpoint`, `HttpClient` and `Secret` of common-http, the items of its public signatures; a project that uses it also names core (`ClientSettings`, `Client`) and pins `br-llm-clients-core/v0.5.0`, and a project that names common-http directly (for example `HttpConfig` to build the `HttpClient`) pins `br-llm-clients-common-http/v0.2.0`, or the types are two copies. A binary that uses it must not enable the `tracing` feature `log-always`: `aws-sigv4` would then send its trace event with the canonical request, which holds the AWS session token, to the `log` crate, and this crate cannot stop it.
 
 ## Provider keys for real calls
 
