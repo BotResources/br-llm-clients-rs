@@ -1,15 +1,14 @@
 use br_llm_clients_core::{ClientError, OutputMode, ReasoningLevel};
-use br_llm_messages::{AssistantBlock, StopReason, WireMessage};
+use br_llm_messages::ResponseEnding;
 
 use crate::test_events::{
     completed, created, in_progress, incomplete, message_added, message_done, output_done_part,
     output_part, part_added, reasoning_added, reasoning_done, refusal_delta, refusal_done_part,
     refusal_part, summary_delta, text_delta, usage_object,
 };
-use crate::test_requests::{
-    assistant, dialect, hello, request, request_with, shape, text, user_text,
-};
-use crate::test_run::{call_stream, call_with_wire, ok_wire, sse};
+use crate::test_history::{reply, response, say, text};
+use crate::test_requests::{dialect, hello, request, request_with, shape, user_text};
+use crate::test_run::{call_stream, call_with_wire, ok_wire, sse, texts};
 
 fn text_events(model: &str) -> Vec<serde_json::Value> {
     vec![
@@ -28,22 +27,13 @@ fn text_events(model: &str) -> Vec<serde_json::Value> {
 async fn given_a_stream_with_no_terminal_event_when_run_then_the_call_is_truncated() {
     let mut events = text_events("m");
     events.pop();
-    let failure = call_stream(&hello(), &events)
-        .await
-        .outcome
-        .into_parts()
-        .1
-        .expect_err("failure");
+    let failure = call_stream(&hello(), &events).await.failure();
     assert_eq!(failure, ClientError::StreamTruncated);
 }
 
 #[tokio::test]
 async fn given_a_list_ending_with_an_assistant_message_when_run_then_nothing_is_sent() {
-    let messages: Vec<WireMessage> = vec![
-        user_text("hi"),
-        assistant(vec![AssistantBlock::Text { text: text("x") }]),
-    ];
-    let request = request(messages);
+    let request = request(vec![say("hi"), reply(vec![response(vec![text("x")])])]);
     let called = call_with_wire(dialect(ReasoningLevel::Off), &request, |_| {
         ok_wire(&sse(&[]))
     })
@@ -66,17 +56,12 @@ async fn given_a_structured_request_with_a_content_filter_incomplete_and_nothing
         Vec::new(),
         OutputMode::Structured(shape("answer", None, Vec::new())),
     );
-    let failure = call_stream(&request, &events)
-        .await
-        .outcome
-        .into_parts()
-        .1
-        .expect_err("failure");
+    let failure = call_stream(&request, &events).await.failure();
     assert_eq!(failure, ClientError::ContentBlocked);
 }
 
 #[tokio::test]
-async fn given_an_incomplete_reply_with_a_refusal_text_when_run_then_the_step_ends_by_the_reason_alone()
+async fn given_an_incomplete_reply_with_a_refusal_text_when_run_then_the_reply_ends_by_the_reason_alone()
  {
     let events = vec![
         created("m"),
@@ -86,17 +71,9 @@ async fn given_an_incomplete_reply_with_a_refusal_text_when_run_then_the_step_en
         message_done(0, Some("incomplete"), vec![refusal_done_part("I won't")]),
         incomplete(Some("max_output_tokens"), usage_object(2, 3)),
     ];
-    let step = call_stream(&hello(), &events)
-        .await
-        .outcome
-        .into_parts()
-        .1
-        .expect("a step");
-    assert_eq!(step.stop_reason(), &StopReason::MaxTokens);
-    assert_eq!(
-        step.text().next().map(|text| text.as_str()),
-        Some("I won't")
-    );
+    let step = call_stream(&hello(), &events).await.reply();
+    assert_eq!(step.ending(), &ResponseEnding::output_exhaustion());
+    assert_eq!(texts(&step).first().map(String::as_str), Some("I won't"));
 }
 
 #[tokio::test]
@@ -107,12 +84,7 @@ async fn given_a_blank_refusal_in_plain_mode_when_run_then_the_content_is_blocke
         message_done(0, Some("completed"), vec![refusal_done_part("  ")]),
         completed("m", usage_object(2, 3)),
     ];
-    let failure = call_stream(&hello(), &events)
-        .await
-        .outcome
-        .into_parts()
-        .1
-        .expect_err("failure");
+    let failure = call_stream(&hello(), &events).await.failure();
     assert_eq!(failure, ClientError::ContentBlocked);
 }
 
@@ -125,16 +97,11 @@ async fn given_a_thinking_only_completed_reply_when_run_then_the_reply_is_unusab
         reasoning_done(0, "rs_1", Some("E"), &["only thoughts"]),
         completed("m", usage_object(2, 3)),
     ];
-    let failure = call_stream(&hello(), &events)
-        .await
-        .outcome
-        .into_parts()
-        .1
-        .expect_err("failure");
+    let failure = call_stream(&hello(), &events).await.failure();
     assert_eq!(
         failure,
         ClientError::ReplyUnusable {
-            stop_reason: StopReason::EndTurn
+            ending: ResponseEnding::finished()
         }
     );
 }

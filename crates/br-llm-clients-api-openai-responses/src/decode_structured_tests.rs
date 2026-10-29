@@ -1,5 +1,5 @@
 use br_llm_clients_common_call::ProviderEvent;
-use br_llm_messages::StopReason;
+use br_llm_messages::ResponseEnding;
 
 use crate::test_decoder::{
     end, feed, flat, start_structured, start_text, stop, structured, structured_decoder, text,
@@ -107,7 +107,7 @@ fn given_the_response_ends_with_an_unclosed_structured_item_then_the_block_is_no
         &incomplete(Some("max_output_tokens"), usage_object(5, 6)),
     );
     assert!(!events.contains(&end("0.0")));
-    assert!(events.contains(&stop(StopReason::MaxTokens)));
+    assert!(events.contains(&stop(ResponseEnding::output_exhaustion())));
 }
 
 #[test]
@@ -128,7 +128,7 @@ fn given_the_structured_mode_when_a_refusal_comes_then_it_is_always_a_text_block
         &events[..3],
         [start_text("0.0"), text("0.0", "I cannot"), end("0.0")]
     );
-    assert!(events.contains(&stop(StopReason::Refusal)));
+    assert!(events.contains(&stop(ResponseEnding::refusal())));
 }
 
 #[test]
@@ -178,7 +178,7 @@ fn given_a_completed_structured_reply_when_finished_then_the_stop_is_end_turn_wi
         vec![
             usage(10, 20),
             ProviderEvent::Model("gpt-5.1".to_owned()),
-            stop(StopReason::EndTurn),
+            stop(ResponseEnding::finished()),
             ProviderEvent::Complete
         ]
     );

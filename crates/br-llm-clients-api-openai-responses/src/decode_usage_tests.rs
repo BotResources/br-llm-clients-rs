@@ -26,13 +26,13 @@ fn given_a_full_usage_object_when_read_then_each_count_lands_in_its_field() {
     }));
     assert_eq!(
         usage,
-        Some(Usage {
-            input_tokens: 1200,
-            output_tokens: 300,
-            cache_read_tokens: Some(1024),
-            cache_write_tokens: Some(64),
-            thinking_tokens: Some(200),
-        })
+        Some(
+            Usage::of_input_tokens(1200)
+                .with_output_tokens(300)
+                .with_cache_read_input_tokens(1024)
+                .with_cache_creation_input_tokens(64)
+                .with_thinking_tokens(200)
+        )
     );
 }
 
@@ -44,8 +44,9 @@ fn given_a_cache_write_count_when_read_then_the_input_count_is_not_adjusted_for_
         "output_tokens": 5
     }))
     .expect("usage");
-    assert_eq!(usage.input_tokens, 100);
-    assert_eq!(usage.cache_write_tokens, Some(50));
+    assert_eq!(usage.input_tokens(), Some(100));
+    assert_eq!(usage.cache_creation_input_tokens(), Some(50));
+    assert_eq!(usage.cache_read_input_tokens(), Some(10));
 }
 
 #[test]
@@ -53,9 +54,9 @@ fn given_absent_detail_fields_when_read_then_they_are_absent_and_a_zero_is_a_zer
     let absent = usage_event(json!({ "input_tokens": 3, "output_tokens": 4 })).expect("usage");
     assert_eq!(
         (
-            absent.cache_read_tokens,
-            absent.cache_write_tokens,
-            absent.thinking_tokens
+            absent.cache_read_input_tokens(),
+            absent.cache_creation_input_tokens(),
+            absent.thinking_tokens()
         ),
         (None, None, None)
     );
@@ -67,13 +68,11 @@ fn given_absent_detail_fields_when_read_then_they_are_absent_and_a_zero_is_a_zer
     .expect("usage");
     assert_eq!(
         zero,
-        Usage {
-            input_tokens: 0,
-            output_tokens: 0,
-            cache_read_tokens: Some(0),
-            cache_write_tokens: Some(0),
-            thinking_tokens: Some(0),
-        }
+        Usage::of_input_tokens(0)
+            .with_output_tokens(0)
+            .with_cache_read_input_tokens(0)
+            .with_cache_creation_input_tokens(0)
+            .with_thinking_tokens(0)
     );
 }
 
@@ -84,8 +83,8 @@ fn given_a_usage_object_of_the_older_documented_shape_when_read_then_cache_write
         "output_tokens": 11, "output_tokens_details": { "reasoning_tokens": 0 }, "total_tokens": 48
     }))
     .expect("usage");
-    assert_eq!(usage.cache_write_tokens, None);
-    assert_eq!(usage.cache_read_tokens, Some(0));
+    assert_eq!(usage.cache_creation_input_tokens(), None);
+    assert_eq!(usage.cache_read_input_tokens(), Some(0));
 }
 
 #[test]
@@ -113,12 +112,54 @@ fn given_no_usage_or_a_null_usage_when_read_then_no_event_comes() {
 }
 
 #[test]
-fn given_a_usage_object_missing_one_of_the_two_main_counts_when_read_then_no_event_comes() {
-    assert_eq!(usage_event(json!({ "input_tokens": 3 })), None);
-    assert_eq!(usage_event(json!({ "output_tokens": 3 })), None);
-    assert_eq!(usage_event(json!({})), None);
+fn given_a_usage_object_with_only_the_input_count_when_read_then_the_event_holds_it_and_its_cache_counts()
+ {
+    let usage = usage_event(json!({
+        "input_tokens": 3,
+        "input_tokens_details": { "cached_tokens": 2, "cache_write_tokens": 1 },
+        "output_tokens_details": { "reasoning_tokens": 9 }
+    }));
+    assert_eq!(
+        usage,
+        Some(
+            Usage::of_input_tokens(3)
+                .with_cache_read_input_tokens(2)
+                .with_cache_creation_input_tokens(1)
+        )
+    );
+}
+
+#[test]
+fn given_a_usage_object_with_only_the_output_count_when_read_then_the_event_holds_it_and_its_thinking_count()
+ {
+    let usage = usage_event(json!({
+        "output_tokens": 3,
+        "output_tokens_details": { "reasoning_tokens": 2 },
+        "input_tokens_details": { "cached_tokens": 9, "cache_write_tokens": 8 }
+    }));
+    assert_eq!(
+        usage,
+        Some(Usage::of_output_tokens(3).with_thinking_tokens(2))
+    );
     assert_eq!(
         usage_event(json!({ "input_tokens": null, "output_tokens": 3 })),
+        Some(Usage::of_output_tokens(3))
+    );
+}
+
+#[test]
+fn given_a_usage_object_with_neither_main_count_when_read_then_no_event_comes() {
+    assert_eq!(usage_event(json!({})), None);
+    assert_eq!(
+        usage_event(json!({ "input_tokens": null, "output_tokens": null })),
+        None
+    );
+    assert_eq!(
+        usage_event(json!({
+            "input_tokens_details": { "cached_tokens": 4, "cache_write_tokens": 4 },
+            "output_tokens_details": { "reasoning_tokens": 4 },
+            "total_tokens": 12
+        })),
         None
     );
 }
@@ -196,5 +237,5 @@ fn given_details_that_are_not_objects_when_read_then_it_is_a_payload_error() {
 fn given_the_largest_count_when_read_then_it_is_kept() {
     let usage =
         usage_event(json!({ "input_tokens": u64::MAX, "output_tokens": 0 })).expect("usage");
-    assert_eq!(usage.input_tokens, u64::MAX);
+    assert_eq!(usage.input_tokens(), Some(u64::MAX));
 }

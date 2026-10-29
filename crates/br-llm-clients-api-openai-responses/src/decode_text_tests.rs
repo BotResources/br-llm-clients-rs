@@ -1,9 +1,10 @@
 use br_llm_clients_common_call::Payload;
-use br_llm_messages::StopReason;
+use br_llm_messages::ResponseEnding;
 use serde_json::json;
 
 use crate::test_decoder::{
-    end, feed, feed_err, flat, model, plain_decoder, run_all, start_text, stop, text, usage,
+    end, feed, feed_err, flat, model, plain_decoder, response_id, run_all, start_text, stop, text,
+    usage,
 };
 use crate::test_events::{
     completed, created, in_progress, message_added, message_done, output_done_part, output_part,
@@ -31,7 +32,7 @@ fn given_a_documented_text_stream_when_decoded_then_each_frame_gives_the_expecte
     assert_eq!(
         produced,
         vec![
-            vec![model("gpt-5.1-2026-01-01")],
+            vec![model("gpt-5.1-2026-01-01"), response_id("resp_0b1c2d")],
             vec![],
             vec![],
             vec![start_text("0.0")],
@@ -43,7 +44,7 @@ fn given_a_documented_text_stream_when_decoded_then_each_frame_gives_the_expecte
             vec![
                 usage(37, 11),
                 model("gpt-5.1-2026-01-01"),
-                stop(StopReason::EndTurn),
+                stop(ResponseEnding::finished()),
                 br_llm_clients_common_call::ProviderEvent::Complete
             ],
         ]
@@ -62,7 +63,7 @@ fn given_an_event_name_that_disagrees_with_the_type_when_decoded_then_the_type_w
         let events = decoder
             .payload(Payload::new(name, data.clone()))
             .expect("read");
-        assert_eq!(events, vec![model("m")]);
+        assert_eq!(events, vec![model("m"), response_id("resp_0b1c2d")]);
     }
 }
 
@@ -80,7 +81,10 @@ fn given_an_empty_or_blank_data_when_decoded_then_no_event_comes_and_nothing_fai
 #[test]
 fn given_an_empty_model_when_created_then_no_model_event_comes() {
     let mut decoder = plain_decoder();
-    assert_eq!(feed(&mut decoder, &created("")), vec![]);
+    assert_eq!(
+        feed(&mut decoder, &created("")),
+        vec![response_id("resp_0b1c2d")]
+    );
 }
 
 #[test]

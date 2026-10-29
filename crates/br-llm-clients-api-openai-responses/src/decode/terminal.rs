@@ -1,5 +1,5 @@
 use br_llm_clients_common_call::{ErrorInfo, PayloadError, ProviderEvent};
-use br_llm_messages::StopReason;
+use br_llm_messages::ResponseEnding;
 use serde_json::Value;
 
 use super::event::EventType;
@@ -21,25 +21,47 @@ fn model_event(event: EventType, response: &Value) -> Result<Option<ProviderEven
 pub(super) fn created(data: &Value) -> Result<Vec<ProviderEvent>, PayloadError> {
     let event = EventType::Created;
     let response = event.object(data, "response")?;
-    Ok(model_event(event, response)?.into_iter().collect())
+    let mut events: Vec<ProviderEvent> = model_event(event, response)?.into_iter().collect();
+    if let Some(id) = event
+        .optional_text(response, "id")?
+        .filter(|id| !id.is_empty())
+    {
+        events.push(ProviderEvent::ResponseId(id.to_owned()));
+    }
+    Ok(events)
 }
 
 fn as_text<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
     value.get(key).and_then(Value::as_str)
 }
 
-fn error_info(holder: &Value) -> ErrorInfo {
-    let code = as_text(holder, "code");
-    let text = error_envelope(as_text(holder, "message"), as_text(holder, "param"), code);
-    let info = ErrorInfo::new(text);
+fn info_of(code: Option<&str>, message: Option<&str>, param: Option<&str>) -> ErrorInfo {
+    let info = ErrorInfo::new(error_envelope(message, param, code));
     match code {
         Some(code) => info.with_code(code),
         None => info,
     }
 }
 
+fn error_info(holder: &Value) -> ErrorInfo {
+    info_of(
+        as_text(holder, "code"),
+        as_text(holder, "message"),
+        as_text(holder, "param"),
+    )
+}
+
+fn event_member<'a>(data: &'a Value, nested: Option<&'a Value>, key: &str) -> Option<&'a str> {
+    as_text(data, key).or_else(|| nested.and_then(|nested| as_text(nested, key)))
+}
+
 pub(super) fn error_event(data: &Value) -> Vec<ProviderEvent> {
-    vec![ProviderEvent::Error(error_info(data))]
+    let nested = data.get("error").filter(|error| error.is_object());
+    vec![ProviderEvent::Error(info_of(
+        event_member(data, nested, "code"),
+        event_member(data, nested, "message"),
+        event_member(data, nested, "param"),
+    ))]
 }
 
 pub(super) fn failed(data: &Value) -> Result<Vec<ProviderEvent>, PayloadError> {
@@ -58,7 +80,7 @@ pub(super) fn failed(data: &Value) -> Result<Vec<ProviderEvent>, PayloadError> {
     Ok(events)
 }
 
-fn incomplete_stop(event: EventType, response: &Value) -> Result<StopReason, PayloadError> {
+fn incomplete_ending(event: EventType, response: &Value) -> Result<ResponseEnding, PayloadError> {
     let details = match response.get("incomplete_details") {
         None | Some(Value::Null) => None,
         Some(found) if found.is_object() => Some(found),
@@ -68,16 +90,15 @@ fn incomplete_stop(event: EventType, response: &Value) -> Result<StopReason, Pay
         Some(details) => event.optional_text(details, "reason")?,
         None => None,
     };
-    Ok(match reason {
-        Some("max_output_tokens") => StopReason::MaxTokens,
-        Some("content_filter") => StopReason::ContentFilter,
-        Some(other) => StopReason::Other {
-            reason: other.to_owned(),
-        },
-        None => StopReason::Other {
-            reason: NO_REASON_TEXT.to_owned(),
-        },
-    })
+    match reason {
+        Some("max_output_tokens") => Ok(ResponseEnding::output_exhaustion()),
+        Some("content_filter") => Ok(ResponseEnding::filtering()),
+        Some("") => Err(event.fail("incomplete_details.reason is an empty text")),
+        Some(other) => ResponseEnding::unclassified(other)
+            .map_err(|_| event.fail("incomplete_details.reason cannot be an ending")),
+        None => ResponseEnding::unclassified(NO_REASON_TEXT)
+            .map_err(|_| event.fail("the ending of an incomplete response cannot be built")),
+    }
 }
 
 impl ResponsesDecoder {
@@ -90,11 +111,11 @@ impl ResponsesDecoder {
         let usage = usage_of(event, response)?;
         let model = model_event(event, response)?;
         let stop = if event == EventType::Incomplete {
-            incomplete_stop(event, response)?
+            incomplete_ending(event, response)?
         } else if self.refusal_seen {
-            StopReason::Refusal
+            ResponseEnding::refusal()
         } else {
-            StopReason::EndTurn
+            ResponseEnding::finished()
         };
         let mut events = self.close_undone();
         events.extend(call::held_events(event, &self.items)?);

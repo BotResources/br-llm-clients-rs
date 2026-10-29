@@ -91,6 +91,13 @@ pub(super) fn done(
     let signature = id
         .zip(encrypted)
         .map(|(id, encrypted)| envelope::make(id, encrypted));
+    let format = match signature {
+        Some(_) => Some(
+            envelope::replay_format()
+                .ok_or_else(|| event.fail("the replay format cannot be built"))?,
+        ),
+        None => None,
+    };
     let mut events = Vec::new();
     if !reasoning.open && (signature.is_some() || !summary.is_empty()) {
         open(reasoning, output_index, &mut events);
@@ -102,9 +109,10 @@ pub(super) fn done(
         }
     }
     if reasoning.open {
-        if let Some(signature) = signature {
+        if let Some((signature, format)) = signature.zip(format) {
             events.push(ProviderEvent::SignatureDelta {
                 key: key(output_index),
+                format,
                 signature,
             });
         }

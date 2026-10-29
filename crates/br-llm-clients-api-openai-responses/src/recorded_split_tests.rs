@@ -70,7 +70,7 @@ async fn split_calls_match_the_whole_call(
     for cut in cuts {
         let split = run_split(recording, level, request, cut).await;
         assert_eq!(
-            split.sink.events, whole.sink.events,
+            split.sink.deltas, whole.sink.deltas,
             "{} cut {cut}",
             recording.name
         );

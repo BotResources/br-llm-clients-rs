@@ -1,65 +1,70 @@
-use br_llm_clients_common_call::Dialect;
 use br_llm_clients_core::{ClientError, ReasoningLevel};
-use br_llm_messages::{AssistantBlock, ModelId, StopReason, Usage, WireMessage};
+use br_llm_messages::{ContentBlock, ModelName, ReplayPayload, ResponseEnding, TurnEntry, Usage};
 use serde_json::{Value, json};
 
+use crate::test_history::{plain_text, reply, result_of, results, say};
 use crate::test_recorded::{
-    answer_request, recorded_event, run_plain, run_recording, step_of, weather_request,
+    answer_request, recorded_event, reply_of, run_plain, run_recording, weather_request,
 };
 use crate::test_recordings::{INCOMPLETE, REASONING_TOOL, REFUSAL, TEXT};
-use crate::test_requests::{assistant, dialect, request, result_block, user, user_text};
+use crate::test_requests::{dialect, encoded, request};
+use crate::test_run::texts;
 
 fn usage_with(input: u64, output: u64, thinking: u64) -> Usage {
-    Usage {
-        input_tokens: input,
-        output_tokens: output,
-        cache_read_tokens: Some(0),
-        cache_write_tokens: Some(0),
-        thinking_tokens: Some(thinking),
-    }
+    Usage::of_input_tokens(input)
+        .with_cache_read_input_tokens(0)
+        .with_cache_creation_input_tokens(0)
+        .with_output_tokens(output)
+        .with_thinking_tokens(thinking)
 }
 
-fn model_of(name: &str) -> ModelId {
-    ModelId::new(name).expect("model")
+fn model_of(name: &str) -> ModelName {
+    ModelName::new(name).expect("model")
+}
+
+fn joined(step: &br_llm_messages::ModelResponse) -> String {
+    texts(step).concat()
 }
 
 #[tokio::test]
-async fn given_the_recorded_text_reply_when_run_then_the_step_report_and_request_id_are_those_of_the_stream()
+async fn given_the_recorded_text_reply_when_run_then_the_reply_report_and_ids_are_those_of_the_stream()
  {
     let called = run_plain(&TEXT).await;
     let report = called.outcome.report().clone();
-    let step = step_of(called);
-    assert_eq!(*step.stop_reason(), StopReason::EndTurn);
-    assert_eq!(
-        step.text().map(|part| part.as_str()).collect::<String>(),
-        "Hello! How are you today?"
-    );
+    let step = reply_of(called);
+    assert_eq!(*step.ending(), ResponseEnding::finished());
+    assert_eq!(joined(&step), "Hello! How are you today?");
     assert_eq!(step.usage(), Some(&usage_with(13, 8, 0)));
     assert_eq!(step.model(), Some(&model_of("gpt-4.1-nano-2025-04-14")));
+    let created = recorded_event(&TEXT, "response.created", 0);
+    assert_eq!(
+        step.provider_response_id().map(|id| id.as_str()),
+        created["response"]["id"].as_str()
+    );
     assert_eq!(report.request_id(), Some(TEXT.request_id));
     assert_eq!(report.usage(), Some(&usage_with(13, 8, 0)));
     assert_eq!(report.model(), Some(&model_of("gpt-4.1-nano-2025-04-14")));
 }
 
 #[tokio::test]
-async fn given_the_recorded_cut_reply_when_run_then_the_step_holds_the_partial_text_with_the_stop_max_tokens()
+async fn given_the_recorded_cut_reply_when_run_then_the_reply_holds_the_partial_text_with_the_ending_output_exhaustion()
  {
-    let step = step_of(run_plain(&INCOMPLETE).await);
-    assert_eq!(*step.stop_reason(), StopReason::MaxTokens);
+    let step = reply_of(run_plain(&INCOMPLETE).await);
+    assert_eq!(*step.ending(), ResponseEnding::output_exhaustion());
     assert_eq!(
-        step.text().map(|part| part.as_str()).collect::<String>(),
+        joined(&step),
         "Beneath the boundless canvas, azure wide,  \nWhere whispers of the"
     );
     assert_eq!(step.usage(), Some(&usage_with(15, 16, 0)));
 }
 
 #[tokio::test]
-async fn given_the_recorded_refusal_when_run_as_plain_then_the_step_holds_the_refusal_text_with_the_stop_refusal()
+async fn given_the_recorded_refusal_when_run_as_plain_then_the_reply_holds_the_refusal_text_with_the_ending_refusal()
  {
-    let step = step_of(run_plain(&REFUSAL).await);
-    assert_eq!(*step.stop_reason(), StopReason::Refusal);
+    let step = reply_of(run_plain(&REFUSAL).await);
+    assert_eq!(*step.ending(), ResponseEnding::refusal());
     assert_eq!(
-        step.text().map(|part| part.as_str()).collect::<String>(),
+        joined(&step),
         "I'm sorry, but I can't assist with that request."
     );
 }
@@ -77,51 +82,61 @@ async fn given_the_recorded_refusal_when_run_as_structured_then_the_call_fails_w
 }
 
 #[tokio::test]
-async fn given_the_recorded_reasoning_and_tool_reply_when_run_then_the_step_holds_the_thinking_block_and_the_call_and_awaits_the_result()
+async fn given_the_recorded_reasoning_and_tool_reply_when_run_then_the_reply_holds_the_thinking_block_and_the_call_and_uses_a_tool()
  {
     let called = run_recording(&REASONING_TOOL, ReasoningLevel::Low, &weather_request()).await;
     let report = called.outcome.report().clone();
-    let step = step_of(called);
-    assert_eq!(*step.stop_reason(), StopReason::AwaitingToolResults);
+    let step = reply_of(called);
+    assert_eq!(*step.ending(), ResponseEnding::tool_use());
     assert_eq!(step.usage(), Some(&usage_with(54, 30, 10)));
     assert_eq!(report.request_id(), Some(REASONING_TOOL.request_id));
     let [
-        AssistantBlock::Thinking(thinking),
-        AssistantBlock::ToolCall(call),
-    ] = step.content()
+        ContentBlock::Thinking(thinking),
+        ContentBlock::RuntimeToolCall(call),
+    ] = step.blocks()
     else {
         panic!("expected a thinking block then a tool call");
     };
-    assert_eq!(thinking.text, "");
+    assert_eq!(thinking.text(), "");
     let done = recorded_event(&REASONING_TOOL, "response.output_item.done", 0)["item"].clone();
-    let signature: Value =
-        serde_json::from_str(thinking.signature.as_ref().expect("a signature").as_str())
-            .expect("the envelope is JSON");
+    let material = thinking.replay().expect("replay material");
     assert_eq!(
-        signature,
+        material.format().as_str(),
+        "br-llm-clients-api-openai-responses/reasoning"
+    );
+    let ReplayPayload::Text { value, .. } = material.payload() else {
+        panic!("a text payload");
+    };
+    let envelope: Value = serde_json::from_str(value).expect("the envelope is JSON");
+    assert_eq!(
+        envelope,
         json!({ "id": done["id"], "encrypted_content": done["encrypted_content"] })
     );
-    assert_eq!(call.id.as_str(), "call_ncwwZsUdlv8xT4aac97RgMXa");
-    assert_eq!(call.name.as_str(), "get_weather");
-    assert_eq!(call.arguments, json!({ "city": "Paris" }));
+    assert_eq!(
+        call.external_id().map(|id| id.as_str()),
+        Some("call_ncwwZsUdlv8xT4aac97RgMXa")
+    );
+    assert_eq!(call.name().as_str(), "get_weather");
+    assert_eq!(
+        call.arguments().to_json_string().expect("json"),
+        "{\"city\":\"Paris\"}"
+    );
 }
 
 #[tokio::test]
-async fn given_the_step_of_the_recorded_reasoning_reply_when_sent_back_in_the_same_turn_then_the_reasoning_item_carries_the_real_id_and_ciphertext()
+async fn given_the_recorded_reasoning_reply_when_sent_back_in_the_same_turn_then_the_reasoning_item_carries_the_real_id_and_ciphertext()
  {
     let called = run_recording(&REASONING_TOOL, ReasoningLevel::Low, &weather_request()).await;
-    let step = step_of(called);
+    let step = reply_of(called);
+    let call = crate::test_run::calls(&step).pop().expect("a call");
     let next = request(vec![
-        user_text("What is the weather in Paris?"),
-        assistant(step.content().to_vec()),
-        user(vec![result_block(
-            "call_ncwwZsUdlv8xT4aac97RgMXa",
-            "get_weather",
-            &["15 C"],
-            false,
-        )]),
+        say("What is the weather in Paris?"),
+        reply(vec![
+            TurnEntry::ModelResponse(step),
+            results(vec![result_of(&call, vec![plain_text("15 C")], false)]),
+        ]),
     ]);
-    let encoded = dialect(ReasoningLevel::Low).encode(&next).expect("encoded");
+    let encoded = encoded(&dialect(ReasoningLevel::Low), &next).expect("encoded");
     let body: Value = serde_json::from_slice(encoded.body()).expect("json");
     let done = recorded_event(&REASONING_TOOL, "response.output_item.done", 0)["item"].clone();
     let added = recorded_event(&REASONING_TOOL, "response.output_item.added", 0)["item"].clone();
@@ -147,9 +162,13 @@ async fn given_the_step_of_the_recorded_reasoning_reply_when_sent_back_in_the_sa
             "arguments": "{\"city\":\"Paris\"}"
         })
     );
-    assert_eq!(body["input"][3]["type"], "function_call_output");
-    assert!(matches!(
-        next.messages().last(),
-        Some(WireMessage::User { .. })
-    ));
+    assert_eq!(
+        body["input"][3],
+        json!({
+            "type": "function_call_output",
+            "call_id": "call_ncwwZsUdlv8xT4aac97RgMXa",
+            "output": "15 C"
+        })
+    );
+    assert_eq!(body["input"].as_array().map(Vec::len), Some(4));
 }

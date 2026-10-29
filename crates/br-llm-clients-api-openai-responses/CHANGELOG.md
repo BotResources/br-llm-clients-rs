@@ -7,7 +7,117 @@ separately from the other crates of the repository. Format follows
 Release headings are plain `## X.Y.Z` — the release pipeline greps that exact
 form to decide whether a version ships.
 
-## Unreleased
+## 0.2.0
+
+Dated 2026-10-29. This is a breaking line: the library implements the `Dialect`
+of `br-llm-clients-common-call` 0.2 and names the types of `br-llm-clients-core`
+0.5 and of `br-llm-messages` 2.1, so code that compiles against 0.1.0 does not
+compile against 0.2.0. A release of 0.1 on its tag stays valid and is not
+changed.
+
+### Added
+
+- `Options` has three new public fields, each `None` by default, which sends
+  nothing: `prompt_cache_key` (a text, sent as `prompt_cache_key` as it is, with
+  no check), `service_tier` (a `ServiceTier`, sent as `service_tier`) and
+  `cache_mode` (a `PromptCacheMode`, sent as `prompt_cache_options` with the one
+  member `mode`). `ServiceTier` is `Auto`, `Default`, `Flex`, `Priority`,
+  `Scale`, `Fast` or `Ultrafast`, sent as `auto`, `default`, `flex`, `priority`,
+  `scale`, `fast` and `ultrafast`. `PromptCacheMode` is `Implicit` or
+  `Explicit`, sent as `implicit` and `explicit`. Both types are
+  `#[non_exhaustive]`, `Debug`, `Clone`, `Copy`, `PartialEq` and `Eq`, and have
+  no default.
+- `ReasoningSummary` has two new values, `Concise` and `Detailed`, sent as
+  `reasoning.summary` `concise` and `detailed`.
+- `Options::with_extra_body` takes a `Map<String, Value>` and adds its members to
+  the top level of every request body; a second call replaces the object, and
+  `Options::extra_body` gives it. A member named `model`, `stream`, `store`,
+  `instructions`, `input`, `max_output_tokens`, `tools`, `text`, `reasoning`,
+  `include`, `prompt_cache_key`, `service_tier` or `prompt_cache_options` is
+  refused with the new `OptionsError::ReservedExtraBodyMember { member }`, which
+  names the member and never shows a value. The library re-exports `Map` and
+  `Value` of `serde_json`.
+- The decoder gives a `ResponseId` event with the `id` of the response of
+  `response.created`, when that id is a text that is not empty. An id that is
+  not a text is a `PayloadError`.
+- A tool result that holds an image is sent with an `output` array: one
+  `input_text` part per text and one `input_image` part per image, in the order
+  of the result, with a first part `Error: ` when the result is an error. A
+  result with texts only is sent as one text, as in 0.1.
+- The decoder reads the `code`, `message` and `param` of an `error` event also
+  under a nested `error` object (the form that Azure documents), when the member
+  is not a text at the top level. A text at the top level wins; an `error`
+  member that is not an object is ignored.
+
+### Changed
+
+- Breaking: the dependencies are `br-llm-clients-common-call` 0.2,
+  `br-llm-clients-core` 0.5 (tag `br-llm-clients-core/v0.5.0`) and
+  `br-llm-messages` 2.1 (tag `br-llm-messages/v2.1.0`), the pins of
+  common-call 0.2. The test-only dependencies are `br-llm-clients-common-http`
+  0.2 and `br-llm-clients-common-sse` 0.1 on their release tags.
+- Breaking: the history is rendered by `render_history` of the core, and
+  `encode` gets that `RenderedHistory` and only encodes it. The relay, the turn
+  in progress and the generated tool call ids of 0.1 are gone. A `ToolCall` and
+  its `ToolResult` carry the wire id of the core as `call_id`. A `Block` part
+  that holds a text block is sent as a text, a thinking block follows the table
+  of replay below, and a redacted thinking block is not sent. An image in an
+  assistant message, a `Block` part with any other block, and a part, a result
+  part or an image source that this version does not know are refused with
+  `InvalidMessages`.
+- An assistant message whose parts all drop out gives no item, and the user
+  messages directly before and after it are encoded as one user message: the
+  parts of the first, then the parts of the second. A rendering whose last
+  message is an assistant message is refused with `InvalidMessages`, also when
+  all the parts of that message drop out.
+- Breaking: the reasoning envelope (`id` and `encrypted_content` of the done
+  `reasoning` item) is the replay material of the thinking block, a text payload
+  in the format `br-llm-clients-api-openai-responses/reasoning`, in place of the
+  `Signature` of 0.1. The `SignatureDelta` of the decoder carries that format. A
+  thinking block of the reply turn whose material has this format and holds a
+  valid envelope goes back as a `reasoning` item; every other thinking block is
+  dropped without error, also a block whose material has another format or a
+  JSON payload.
+- Breaking: the `Stop` event carries a `ResponseEnding`. `response.completed`
+  gives `refusal` when a refusal was seen and `finished` otherwise.
+  `response.incomplete` gives `output_exhaustion` for `max_output_tokens`,
+  `filtering` for `content_filter`, `unclassified` with the reason for any other
+  reason text, and `unclassified` with `incomplete` when the details or the
+  reason are absent or null. An empty reason text is now a `PayloadError`; 0.1
+  gave a stop reason with an empty text.
+- Breaking: the `Usage` event is built with the counting of the core: the cache
+  counts are `cache_read_input_tokens` (`cached_tokens`) and
+  `cache_creation_input_tokens` (`cache_write_tokens`). A `usage` object that
+  holds only one of `input_tokens` and `output_tokens` now gives a `Usage` event
+  with that count; 0.1 gave none. A cache count is given only with
+  `input_tokens`, and a thinking count only with `output_tokens`.
+- Breaking: `Options` is no longer `Copy`; it holds a text and a JSON object.
+  Code that copies an `Options` after use must call `clone`.
+  `Options::default()`, the two 0.1 fields and `OpenAiResponses::new` are as in
+  0.1; `new` still takes the `Options` by value and cannot fail, and the refusal
+  of a reserved member is made by `with_extra_body` only.
+- Breaking: the `Debug` text of `Options`, and of `OpenAiResponses`, which shows
+  its `Options`, changes. It shows the typed fields, only whether
+  `prompt_cache_key` is set, and only the names of the members of `extra_body`,
+  never the cache key text or a value.
+- `OpenAiResponses` stays `Clone`, and a clone copies the JSON object. The
+  library does not set `answered_model`, so the default of common-call applies.
+  `CacheRequirement` still has no effect on the body and is never read.
+- The wire of 0.1 is kept otherwise: an `Options` with the 0.1 fields only gives
+  the same body as 0.1 for a history whose rendering holds the same messages,
+  and every 0.1 stream is decoded as before, except the `error` event with a
+  nested `error` object, the endings, the response id and a usage object with
+  one count, as stated above.
+
+### Known gaps
+
+- No recording holds a reply to a request with the new options, an `error`
+  event in the Azure form, a tool result with an image, or a usage object with
+  one count: these are proved by constructed bodies and streams only.
+- A part of the rendering, a result part or an image source that this version
+  does not know cannot be built in a test, because the types of the core and of
+  `br-llm-messages` give no such value today; the refusal arm is in the code and
+  is not exercised.
 
 ## 0.1.0
 
