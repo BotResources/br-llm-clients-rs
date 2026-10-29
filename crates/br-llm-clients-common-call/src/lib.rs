@@ -22,6 +22,7 @@ mod encoded_request;
 mod error_clean;
 mod error_info;
 mod failure_map;
+mod json_view;
 mod judge;
 mod layered;
 mod normalizer;
@@ -37,6 +38,7 @@ mod run;
 mod secret_automaton;
 mod secret_log;
 mod secret_ranges;
+mod secret_views;
 mod secrets_cache;
 mod text_clean;
 
@@ -64,6 +66,10 @@ mod emitter_tests;
 mod error_clean_tests;
 #[cfg(test)]
 mod failure_map_tests;
+#[cfg(test)]
+mod json_secret_property_tests;
+#[cfg(test)]
+mod json_secret_tests;
 #[cfg(test)]
 mod judge_tests;
 #[cfg(test)]
@@ -96,6 +102,8 @@ mod run_cut_secret_tests;
 mod run_ending_clean_tests;
 #[cfg(test)]
 mod run_guard_tests;
+#[cfg(test)]
+mod run_json_secret_tests;
 #[cfg(test)]
 mod run_refusal_clean_tests;
 #[cfg(test)]

@@ -4,7 +4,7 @@ use std::sync::OnceLock;
 use br_llm_clients_common_http::Secret;
 
 use crate::secret_automaton::{Automaton, MAX_NODES};
-use crate::secret_ranges::{kept_before_cut, secret_ranges};
+use crate::secret_views::{kept_in_views, ranges_in_views};
 
 pub(crate) const TEXT_CAP: usize = 65_536;
 
@@ -30,16 +30,16 @@ impl Secrets {
     }
 
     fn automaton(&self) -> Option<&Automaton> {
-        self.automaton
-            .get_or_init(|| {
-                let values: Vec<&[u8]> = self
-                    .secrets
-                    .iter()
-                    .map(|secret| secret.expose().as_bytes())
-                    .collect();
-                Automaton::new(&values, self.node_limit)
-            })
-            .as_ref()
+        self.automaton.get_or_init(|| self.build()).as_ref()
+    }
+
+    fn build(&self) -> Option<Automaton> {
+        let values: Vec<&[u8]> = self
+            .secrets
+            .iter()
+            .map(|secret| secret.expose().as_bytes())
+            .collect();
+        Automaton::new(&values, self.node_limit)
     }
 
     #[cfg(test)]
@@ -48,7 +48,7 @@ impl Secrets {
     }
 
     pub(crate) fn ranges(&self, text: &str) -> Vec<Range<usize>> {
-        secret_ranges(self.automaton(), text.as_bytes())
+        ranges_in_views(self.automaton(), text.as_bytes())
     }
 
     pub(crate) fn replace(&self, text: &str) -> String {
@@ -68,11 +68,14 @@ impl Secrets {
     }
 
     pub(crate) fn appears_in(&self, text: &str) -> bool {
-        self.secrets.iter().any(|secret| secret.appears_in(text))
+        !self.ranges(text).is_empty()
     }
 
     pub(crate) fn trim_cut(&self, bytes: &mut Vec<u8>) {
-        let kept = kept_before_cut(self.automaton(), bytes);
+        if self.secrets.is_empty() {
+            return;
+        }
+        let kept = kept_in_views(self.automaton(), bytes);
         bytes.truncate(kept);
     }
 }

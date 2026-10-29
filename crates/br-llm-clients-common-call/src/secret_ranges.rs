@@ -54,15 +54,30 @@ pub(crate) fn secret_ranges(automaton: Option<&Automaton>, bytes: &[u8]) -> Vec<
     }
 }
 
-pub(crate) fn kept_before_cut(automaton: Option<&Automaton>, bytes: &[u8]) -> usize {
-    let Some(automaton) = automaton else {
-        return 0;
-    };
+pub(crate) struct Cuts {
+    pub(crate) safe: Vec<bool>,
+    pub(crate) covered: Vec<bool>,
+}
+
+pub(crate) fn cuts(automaton: &Automaton, bytes: &[u8]) -> Cuts {
     let scan = scan(automaton, bytes);
+    let mut covered = vec![false; bytes.len()];
+    for range in scan
+        .all
+        .ranges
+        .iter()
+        .cloned()
+        .chain(std::iter::once(scan.open_from..bytes.len()))
+    {
+        covered.get_mut(range).unwrap_or_default().fill(true);
+    }
+    let mut safe = vec![false; bytes.len().saturating_add(1)];
+    if let Some(first) = safe.first_mut() {
+        *first = true;
+    }
     let mut whole = scan.all.ranges.iter().peekable();
     let mut covered_below = 0_usize;
     let mut ended_below = Merged::default();
-    let mut kept = 0;
     for (end, longest) in (1_usize..=scan.open_from).zip(&scan.longest_by_end) {
         let byte = end.saturating_sub(1);
         while whole.next_if(|range| range.end <= byte).is_some() {}
@@ -72,9 +87,17 @@ pub(crate) fn kept_before_cut(automaton: Option<&Automaton>, bytes: &[u8]) -> us
         if *longest > 0 {
             ended_below.add(end.saturating_sub(*longest), end);
         }
-        if ended_below.covered == covered_below {
-            kept = end;
+        if let Some(flag) = safe.get_mut(end) {
+            *flag = ended_below.covered == covered_below;
         }
     }
-    kept
+    Cuts { safe, covered }
+}
+
+pub(crate) fn kept_before_cut(automaton: Option<&Automaton>, bytes: &[u8]) -> usize {
+    automaton.map_or(0, |automaton| last_safe(&cuts(automaton, bytes).safe))
+}
+
+pub(crate) fn last_safe(safe: &[bool]) -> usize {
+    safe.iter().rposition(|safe| *safe).unwrap_or(0)
 }
