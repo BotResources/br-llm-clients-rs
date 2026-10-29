@@ -24,7 +24,14 @@ fn texts(called: &Called) -> Vec<&str> {
     texts_of(called.response())
 }
 
-fn assert_report(called: &Called, recording: Recording, model: &str) {
+fn assert_report(called: &Called, recording: Recording, model: &str, response_id: &str) {
+    assert_eq!(
+        called
+            .response()
+            .provider_response_id()
+            .map(|id| id.as_str()),
+        Some(response_id)
+    );
     let report = called.outcome.report();
     assert_eq!(report.request_id(), Some(recording.request_id()));
     assert_eq!(report.model().map(|model| model.as_str()), Some(model));
@@ -42,13 +49,11 @@ async fn given_the_recorded_text_reply_when_called_then_the_response_holds_the_t
     assert_eq!(texts(&called), ["Hello! How are you today?"]);
     assert_eq!(called.response().ending(), &ResponseEnding::finished());
     assert_eq!(called.response().usage(), Some(&usage(13, 7, 0)));
-    assert_report(&called, TEXT, "gpt-4.1-nano-2025-04-14");
-    assert_eq!(
-        called
-            .response()
-            .provider_response_id()
-            .map(|id| id.as_str()),
-        Some("chatcmpl-EahhoXeIIdUZY6Yb0Ccw8zIzYJuea")
+    assert_report(
+        &called,
+        TEXT,
+        "gpt-4.1-nano-2025-04-14",
+        "chatcmpl-EahhoXeIIdUZY6Yb0Ccw8zIzYJuea",
     );
 }
 
@@ -62,7 +67,12 @@ async fn given_the_recorded_length_reply_when_called_then_the_response_is_the_cu
         &ResponseEnding::output_exhaustion()
     );
     assert_eq!(called.response().usage(), Some(&usage(15, 5, 0)));
-    assert_report(&called, LENGTH, "gpt-4.1-nano-2025-04-14");
+    assert_report(
+        &called,
+        LENGTH,
+        "gpt-4.1-nano-2025-04-14",
+        "chatcmpl-Eahhr3AAEYXtXnDIF8R3XISutDu1E",
+    );
 }
 
 #[tokio::test]
@@ -92,7 +102,12 @@ async fn given_the_recorded_tool_reply_when_called_then_the_response_holds_the_c
     assert_eq!(called.response().ending(), &ResponseEnding::tool_use());
     assert_eq!(called.response().usage(), Some(&usage(55, 30, 0)));
     assert!(texts(&called).is_empty());
-    assert_report(&called, TOOL, "gpt-4.1-nano-2025-04-14");
+    assert_report(
+        &called,
+        TOOL,
+        "gpt-4.1-nano-2025-04-14",
+        "chatcmpl-EahhprXaOW0Aw5te7JSXvI7bOTOOf",
+    );
 }
 
 fn reasoning_dialect() -> ChatCompletionsDialect {
@@ -117,7 +132,12 @@ async fn given_the_recorded_reasoning_reply_when_called_at_low_then_the_request_
     assert_eq!(texts(&called), ["391"]);
     assert_eq!(called.response().usage(), Some(&usage(20, 21, 11)));
     assert!(thinking_of(called.response()).is_empty());
-    assert_report(&called, REASONING, "gpt-5.4-mini-2026-03-17");
+    assert_report(
+        &called,
+        REASONING,
+        "gpt-5.4-mini-2026-03-17",
+        "chatcmpl-EahhsI8q2ReMFjmYEmShr56ieusVg",
+    );
 }
 
 fn refusal_request() -> ClientRequest {
@@ -144,7 +164,12 @@ async fn given_the_recorded_refusal_when_called_with_a_plain_output_then_the_res
         ["I'm sorry, but I can't assist with that request."]
     );
     assert_eq!(called.response().usage(), Some(&usage(50, 12, 0)));
-    assert_report(&called, REFUSAL, "gpt-4.1-mini-2025-04-14");
+    assert_report(
+        &called,
+        REFUSAL,
+        "gpt-4.1-mini-2025-04-14",
+        "chatcmpl-EahhsmJWZ9eY35X8XPZlMklA1CZKR",
+    );
 }
 
 #[tokio::test]
