@@ -88,6 +88,8 @@ mod refine_table_tests;
 #[cfg(test)]
 mod run_combined_tests;
 #[cfg(test)]
+mod run_interleaved_tests;
+#[cfg(test)]
 mod run_malformed_tests;
 #[cfg(test)]
 mod run_refusal_tests;
