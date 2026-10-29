@@ -1,43 +1,76 @@
-use br_llm_clients_core::ClientError;
-use br_llm_messages::{ToolResult, ToolResultBlock, WireUserBlock};
-use serde_json::Value;
+use br_llm_clients_core::{ClientError, RenderedPart, RenderedResultPart};
+use br_llm_messages::{ImageBlock, ImageSource, ToolName};
+use serde_json::{Map, Value};
 
-use crate::encode_parts::{message, text_part};
+use crate::encode_parts::{invalid, message, text_part};
+use crate::encode_plan::{UserPart, UserPlan};
 use crate::options::ChatCompletionsOptions;
 
-pub(crate) fn user_messages(
-    content: &[WireUserBlock],
+pub(crate) fn plan_user(
+    parts: &[RenderedPart],
     options: &ChatCompletionsOptions,
-) -> Result<Vec<Value>, ClientError> {
-    let mut messages = Vec::new();
-    for block in content {
-        if let WireUserBlock::ToolResult(result) = block {
-            messages.push(tool_message(result, options)?);
+) -> Result<UserPlan, ClientError> {
+    let mut plan = UserPlan::default();
+    for part in parts {
+        match part {
+            RenderedPart::Text(text) => plan.parts.push(UserPart::Text(text.clone())),
+            RenderedPart::Image(image) => plan.parts.push(UserPart::Image(image_part(image)?)),
+            RenderedPart::ToolResult {
+                wire_id,
+                tool_name,
+                parts,
+                ..
+            } => plan
+                .tools
+                .push(tool_message(wire_id, tool_name, parts, options)?),
+            RenderedPart::ToolCall { .. } => {
+                return Err(invalid(
+                    "a user message holds a tool call, which this dialect cannot send",
+                ));
+            }
+            RenderedPart::Block(block) => {
+                return Err(invalid(format!(
+                    "a user message holds a block of kind {}, which this dialect cannot send",
+                    block.kind().as_str()
+                )));
+            }
+            _ => {
+                return Err(invalid(
+                    "a user message holds a part of a kind that this dialect does not know",
+                ));
+            }
         }
     }
-    let parts: Vec<&WireUserBlock> = content
-        .iter()
-        .filter(|block| !matches!(block, WireUserBlock::ToolResult(_)))
-        .collect();
-    if !parts.is_empty() {
-        messages.push(user_message(&parts));
+    Ok(plan)
+}
+
+pub(crate) fn user_messages(plan: UserPlan) -> Vec<Value> {
+    let mut messages = plan.tools;
+    if !plan.parts.is_empty() {
+        messages.push(user_message(plan.parts));
     }
-    Ok(messages)
+    messages
 }
 
 fn tool_message(
-    result: &ToolResult,
+    wire_id: &str,
+    tool_name: &ToolName,
+    parts: &[RenderedResultPart],
     options: &ChatCompletionsOptions,
 ) -> Result<Value, ClientError> {
     let mut texts = Vec::new();
-    for block in &result.content {
-        match block {
-            ToolResultBlock::Text { text } => texts.push(text.as_str()),
+    for part in parts {
+        match part {
+            RenderedResultPart::Text(text) => texts.push(text.as_str()),
+            RenderedResultPart::Image(_) => {
+                return Err(invalid(
+                    "the result of a tool holds an image, which this dialect cannot send",
+                ));
+            }
             _ => {
-                return Err(ClientError::InvalidMessages {
-                    reason: "a tool result block of a kind that this dialect does not know"
-                        .to_owned(),
-                });
+                return Err(invalid(
+                    "the result of a tool holds a part of a kind that this dialect does not know",
+                ));
             }
         }
     }
@@ -47,43 +80,50 @@ fn tool_message(
         many => Value::Array(many.iter().map(|text| text_part(text)).collect()),
     };
     let mut tool = message("tool");
-    tool.insert(
-        "tool_call_id".to_owned(),
-        Value::from(result.tool_call_id.as_str()),
-    );
+    tool.insert("tool_call_id".to_owned(), Value::from(wire_id));
     tool.insert("content".to_owned(), content);
     if options.tool_message_name() {
-        tool.insert("name".to_owned(), Value::from(result.tool_name.as_str()));
+        tool.insert("name".to_owned(), Value::from(tool_name.as_str()));
     }
     Ok(Value::Object(tool))
 }
 
-fn user_message(blocks: &[&WireUserBlock]) -> Value {
-    let content = match blocks {
-        [WireUserBlock::Text { text }] => Value::from(text.as_str()),
-        _ => Value::Array(blocks.iter().filter_map(|block| part(block)).collect()),
+fn user_message(parts: Vec<UserPart>) -> Value {
+    let content = match parts.as_slice() {
+        [UserPart::Text(text)] => Value::from(text.as_str()),
+        _ => Value::Array(
+            parts
+                .into_iter()
+                .map(|part| match part {
+                    UserPart::Text(text) => text_part(&text),
+                    UserPart::Image(image) => image,
+                })
+                .collect(),
+        ),
     };
     let mut user = message("user");
     user.insert("content".to_owned(), content);
     Value::Object(user)
 }
 
-fn part(block: &WireUserBlock) -> Option<Value> {
-    match block {
-        WireUserBlock::Text { text } => Some(text_part(text.as_str())),
-        WireUserBlock::Image(image) => Some(image_part(image.mime.as_str(), image.data.as_str())),
-        WireUserBlock::ToolResult(_) => None,
-    }
-}
-
-fn image_part(mime: &str, data: &str) -> Value {
-    let mut url = serde_json::Map::new();
+fn image_part(image: &ImageBlock) -> Result<Value, ClientError> {
+    let (media_type, data) = match image.source() {
+        ImageSource::Inline {
+            media_type, data, ..
+        } => (media_type.as_str(), data.as_str()),
+        _ => {
+            return Err(invalid(
+                "an image has a source of a kind that this dialect does not know",
+            ));
+        }
+    };
+    let mut url = Map::new();
     url.insert(
         "url".to_owned(),
-        Value::from(format!("data:{mime};base64,{data}")),
+        Value::from(format!("data:{media_type};base64,{data}")),
     );
-    let mut part = serde_json::Map::new();
+    let mut part = Map::new();
     part.insert("type".to_owned(), Value::from("image_url"));
     part.insert("image_url".to_owned(), Value::Object(url));
-    Value::Object(part)
+    Ok(Value::Object(part))
 }
