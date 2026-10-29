@@ -1,5 +1,7 @@
 use br_llm_clients_common_call::{Dialect, EncodedRequest, ErrorInfo, Headers, PayloadDecoder};
-use br_llm_clients_core::{ClientError, ClientRequest, ClientSettings, OutputMode};
+use br_llm_clients_core::{
+    ClientError, ClientRequest, ClientSettings, OutputMode, RenderedHistory,
+};
 
 use crate::decoder::ChatCompletionsDecoder;
 use crate::encode::encode;
@@ -24,8 +26,12 @@ impl ChatCompletionsDialect {
 }
 
 impl Dialect for ChatCompletionsDialect {
-    fn encode(&self, request: &ClientRequest) -> Result<EncodedRequest, ClientError> {
-        encode(&self.settings, &self.options, request)
+    fn encode(
+        &self,
+        request: &ClientRequest,
+        history: &RenderedHistory,
+    ) -> Result<EncodedRequest, ClientError> {
+        encode(&self.settings, &self.options, request, history)
     }
 
     fn decoder(&self, output: &OutputMode) -> Box<dyn PayloadDecoder> {
