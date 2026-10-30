@@ -1,6 +1,6 @@
 [package]
 name = "br-llm-clients-api-openai-responses"
-version = "0.1.0"
+version = "0.2.0"
 description = "the OpenAI Responses wire dialect: encodes a request and decodes the streamed reply and the errors of the OpenAI Responses API, for the shared call of the family"
 edition.workspace = true
 rust-version.workspace = true
@@ -8,12 +8,12 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-br-llm-clients-common-call = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-common-call/v0.1.0", version = "0.1.0" }
-br-llm-clients-core = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-common-call/v0.1.0", package = "br-llm-clients-core", version = "0.4.0" }
-br-llm-messages = { git = "https://github.com/BotResources/br-llm-messages-rs", tag = "br-llm-messages/v0.5.0", version = "0.5.0" }
+br-llm-clients-common-call = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-common-call/v0.2.0", version = "0.2.0" }
+br-llm-clients-core = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-core/v0.5.0", version = "0.5.0" }
+br-llm-messages = { git = "https://github.com/BotResources/br-llm-messages-rs", tag = "br-llm-messages/v2.1.0", version = "2.1.0" }
 serde_json = "1"
 
 [dev-dependencies]
-br-llm-clients-common-http = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-common-call/v0.1.0", package = "br-llm-clients-common-http", version = "0.1.0" }
-br-llm-clients-common-sse = { path = "../br-llm-clients-common-sse", version = "0.1.0" }
+br-llm-clients-common-http = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-common-http/v0.2.0", version = "0.2.0" }
+br-llm-clients-common-sse = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-common-sse/v0.1.0", version = "0.1.0" }
 tokio = { version = "1", features = ["full", "test-util"] }

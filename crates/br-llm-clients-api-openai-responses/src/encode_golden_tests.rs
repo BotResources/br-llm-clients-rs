@@ -1,34 +1,37 @@
 use br_llm_clients_core::{OutputMode, ParameterKind, ReasoningLevel};
-use br_llm_messages::AssistantBlock;
+use br_llm_messages::{ContentBlock, MediaType};
 use serde_json::json;
 
-use crate::test_requests::{
-    assistant, call_block, dialect, encode_body, envelope_text, parameter, request_with,
-    result_block, text, thinking, tool, user, user_text,
+use crate::test_history::{
+    call, envelope_replay, plain_image, plain_text, reply, response, result_of, results, say, text,
+    thinking,
 };
+use crate::test_requests::{dialect, encode_body, parameter, request, request_with, tool};
 
 #[test]
-fn given_an_agent_turn_with_reasoning_when_encoded_then_the_whole_body_is_the_golden_json() {
-    let signature = envelope_text("rs_68a1", "gAAAAABo-encrypted");
-    let messages = vec![
-        user_text("What is the weather in Paris?"),
-        assistant(vec![
-            thinking("The user wants the weather.", Some(&signature)),
-            AssistantBlock::Text {
-                text: text("I will check."),
-            },
-            call_block("call_Zr1", "get_weather", json!({ "city": "Paris" })),
+fn given_the_history_of_the_0_1_golden_when_encoded_then_the_whole_body_is_the_body_of_0_1() {
+    let found = call(Some("call_Zr1"), "get_weather", "{\"city\":\"Paris\"}");
+    let turns = vec![
+        say("What is the weather in Paris?"),
+        reply(vec![
+            response(vec![
+                thinking(
+                    "The user wants the weather.",
+                    Some(envelope_replay("rs_68a1", "gAAAAABo-encrypted")),
+                ),
+                text("I will check."),
+                ContentBlock::RuntimeToolCall(found.clone()),
+            ]),
+            results(vec![result_of(
+                &found,
+                vec![plain_text("18C, cloudy")],
+                false,
+            )]),
         ]),
-        user(vec![result_block(
-            "call_Zr1",
-            "get_weather",
-            &["18C, cloudy"],
-            false,
-        )]),
     ];
     let request = request_with(
         Some("You are a weather assistant."),
-        messages,
+        turns,
         vec![tool(
             "get_weather",
             "Current weather of a city",
@@ -97,21 +100,82 @@ fn given_an_agent_turn_with_reasoning_when_encoded_then_the_whole_body_is_the_go
 
 #[test]
 fn given_the_replayed_reasoning_item_when_serialized_then_the_text_is_the_golden_text() {
-    let signature = envelope_text("rs_1", "ENC");
-    let messages = vec![
-        user_text("go"),
-        assistant(vec![
-            thinking("t", Some(&signature)),
-            call_block("c", "search", json!({})),
+    let found = call(Some("c"), "search", "{}");
+    let request = request(vec![
+        say("go"),
+        reply(vec![
+            response(vec![
+                thinking("t", Some(envelope_replay("rs_1", "ENC"))),
+                ContentBlock::RuntimeToolCall(found.clone()),
+            ]),
+            results(vec![result_of(&found, vec![plain_text("r")], false)]),
         ]),
-        user(vec![result_block("c", "search", &["r"], false)]),
-    ];
-    let request = request_with(None, messages, Vec::new(), OutputMode::Plain);
-    let encoded =
-        br_llm_clients_common_call::Dialect::encode(&dialect(ReasoningLevel::Off), &request)
-            .expect("encoded");
-    let body = String::from_utf8(encoded.body().to_vec()).expect("utf8");
-    assert!(body.contains(
-        "{\"encrypted_content\":\"ENC\",\"id\":\"rs_1\",\"summary\":[],\"type\":\"reasoning\"}"
-    ));
+    ]);
+    let body = encode_body(&dialect(ReasoningLevel::Off), &request).expect("encoded");
+    assert_eq!(
+        body["input"][1],
+        json!({ "type": "reasoning", "id": "rs_1", "summary": [], "encrypted_content": "ENC" })
+    );
+    let item = body["input"][1].as_object().expect("an object");
+    assert_eq!(item.len(), 4);
+}
+
+#[test]
+fn given_a_tool_result_with_an_image_when_encoded_then_the_output_is_the_golden_array() {
+    let found = call(Some("call_img"), "render", "{}");
+    let request = request(vec![
+        say("draw"),
+        reply(vec![
+            response(vec![ContentBlock::RuntimeToolCall(found.clone())]),
+            results(vec![result_of(
+                &found,
+                vec![
+                    plain_text("rendered"),
+                    plain_image(MediaType::Png, "iVBORw0K"),
+                ],
+                true,
+            )]),
+        ]),
+    ]);
+    let body = encode_body(&dialect(ReasoningLevel::Off), &request).expect("encoded");
+    assert_eq!(
+        body["input"],
+        json!([
+            {
+                "type": "message",
+                "role": "user",
+                "content": [{ "type": "input_text", "text": "draw" }]
+            },
+            { "type": "function_call", "call_id": "call_img", "name": "render", "arguments": "{}" },
+            {
+                "type": "function_call_output",
+                "call_id": "call_img",
+                "output": [
+                    { "type": "input_text", "text": "Error: " },
+                    { "type": "input_text", "text": "rendered" },
+                    { "type": "input_image", "image_url": "data:image/png;base64,iVBORw0K" }
+                ]
+            }
+        ])
+    );
+}
+
+#[test]
+fn given_a_done_reasoning_item_when_decoded_then_the_envelope_text_is_the_golden_text() {
+    use br_llm_clients_common_call::ProviderEvent;
+
+    let mut decoder = crate::test_decoder::plain_decoder();
+    crate::test_decoder::flat(&mut decoder, &[crate::test_events::reasoning_added(0)]);
+    let events = crate::test_decoder::feed(
+        &mut decoder,
+        &crate::test_events::reasoning_done(0, "rs_1", Some("E\"N/C"), &[]),
+    );
+    let text = events
+        .iter()
+        .find_map(|event| match event {
+            ProviderEvent::SignatureDelta { signature, .. } => Some(signature.clone()),
+            _ => None,
+        })
+        .expect("a signature");
+    assert_eq!(text, "{\"id\":\"rs_1\",\"encrypted_content\":\"E\\\"N/C\"}");
 }

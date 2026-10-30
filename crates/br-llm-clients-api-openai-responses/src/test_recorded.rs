@@ -1,7 +1,7 @@
 use br_llm_clients_common_call::{Dialect, Payload, PayloadDecoder, ProviderEvent, Secret, run};
 use br_llm_clients_common_sse::Decoder;
 use br_llm_clients_core::{ClientRequest, OutputMode, ParameterKind, ReasoningLevel, ToolSpec};
-use br_llm_messages::Step;
+use br_llm_messages::ModelResponse;
 use serde_json::Value;
 
 use crate::OpenAiResponses;
@@ -134,13 +134,12 @@ pub(crate) async fn run_with_secrets(
     let spec = spec_with(
         dialect(ReasoningLevel::Off),
         server.endpoint("/v1/responses"),
-        "gpt-5.1",
     )
     .with_secrets(secrets);
     let mut sink = RecordingSink::default();
     run(&spec, &hello(), &mut sink).await
 }
 
-pub(crate) fn step_of(called: Called) -> Step {
-    called.outcome.into_parts().1.expect("a step")
+pub(crate) fn reply_of(called: Called) -> ModelResponse {
+    called.reply()
 }

@@ -1,6 +1,5 @@
-use br_llm_clients_common_call::Dialect;
 use br_llm_clients_core::{ClientError, OutputMode, ReasoningLevel};
-use br_llm_messages::{AssistantBlock, StopReason, Usage};
+use br_llm_messages::{ReplayPayload, ResponseEnding, TurnEntry, Usage};
 use serde_json::json;
 
 use crate::test_events::{
@@ -8,10 +7,9 @@ use crate::test_events::{
     message_done, output_done_part, output_part, part_added, reasoning_added, reasoning_done,
     refusal_delta, refusal_done_part, refusal_part, summary_delta, text_delta, usage_object,
 };
-use crate::test_requests::{
-    assistant, dialect, hello, request, request_with, result_block, shape, user, user_text,
-};
-use crate::test_run::call_stream;
+use crate::test_history::{plain_text, reply, result_of, results, say};
+use crate::test_requests::{dialect, encoded, hello, request, request_with, shape, user_text};
+use crate::test_run::{call_stream, calls, kinds, texts, thinkings};
 
 fn text_events(model: &str) -> Vec<serde_json::Value> {
     vec![
@@ -27,26 +25,29 @@ fn text_events(model: &str) -> Vec<serde_json::Value> {
 }
 
 #[tokio::test]
-async fn given_a_plain_text_stream_when_run_then_the_step_holds_the_text_the_usage_and_the_model() {
+async fn given_a_plain_text_stream_when_run_then_the_reply_holds_the_text_the_usage_the_model_and_the_id()
+ {
     let called = call_stream(&hello(), &text_events("gpt-5.1-2026-01-01")).await;
     let (report, result) = called.outcome.into_parts();
-    let step = result.expect("a step");
-    assert_eq!(step.stop_reason(), &StopReason::EndTurn);
-    let texts: Vec<&str> = step.text().map(|text| text.as_str()).collect();
-    assert_eq!(texts, ["Hello world"]);
+    let reply = result.expect("a reply");
+    assert_eq!(reply.ending(), &ResponseEnding::finished());
+    assert_eq!(texts(&reply), ["Hello world"]);
     assert_eq!(
-        step.usage(),
-        Some(&Usage {
-            input_tokens: 37,
-            output_tokens: 11,
-            cache_read_tokens: Some(0),
-            cache_write_tokens: None,
-            thinking_tokens: Some(0),
-        })
+        reply.usage(),
+        Some(
+            &Usage::of_input_tokens(37)
+                .with_cache_read_input_tokens(0)
+                .with_output_tokens(11)
+                .with_thinking_tokens(0)
+        )
     );
     assert_eq!(
-        step.model().map(|model| model.as_str()),
+        reply.model().map(|model| model.as_str()),
         Some("gpt-5.1-2026-01-01")
+    );
+    assert_eq!(
+        reply.provider_response_id().map(|id| id.as_str()),
+        Some("resp_0b1c2d")
     );
     assert_eq!(
         report.model().map(|model| model.as_str()),
@@ -62,15 +63,12 @@ async fn given_a_call_when_run_then_the_request_is_the_encoded_body_with_the_exp
     assert!(received.request_line.starts_with("POST /v1/responses"));
     assert_eq!(received.header_values("content-type"), ["application/json"]);
     assert_eq!(received.header_values("accept"), ["text/event-stream"]);
-    let encoded = dialect(ReasoningLevel::Off)
-        .encode(&hello())
-        .expect("encoded");
+    let encoded = encoded(&dialect(ReasoningLevel::Off), &hello()).expect("encoded");
     assert_eq!(received.body, encoded.body());
 }
 
 #[tokio::test]
-async fn given_a_tool_call_stream_when_run_then_the_step_awaits_tool_results_with_parsed_arguments()
-{
+async fn given_a_tool_call_stream_when_run_then_the_reply_uses_a_tool_with_parsed_arguments() {
     let events = vec![
         created("m"),
         call_added(0, "call_Zr1", "get_weather"),
@@ -85,14 +83,19 @@ async fn given_a_tool_call_stream_when_run_then_the_step_awaits_tool_results_wit
         ),
         completed("m", usage_object(5, 6)),
     ];
-    let called = call_stream(&hello(), &events).await;
-    let step = called.outcome.into_parts().1.expect("a step");
-    assert_eq!(step.stop_reason(), &StopReason::AwaitingToolResults);
-    let calls: Vec<_> = step.tool_calls().collect();
-    assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].id.as_str(), "call_Zr1");
-    assert_eq!(calls[0].name.as_str(), "get_weather");
-    assert_eq!(calls[0].arguments, json!({ "city": "Paris" }));
+    let reply = call_stream(&hello(), &events).await.reply();
+    assert_eq!(reply.ending(), &ResponseEnding::tool_use());
+    let found = calls(&reply);
+    assert_eq!(found.len(), 1);
+    assert_eq!(
+        found[0].external_id().map(|id| id.as_str()),
+        Some("call_Zr1")
+    );
+    assert_eq!(found[0].name().as_str(), "get_weather");
+    assert_eq!(
+        found[0].arguments().to_json_string().expect("json"),
+        "{\"city\":\"Paris\"}"
+    );
 }
 
 #[tokio::test]
@@ -107,26 +110,18 @@ async fn given_text_and_two_calls_when_run_then_the_calls_come_last_in_output_or
         call_done(2, "call_b", "second", "{\"n\":1}", Some("completed")),
         completed("m", usage_object(1, 1)),
     ];
-    let step = call_stream(&hello(), &events)
-        .await
-        .outcome
-        .into_parts()
-        .1
-        .expect("a step");
-    let kinds: Vec<&str> = step
-        .content()
+    let reply = call_stream(&hello(), &events).await.reply();
+    assert_eq!(kinds(&reply), ["text", "call", "call"]);
+    let names: Vec<String> = calls(&reply)
         .iter()
-        .map(|block| match block {
-            AssistantBlock::Text { .. } => "text",
-            AssistantBlock::ToolCall(_) => "call",
-            _ => "other",
-        })
+        .map(|call| call.name().as_str().to_owned())
         .collect();
-    assert_eq!(kinds, ["text", "call", "call"]);
+    assert_eq!(names, ["first", "second"]);
 }
 
 #[tokio::test]
-async fn given_a_call_without_a_call_id_when_run_then_an_id_is_generated_and_replayed_unchanged() {
+async fn given_a_call_without_a_call_id_when_run_then_it_has_no_external_id_and_goes_back_with_the_wire_id_of_the_core()
+ {
     let mut added = call_added(0, "x", "search");
     added["item"]
         .as_object_mut()
@@ -143,30 +138,20 @@ async fn given_a_call_without_a_call_id_when_run_then_an_id_is_generated_and_rep
         done,
         completed("m", usage_object(1, 1)),
     ];
-    let step = call_stream(&hello(), &events)
-        .await
-        .outcome
-        .into_parts()
-        .1
-        .expect("a step");
-    let call = step.tool_calls().next().expect("call");
-    assert!(call.id.as_str().starts_with("brgen_"));
+    let reply = call_stream(&hello(), &events).await.reply();
+    let call = calls(&reply).pop().expect("call");
+    assert!(call.external_id().is_none());
     let history = vec![
         user_text("hello"),
-        assistant(step.content().to_vec()),
-        user(vec![result_block(
-            call.id.as_str(),
-            "search",
-            &["ok"],
-            false,
-        )]),
+        crate::test_history::reply(vec![
+            TurnEntry::ModelResponse(reply.clone()),
+            results(vec![result_of(&call, vec![plain_text("ok")], false)]),
+        ]),
     ];
-    let encoded = dialect(ReasoningLevel::Off)
-        .encode(&request(history))
-        .expect("encoded");
-    let body: serde_json::Value = serde_json::from_slice(encoded.body()).expect("json");
-    assert_eq!(body["input"][1]["call_id"], json!(call.id.as_str()));
-    assert_eq!(body["input"][2]["call_id"], json!(call.id.as_str()));
+    let body = crate::test_requests::body_of(&request(history));
+    let wire = format!("call_{}", call.id().as_uuid().simple());
+    assert_eq!(body["input"][1]["call_id"], json!(wire));
+    assert_eq!(body["input"][2]["call_id"], json!(wire));
 }
 
 #[tokio::test]
@@ -188,20 +173,30 @@ async fn given_a_reasoning_stream_when_run_then_the_thinking_block_carries_the_e
         completed("m", usage_object(5, 6)),
     ];
     let first = call_stream(&hello(), &events).await;
-    let step = first.outcome.into_parts().1.expect("a step");
-    let thinking = step.thinking().next().expect("thinking");
-    assert_eq!(thinking.text, "**Looking** up\n\nthen answer");
-    let signature = thinking.signature.as_ref().expect("signature").as_str();
-    let envelope: serde_json::Value = serde_json::from_str(signature).expect("json");
+    let response = first.reply();
+    let thinking = thinkings(&response).pop().expect("thinking");
+    assert_eq!(thinking.text(), "**Looking** up\n\nthen answer");
+    let material = thinking.replay().expect("replay material");
+    assert_eq!(
+        material.format().as_str(),
+        "br-llm-clients-api-openai-responses/reasoning"
+    );
+    let ReplayPayload::Text { value, .. } = material.payload() else {
+        panic!("a text payload");
+    };
+    let envelope: serde_json::Value = serde_json::from_str(value).expect("json");
     assert_eq!(
         envelope,
         json!({ "id": "rs_68a1", "encrypted_content": "gAAAAAB-enc" })
     );
 
+    let call = calls(&response).pop().expect("call");
     let history = vec![
-        user_text("hello"),
-        assistant(step.content().to_vec()),
-        user(vec![result_block("call_1", "search", &["found"], false)]),
+        say("hello"),
+        reply(vec![
+            TurnEntry::ModelResponse(response),
+            results(vec![result_of(&call, vec![plain_text("found")], false)]),
+        ]),
     ];
     let second = call_stream(&request(history), &text_events("m")).await;
     let body = second.requests[0].body_json();
@@ -213,7 +208,7 @@ async fn given_a_reasoning_stream_when_run_then_the_thinking_block_carries_the_e
 }
 
 #[tokio::test]
-async fn given_a_refusal_in_plain_mode_when_run_then_the_step_has_the_refusal_stop_and_text() {
+async fn given_a_refusal_in_plain_mode_when_run_then_the_reply_has_the_refusal_ending_and_text() {
     let events = vec![
         created("m"),
         message_added(0),
@@ -226,15 +221,9 @@ async fn given_a_refusal_in_plain_mode_when_run_then_the_step_has_the_refusal_st
         ),
         completed("m", usage_object(2, 3)),
     ];
-    let step = call_stream(&hello(), &events)
-        .await
-        .outcome
-        .into_parts()
-        .1
-        .expect("a step");
-    assert_eq!(step.stop_reason(), &StopReason::Refusal);
-    let texts: Vec<&str> = step.text().map(|text| text.as_str()).collect();
-    assert_eq!(texts, ["I can't help with that."]);
+    let reply = call_stream(&hello(), &events).await.reply();
+    assert_eq!(reply.ending(), &ResponseEnding::refusal());
+    assert_eq!(texts(&reply), ["I can't help with that."]);
 }
 
 #[tokio::test]
@@ -251,11 +240,15 @@ async fn given_a_refusal_in_structured_mode_when_run_then_the_content_is_blocked
         Vec::new(),
         OutputMode::Structured(shape("answer", None, Vec::new())),
     );
-    let failure = call_stream(&request, &events)
-        .await
-        .outcome
-        .into_parts()
-        .1
-        .expect_err("failure");
+    let failure = call_stream(&request, &events).await.failure();
     assert_eq!(failure, ClientError::ContentBlocked);
+}
+
+#[tokio::test]
+async fn given_a_usage_with_only_the_input_count_when_run_then_the_reply_carries_that_count() {
+    let mut events = text_events("m");
+    let last = events.len() - 1;
+    events[last] = completed("m", json!({ "input_tokens": 9 }));
+    let reply = call_stream(&hello(), &events).await.reply();
+    assert_eq!(reply.usage(), Some(&Usage::of_input_tokens(9)));
 }

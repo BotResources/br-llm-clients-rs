@@ -1,8 +1,8 @@
 use br_llm_clients_common_call::{ErrorInfo, ProviderEvent};
-use br_llm_messages::StopReason;
-use serde_json::json;
+use br_llm_messages::ResponseEnding;
+use serde_json::{Value, json};
 
-use crate::test_decoder::{feed, model, plain_decoder, stop, usage};
+use crate::test_decoder::{feed, feed_err, model, plain_decoder, stop, usage};
 use crate::test_events::{completed, failed, incomplete, usage_object};
 
 fn error_of(events: &[ProviderEvent]) -> ErrorInfo {
@@ -20,7 +20,7 @@ fn given_a_completed_response_when_finished_then_usage_model_stop_complete_come_
         vec![
             usage(10, 20),
             model("gpt-5.1-x"),
-            stop(StopReason::EndTurn),
+            stop(ResponseEnding::finished()),
             ProviderEvent::Complete
         ]
     );
@@ -33,7 +33,7 @@ fn given_a_completed_response_without_usage_when_finished_then_there_is_no_usage
         feed(&mut decoder, &completed("m", serde_json::Value::Null)),
         vec![
             model("m"),
-            stop(StopReason::EndTurn),
+            stop(ResponseEnding::finished()),
             ProviderEvent::Complete
         ]
     );
@@ -46,7 +46,7 @@ fn given_a_completed_response_with_an_empty_model_when_finished_then_there_is_no
         feed(&mut decoder, &completed("", usage_object(1, 2))),
         vec![
             usage(1, 2),
-            stop(StopReason::EndTurn),
+            stop(ResponseEnding::finished()),
             ProviderEvent::Complete
         ]
     );
@@ -55,26 +55,16 @@ fn given_a_completed_response_with_an_empty_model_when_finished_then_there_is_no
 #[test]
 fn given_the_incomplete_reasons_when_finished_then_the_stop_follows_the_table() {
     let table = [
-        (Some("max_output_tokens"), StopReason::MaxTokens),
-        (Some("content_filter"), StopReason::ContentFilter),
+        (
+            Some("max_output_tokens"),
+            ResponseEnding::output_exhaustion(),
+        ),
+        (Some("content_filter"), ResponseEnding::filtering()),
         (
             Some("steered"),
-            StopReason::Other {
-                reason: "steered".to_owned(),
-            },
+            crate::test_decoder::unclassified("steered"),
         ),
-        (
-            Some(""),
-            StopReason::Other {
-                reason: String::new(),
-            },
-        ),
-        (
-            None,
-            StopReason::Other {
-                reason: "incomplete".to_owned(),
-            },
-        ),
+        (None, crate::test_decoder::unclassified("incomplete")),
     ];
     for (reason, expected) in table {
         let mut decoder = plain_decoder();
@@ -91,9 +81,47 @@ fn given_an_incomplete_response_with_details_without_reason_when_finished_then_t
     let mut event = incomplete(None, usage_object(1, 1));
     event["response"]["incomplete_details"] = json!({});
     let events = feed(&mut decoder, &event);
-    assert!(events.contains(&stop(StopReason::Other {
-        reason: "incomplete".to_owned()
-    })));
+    assert!(events.contains(&stop(crate::test_decoder::unclassified("incomplete"))));
+}
+
+#[test]
+fn given_an_incomplete_response_with_an_empty_reason_when_finished_then_it_is_a_payload_error() {
+    let mut decoder = plain_decoder();
+    let error = feed_err(&mut decoder, &incomplete(Some(""), usage_object(1, 1)));
+    assert!(error.text().starts_with("response.incomplete:"), "{error}");
+    assert!(error.text().contains("empty"), "{error}");
+}
+
+#[test]
+fn given_an_incomplete_response_with_a_null_details_or_reason_when_finished_then_the_stop_is_unclassified_incomplete()
+ {
+    for details in [Value::Null, json!({ "reason": null })] {
+        let mut decoder = plain_decoder();
+        let mut event = incomplete(None, usage_object(1, 1));
+        event["response"]["incomplete_details"] = details.clone();
+        let events = feed(&mut decoder, &event);
+        assert!(
+            events.contains(&stop(crate::test_decoder::unclassified("incomplete"))),
+            "{details}"
+        );
+    }
+}
+
+#[test]
+fn given_an_incomplete_response_whose_reason_is_not_a_text_when_finished_then_it_is_a_payload_error()
+ {
+    for reason in [
+        json!(3),
+        json!(true),
+        json!(["max_output_tokens"]),
+        json!({}),
+    ] {
+        let mut decoder = plain_decoder();
+        let mut event = incomplete(None, usage_object(1, 1));
+        event["response"]["incomplete_details"] = json!({ "reason": reason });
+        let error = feed_err(&mut decoder, &event);
+        assert!(error.text().starts_with("response.incomplete:"), "{error}");
+    }
 }
 
 #[test]
@@ -108,7 +136,7 @@ fn given_an_incomplete_response_when_finished_then_the_order_is_usage_model_stop
         vec![
             usage(4, 5),
             model("gpt-5.1-2026-01-01"),
-            stop(StopReason::MaxTokens),
+            stop(ResponseEnding::output_exhaustion()),
             ProviderEvent::Complete
         ]
     );

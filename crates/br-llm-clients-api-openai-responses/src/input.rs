@@ -1,10 +1,8 @@
-use br_llm_clients_core::ClientError;
-use br_llm_messages::WireMessage;
+use br_llm_clients_core::{ClientError, RenderedHistory, RenderedPart, RenderedRole};
 use serde_json::Value;
 
 use crate::input_assistant::assistant_items;
-use crate::input_user::{relay_item, user_items};
-use crate::turn::{is_in_progress, turn_start};
+use crate::input_user::user_items;
 
 pub(crate) fn invalid_messages(reason: &str) -> ClientError {
     ClientError::InvalidMessages {
@@ -12,22 +10,34 @@ pub(crate) fn invalid_messages(reason: &str) -> ClientError {
     }
 }
 
-pub(crate) fn items(messages: &[WireMessage]) -> Result<Vec<Value>, ClientError> {
-    if matches!(messages.last(), Some(WireMessage::Assistant { .. })) {
+pub(crate) fn items(history: &RenderedHistory) -> Result<Vec<Value>, ClientError> {
+    let mut items = Vec::new();
+    let mut pending: Vec<&RenderedPart> = Vec::new();
+    for message in history.messages() {
+        match message.role() {
+            RenderedRole::User => {
+                pending.extend(message.parts());
+                user_items(&pending)?;
+            }
+            RenderedRole::Assistant => {
+                let found = assistant_items(message.parts())?;
+                if !found.is_empty() {
+                    items.extend(user_items(&pending)?);
+                    pending.clear();
+                    items.extend(found);
+                }
+            }
+        }
+    }
+    if history
+        .messages()
+        .last()
+        .is_some_and(|message| message.role() == RenderedRole::Assistant)
+    {
         return Err(invalid_messages(
             "the last message is an assistant message, so the model has nothing to answer",
         ));
     }
-    let start = turn_start(messages);
-    let mut items = Vec::new();
-    for (index, message) in messages.iter().enumerate() {
-        match message {
-            WireMessage::User { content } => items.extend(user_items(content)?),
-            WireMessage::Assistant { content } => {
-                items.extend(assistant_items(content, is_in_progress(start, index))?);
-            }
-            WireMessage::Relay { content } => items.push(relay_item(content)),
-        }
-    }
+    items.extend(user_items(&pending)?);
     Ok(items)
 }

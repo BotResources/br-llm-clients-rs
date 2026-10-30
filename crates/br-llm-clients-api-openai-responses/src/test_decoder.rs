@@ -2,7 +2,7 @@ use br_llm_clients_common_call::{
     Dialect, End, Payload, PayloadDecoder, PayloadError, ProviderBlock, ProviderEvent,
 };
 use br_llm_clients_core::{OutputMode, ReasoningLevel};
-use br_llm_messages::{StopReason, Usage};
+use br_llm_messages::{ReplayFormat, ResponseEnding, Usage};
 use serde_json::Value;
 
 use crate::test_requests::{dialect, parameter, shape};
@@ -116,18 +116,37 @@ pub(crate) fn end(key: &str) -> ProviderEvent {
     }
 }
 
-pub(crate) fn stop(reason: StopReason) -> ProviderEvent {
-    ProviderEvent::Stop(reason)
+pub(crate) fn stop(ending: ResponseEnding) -> ProviderEvent {
+    ProviderEvent::Stop(ending)
+}
+
+pub(crate) fn unclassified(reason: &str) -> ResponseEnding {
+    ResponseEnding::unclassified(reason).expect("reason")
 }
 
 pub(crate) fn usage(input: u64, output: u64) -> ProviderEvent {
-    ProviderEvent::Usage(Usage {
-        input_tokens: input,
-        output_tokens: output,
-        cache_read_tokens: Some(0),
-        cache_write_tokens: None,
-        thinking_tokens: Some(0),
-    })
+    ProviderEvent::Usage(
+        Usage::of_input_tokens(input)
+            .with_cache_read_input_tokens(0)
+            .with_output_tokens(output)
+            .with_thinking_tokens(0),
+    )
+}
+
+pub(crate) fn reasoning_format() -> ReplayFormat {
+    ReplayFormat::new("br-llm-clients-api-openai-responses/reasoning").expect("format")
+}
+
+pub(crate) fn signature(key: &str, value: &str) -> ProviderEvent {
+    ProviderEvent::SignatureDelta {
+        key: key.to_owned(),
+        format: reasoning_format(),
+        signature: value.to_owned(),
+    }
+}
+
+pub(crate) fn response_id(value: &str) -> ProviderEvent {
+    ProviderEvent::ResponseId(value.to_owned())
 }
 
 pub(crate) fn model(value: &str) -> ProviderEvent {
