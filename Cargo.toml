@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/br-llm-clients-anthropic", "crates/br-llm-clients-api-anthropic-messages", "crates/br-llm-clients-api-openai-chat-completions", "crates/br-llm-clients-api-openai-responses", "crates/br-llm-clients-common-auth", "crates/br-llm-clients-common-call", "crates/br-llm-clients-common-http", "crates/br-llm-clients-common-sse", "crates/br-llm-clients-core", "crates/br-llm-clients-mock", "crates/br-llm-clients-openai"]
+members = ["crates/br-llm-clients-anthropic", "crates/br-llm-clients-api-anthropic-messages", "crates/br-llm-clients-api-openai-chat-completions", "crates/br-llm-clients-api-openai-responses", "crates/br-llm-clients-common-auth", "crates/br-llm-clients-common-call", "crates/br-llm-clients-common-http", "crates/br-llm-clients-common-sse", "crates/br-llm-clients-core", "crates/br-llm-clients-litellm", "crates/br-llm-clients-mock", "crates/br-llm-clients-openai"]
 
 [workspace.package]
 edition = "2024"

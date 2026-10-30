@@ -123,6 +123,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "br-llm-clients-api-openai-chat-completions"
+version = "0.2.0"
+source = "git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-api-openai-chat-completions%2Fv0.2.0#0c376b1028f76d0d49c6206093043080bd3c806f"
+dependencies = [
+ "br-llm-clients-common-call 0.2.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-common-call%2Fv0.2.0)",
+ "br-llm-clients-core 0.5.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-core%2Fv0.5.0)",
+ "br-llm-messages",
+ "serde_json",
+]
+
+[[package]]
 name = "br-llm-clients-api-openai-responses"
 version = "0.2.0"
 dependencies = [
@@ -250,6 +261,22 @@ dependencies = [
  "serde",
  "thiserror",
  "uuid",
+]
+
+[[package]]
+name = "br-llm-clients-litellm"
+version = "0.1.0"
+dependencies = [
+ "br-llm-clients-api-anthropic-messages 0.2.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-api-anthropic-messages%2Fv0.2.0)",
+ "br-llm-clients-api-openai-chat-completions 0.2.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-api-openai-chat-completions%2Fv0.2.0)",
+ "br-llm-clients-api-openai-responses 0.2.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-api-openai-responses%2Fv0.2.0)",
+ "br-llm-clients-common-call 0.2.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-common-call%2Fv0.2.0)",
+ "br-llm-clients-common-http 0.2.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-common-http%2Fv0.2.0)",
+ "br-llm-clients-core 0.5.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-core%2Fv0.5.0)",
+ "br-llm-messages",
+ "serde_json",
+ "thiserror",
+ "tokio",
 ]
 
 [[package]]
