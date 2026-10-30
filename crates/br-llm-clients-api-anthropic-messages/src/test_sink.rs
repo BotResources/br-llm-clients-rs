@@ -1,14 +1,14 @@
 use br_llm_clients_core::{BoxFuture, StreamSink};
-use br_llm_messages::StreamEvent;
+use br_llm_messages::ResponseDelta;
 
 #[derive(Default)]
 pub(crate) struct RecordingSink {
-    pub(crate) events: Vec<StreamEvent>,
+    pub(crate) deltas: Vec<ResponseDelta>,
 }
 
 impl StreamSink for RecordingSink {
-    fn send<'a>(&'a mut self, event: StreamEvent) -> BoxFuture<'a, ()> {
-        self.events.push(event);
+    fn send<'a>(&'a mut self, delta: ResponseDelta) -> BoxFuture<'a, ()> {
+        self.deltas.push(delta);
         Box::pin(async {})
     }
 }

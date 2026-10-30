@@ -1,5 +1,5 @@
 use br_llm_clients_common_call::{PayloadError, ProviderEvent};
-use br_llm_messages::StopReason;
+use br_llm_messages::ResponseEnding;
 use serde_json::Value;
 
 use crate::decode::Decoder;
@@ -16,12 +16,9 @@ impl Decoder {
         }
         let message = object_field(fields, "message")?;
         self.started = true;
-        let model = message
-            .get("model")
-            .and_then(Value::as_str)
-            .filter(|model| !model.is_empty())
-            .map(|model| ProviderEvent::Model(model.to_owned()));
-        let mut events: Vec<ProviderEvent> = model.into_iter().collect();
+        let mut events: Vec<ProviderEvent> = Vec::new();
+        events.extend(non_empty_text(message, "model").map(ProviderEvent::Model));
+        events.extend(non_empty_text(message, "id").map(ProviderEvent::ResponseId));
         events.extend(self.merge_usage(message.get("usage"))?);
         Ok(events)
     }
@@ -38,7 +35,7 @@ impl Decoder {
     }
 
     pub(crate) fn message_stop(&mut self) -> Vec<ProviderEvent> {
-        let mut events = if self.stop_reason == Some(StopReason::AwaitingToolResults) {
+        let mut events = if self.stop_reason == Some(ResponseEnding::tool_use()) {
             self.blocks.release_held()
         } else {
             self.blocks.drop_held();
@@ -58,6 +55,14 @@ impl Decoder {
         if self.usage == before {
             return Ok(None);
         }
-        Ok(self.usage.complete()?.map(ProviderEvent::Usage))
+        Ok(self.usage.usage()?.map(ProviderEvent::Usage))
     }
+}
+
+fn non_empty_text(fields: &Fields, name: &str) -> Option<String> {
+    fields
+        .get(name)
+        .and_then(Value::as_str)
+        .filter(|text| !text.is_empty())
+        .map(str::to_owned)
 }

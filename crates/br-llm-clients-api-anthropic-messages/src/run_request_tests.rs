@@ -1,26 +1,41 @@
 use std::sync::Arc;
 
-use br_llm_clients_common_call::Dialect;
 use br_llm_clients_core::{ClientError, ClientRequest};
-use br_llm_messages::{AssistantBlock, StopReason};
+use br_llm_messages::ResponseEnding;
 use serde_json::{Value, json};
 
 use crate::test_call::*;
-use crate::test_fixtures::*;
+use crate::test_fixtures::{encode, request, request_with, structured, tool};
+use crate::test_response::texts;
 use crate::test_server::{TestServer, http, http_bytes};
 use crate::test_streams::BASIC;
+use crate::test_thread::{
+    assistant_text, call, call_block, calling, in_progress, result_of, results, signature,
+    thinking, user,
+};
+
+fn one_call(id: &str, arguments: Value) -> Vec<br_llm_messages::Turn> {
+    let call = call(id, "weather", arguments);
+    vec![
+        user("weather?"),
+        in_progress(vec![
+            calling(vec![
+                thinking("hm", Some(signature("sig"))),
+                call_block(&call),
+            ]),
+            results(vec![result_of(
+                &call,
+                crate::test_thread::texts(&["sunny"]),
+                false,
+            )]),
+        ]),
+    ]
+}
 
 fn conversation() -> ClientRequest {
     request_with(
         Some("be brief"),
-        vec![
-            user("weather?"),
-            assistant(vec![
-                thinking("hm", Some("sig")),
-                tool_call("t1", "weather", json!({"city": "Paris"})),
-            ]),
-            user_blocks(vec![tool_result("t1", "weather", &["sunny"], false)]),
-        ],
+        one_call("t1", json!({"city": "Paris"})),
         vec![tool("weather", "the weather", vec![])],
         plain_output(),
     )
@@ -43,7 +58,7 @@ async fn given_a_request_when_run_then_the_server_gets_a_post_with_the_encoded_b
     assert!(received.header_values("x-api-key").is_empty());
     let sent: Value = serde_json::from_slice(&received.body).expect("json");
     let expected: Value =
-        serde_json::from_slice(plain_dialect().encode(&request).expect("encoded").body())
+        serde_json::from_slice(encode(&plain_dialect(), &request).expect("encoded").body())
             .expect("json");
     assert_eq!(sent, expected);
     assert_eq!(sent["stream"], json!(true));
@@ -81,15 +96,11 @@ async fn given_a_refused_encoding_when_run_then_nothing_is_sent_and_the_error_is
 
 #[tokio::test]
 async fn given_a_generated_tool_id_in_history_when_run_then_the_id_is_sent_as_it_is() {
-    let request = request(vec![
-        user("go"),
-        assistant(vec![tool_call("brgen_abc123", "weather", json!({}))]),
-        user_blocks(vec![tool_result("brgen_abc123", "weather", &["r"], false)]),
-    ]);
+    let request = request(one_call("brgen_abc123", json!({})));
     let called = call_stream(&request, BASIC).await;
     let sent: Value = serde_json::from_slice(&called.received[0].body).expect("json");
     assert_eq!(
-        sent["messages"][1]["content"][0]["id"],
+        sent["messages"][1]["content"][1]["id"],
         json!("brgen_abc123")
     );
     assert_eq!(
@@ -136,6 +147,36 @@ async fn given_an_empty_missing_or_invalid_request_id_when_run_then_the_report_h
 }
 
 #[tokio::test]
+async fn given_a_request_id_header_in_another_case_when_run_then_the_report_carries_it() {
+    for name in ["Request-Id", "REQUEST-ID", "rEqUeSt-Id"] {
+        let id = request_id_for(vec![(name, b"req_case".to_vec())]).await;
+        assert_eq!(id.as_deref(), Some("req_case"), "{name}");
+    }
+}
+
+#[tokio::test]
+async fn given_several_request_id_headers_when_run_then_the_first_one_is_given() {
+    let id = request_id_for(vec![
+        ("Request-ID", b"req_first".to_vec()),
+        ("request-id", b"req_second".to_vec()),
+    ])
+    .await;
+    assert_eq!(id.as_deref(), Some("req_first"));
+    let id = request_id_for(vec![
+        ("request-id", Vec::new()),
+        ("request-id", b"req_second".to_vec()),
+    ])
+    .await;
+    assert_eq!(id, None);
+    let id = request_id_for(vec![
+        ("request-id", vec![0xff, b'x']),
+        ("request-id", b"req_second".to_vec()),
+    ])
+    .await;
+    assert_eq!(id, None);
+}
+
+#[tokio::test]
 async fn given_a_refusal_with_a_request_id_when_run_then_the_report_carries_it_too() {
     let called = call_with(plain_dialect(), &hello(), |_| {
         http("401 Unauthorized", &[("request-id", "req_77")], b"{}")
@@ -171,21 +212,16 @@ async fn given_one_dialect_when_two_calls_run_at_once_then_each_gets_its_own_out
         })
     };
     let outcomes = [first.await.expect("first"), second.await.expect("second")];
-    let mut texts: Vec<String> = outcomes
+    let mut seen: Vec<String> = outcomes
         .iter()
-        .map(
-            |outcome| match outcome.result().expect("a step").content() {
-                [AssistantBlock::Text { text }] => text.as_str().to_owned(),
-                other => panic!("unexpected content {other:?}"),
-            },
-        )
+        .flat_map(|outcome| texts(outcome.result().expect("a response")))
         .collect();
-    texts.sort();
-    assert_eq!(texts, ["Hello!", "Howdy!"]);
+    seen.sort();
+    assert_eq!(seen, ["Hello!", "Howdy!"]);
     for outcome in &outcomes {
         assert_eq!(
-            outcome.result().expect("a step").stop_reason(),
-            &StopReason::EndTurn
+            outcome.result().expect("a response").ending(),
+            &ResponseEnding::finished()
         );
     }
 }

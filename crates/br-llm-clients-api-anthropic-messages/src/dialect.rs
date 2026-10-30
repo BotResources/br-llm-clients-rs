@@ -1,9 +1,12 @@
 use br_llm_clients_common_call::{Dialect, EncodedRequest, ErrorInfo, Headers, PayloadDecoder};
-use br_llm_clients_core::{ClientError, ClientRequest, ClientSettings, OutputMode};
+use br_llm_clients_core::{
+    ClientError, ClientRequest, ClientSettings, OutputMode, RenderedHistory,
+};
 
 use crate::decode::Decoder;
 use crate::encode::{self, EncodeSettings};
 use crate::errors;
+use crate::options::MessagesOptions;
 
 pub struct AnthropicMessages {
     settings: EncodeSettings,
@@ -11,15 +14,23 @@ pub struct AnthropicMessages {
 
 impl AnthropicMessages {
     pub fn new(settings: &ClientSettings) -> Self {
+        Self::with_options(settings, MessagesOptions::new())
+    }
+
+    pub fn with_options(settings: &ClientSettings, options: MessagesOptions) -> Self {
         Self {
-            settings: EncodeSettings::from_settings(settings),
+            settings: EncodeSettings::from_settings(settings, options),
         }
     }
 }
 
 impl Dialect for AnthropicMessages {
-    fn encode(&self, request: &ClientRequest) -> Result<EncodedRequest, ClientError> {
-        encode::encode(&self.settings, request)
+    fn encode(
+        &self,
+        request: &ClientRequest,
+        history: &RenderedHistory,
+    ) -> Result<EncodedRequest, ClientError> {
+        encode::encode(&self.settings, request, history)
     }
 
     fn decoder(&self, output: &OutputMode) -> Box<dyn PayloadDecoder> {

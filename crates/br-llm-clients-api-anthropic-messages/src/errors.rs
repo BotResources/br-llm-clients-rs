@@ -2,6 +2,7 @@ use br_llm_clients_common_call::{ErrorInfo, Headers};
 use br_llm_clients_core::{ClientError, LimitKind, ReasoningLevel};
 use serde_json::Value;
 
+const REQUEST_ID_HEADER: &str = "request-id";
 const SPEND_LIMIT_DETAIL: &str = "enforced_spend_limit_reached";
 const USAGE_LIMIT_PREFIXES: [&str; 2] = [
     "You have reached your specified API usage limits",
@@ -26,7 +27,7 @@ pub(crate) fn error_code(body: &str) -> Option<String> {
 
 pub(crate) fn request_id(headers: &Headers) -> Option<String> {
     headers
-        .get_text("request-id")
+        .get_text(REQUEST_ID_HEADER)
         .filter(|id| !id.is_empty())
         .map(str::to_owned)
 }

@@ -1,5 +1,5 @@
 use br_llm_clients_common_call::{ErrorInfo, ProviderBlock, ProviderEvent};
-use br_llm_messages::{StopReason, Usage};
+use br_llm_messages::{ResponseEnding, Usage};
 
 use crate::test_decode::*;
 use crate::test_streams::*;
@@ -8,19 +8,24 @@ fn model() -> ProviderEvent {
     ProviderEvent::Model("claude-test-model".to_owned())
 }
 
+fn response_id(id: &str) -> ProviderEvent {
+    ProviderEvent::ResponseId(id.to_owned())
+}
+
 #[test]
 fn given_the_documented_basic_stream_when_decoded_then_the_events_follow_the_table() {
     assert_eq!(
         decode_stream(false, BASIC),
         vec![
             model(),
+            response_id("msg_test_basic"),
             ProviderEvent::Usage(usage(25, 1)),
             start("0", ProviderBlock::Text),
             text_delta("0", "Hello"),
             text_delta("0", "!"),
             end_of("0"),
             ProviderEvent::Usage(usage(25, 15)),
-            stop(StopReason::EndTurn),
+            stop(ResponseEnding::finished()),
             ProviderEvent::Complete,
         ]
     );
@@ -32,6 +37,7 @@ fn given_the_documented_tool_use_stream_when_decoded_then_the_call_arguments_arr
         decode_stream(false, TOOL_USE),
         vec![
             model(),
+            response_id("msg_test_tool_use"),
             ProviderEvent::Usage(usage(472, 2)),
             start("0", ProviderBlock::Text),
             text_delta("0", "Okay"),
@@ -48,7 +54,7 @@ fn given_the_documented_tool_use_stream_when_decoded_then_the_call_arguments_arr
             text_delta("0", " CA"),
             text_delta("0", ":"),
             end_of("0"),
-            tool_start("1", "get_weather", "toolu_01T1x1fJ34qAmk2tNTrN7Up6"),
+            tool_start("1", "get_weather", "toolu_test_weather"),
             args_delta("1", "{\"location\":"),
             args_delta("1", " \"San"),
             args_delta("1", " Francisc"),
@@ -56,7 +62,7 @@ fn given_the_documented_tool_use_stream_when_decoded_then_the_call_arguments_arr
             args_delta("1", " CA\"}"),
             end_of("1"),
             ProviderEvent::Usage(usage(472, 89)),
-            stop(StopReason::AwaitingToolResults),
+            stop(ResponseEnding::tool_use()),
             ProviderEvent::Complete,
         ]
     );
@@ -70,6 +76,7 @@ fn given_the_documented_thinking_stream_when_decoded_then_empty_start_fields_giv
         events,
         vec![
             model(),
+            response_id("msg_01..."),
             start("0", ProviderBlock::Thinking),
             thinking_delta(
                 "0",
@@ -89,7 +96,7 @@ fn given_the_documented_thinking_stream_when_decoded_then_empty_start_fields_giv
                 "The greatest common divisor of 1071 and 462 is **21**."
             ),
             end_of("1"),
-            stop(StopReason::EndTurn),
+            stop(ResponseEnding::finished()),
             ProviderEvent::Complete,
         ]
     );
@@ -105,7 +112,7 @@ fn given_the_omitted_thinking_shape_when_decoded_then_the_empty_thinking_gives_o
 {
     let events = decode_stream(false, crate::test_streams_constructed::OMITTED_THINKING);
     assert_eq!(
-        &events[2..6],
+        &events[3..7],
         &[
             start("0", ProviderBlock::Thinking),
             signature_delta("0", "EqQBCgIYAhIM"),
@@ -128,12 +135,10 @@ fn usages_of(stream: &str) -> Vec<Usage> {
 #[test]
 fn given_the_documented_usage_lines_when_decoded_then_zero_cache_counts_are_some_zero_and_cumulative()
  {
-    let zero = |input, output| Usage {
-        input_tokens: input,
-        output_tokens: output,
-        cache_read_tokens: Some(0),
-        cache_write_tokens: Some(0),
-        thinking_tokens: None,
+    let zero = |input, output| {
+        usage(input, output)
+            .with_cache_read_input_tokens(0)
+            .with_cache_creation_input_tokens(0)
     };
     assert_eq!(
         usages_of(DOCUMENTED_USAGE),
@@ -147,20 +152,12 @@ fn given_a_constructed_stream_with_cache_counts_when_decoded_then_the_input_is_t
     assert_eq!(
         usages_of(crate::test_streams_constructed::CACHE_COUNTS),
         vec![
-            Usage {
-                input_tokens: 2679,
-                output_tokens: 3,
-                cache_read_tokens: Some(0),
-                cache_write_tokens: Some(0),
-                thinking_tokens: None,
-            },
-            Usage {
-                input_tokens: 14802,
-                output_tokens: 510,
-                cache_read_tokens: Some(4000),
-                cache_write_tokens: Some(120),
-                thinking_tokens: None,
-            },
+            usage(2679, 3)
+                .with_cache_read_input_tokens(0)
+                .with_cache_creation_input_tokens(0),
+            usage(14802, 510)
+                .with_cache_read_input_tokens(4000)
+                .with_cache_creation_input_tokens(120),
         ]
     );
 }
@@ -174,20 +171,20 @@ fn given_the_documented_error_event_in_a_stream_when_decoded_then_it_gives_an_er
     )
     .with_code("overloaded_error");
     assert_eq!(events.last(), Some(&ProviderEvent::Error(expected)));
-    assert_eq!(events.len(), 5);
+    assert_eq!(events.len(), 6);
 }
 
 #[test]
 fn given_the_constructed_redacted_thinking_stream_when_decoded_then_the_data_is_in_the_start() {
     let events = decode_stream(false, crate::test_streams_constructed::REDACTED_THINKING);
     assert_eq!(
-        &events[2..5],
+        &events[3..6],
         &[
             start("0", ProviderBlock::RedactedThinking),
-            ProviderEvent::RedactedThinkingData {
-                key: key("0"),
-                data: "EmwKAhgBEgy3va3pzix/LafPsn4aDFIT2Xlxh0L5L8rLVyIwxtE3rAFBa8cr3qpP".to_owned(),
-            },
+            redacted_data(
+                "0",
+                "EmwKAhgBEgy3va3pzix/LafPsn4aDFIT2Xlxh0L5L8rLVyIwxtE3rAFBa8cr3qpP"
+            ),
             end_of("0"),
         ]
     );
@@ -197,7 +194,7 @@ fn given_the_constructed_redacted_thinking_stream_when_decoded_then_the_data_is_
 fn given_a_structured_reply_when_decoded_in_structured_mode_then_text_blocks_are_structured() {
     let events = decode_stream(true, crate::test_streams_constructed::STRUCTURED_REPLY);
     assert_eq!(
-        &events[2..6],
+        &events[3..7],
         &[
             start("0", ProviderBlock::Structured),
             ProviderEvent::StructuredDelta {
@@ -216,5 +213,5 @@ fn given_a_structured_reply_when_decoded_in_structured_mode_then_text_blocks_are
 #[test]
 fn given_a_structured_reply_when_decoded_in_plain_mode_then_text_blocks_stay_text() {
     let events = decode_stream(false, crate::test_streams_constructed::STRUCTURED_REPLY);
-    assert_eq!(events[2], start("0", ProviderBlock::Text));
+    assert_eq!(events[3], start("0", ProviderBlock::Text));
 }

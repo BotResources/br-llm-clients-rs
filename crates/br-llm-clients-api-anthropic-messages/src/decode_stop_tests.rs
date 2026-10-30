@@ -1,5 +1,5 @@
 use br_llm_clients_common_call::ProviderEvent;
-use br_llm_messages::StopReason;
+use br_llm_messages::ResponseEnding;
 
 use crate::test_decode::*;
 
@@ -14,28 +14,22 @@ fn stopped_with(delta_fields: &str) -> Vec<ProviderEvent> {
 #[test]
 fn given_each_documented_stop_reason_when_decoded_then_it_maps_as_the_table_says() {
     let table = [
-        ("end_turn", StopReason::EndTurn),
-        ("max_tokens", StopReason::MaxTokens),
-        ("stop_sequence", StopReason::StopSequence),
-        ("tool_use", StopReason::AwaitingToolResults),
-        ("refusal", StopReason::Refusal),
+        ("end_turn", ResponseEnding::finished()),
+        ("max_tokens", ResponseEnding::output_exhaustion()),
+        ("stop_sequence", ResponseEnding::stop_sequence()),
+        ("tool_use", ResponseEnding::tool_use()),
+        ("refusal", ResponseEnding::refusal()),
         (
             "pause_turn",
-            StopReason::Other {
-                reason: "pause_turn".to_owned(),
-            },
+            ResponseEnding::unclassified("pause_turn").expect("an ending"),
         ),
         (
             "model_context_window_exceeded",
-            StopReason::Other {
-                reason: "model_context_window_exceeded".to_owned(),
-            },
+            ResponseEnding::unclassified("model_context_window_exceeded").expect("an ending"),
         ),
         (
             "something_new",
-            StopReason::Other {
-                reason: "something_new".to_owned(),
-            },
+            ResponseEnding::unclassified("something_new").expect("an ending"),
         ),
     ];
     for (api, mapped) in table {
@@ -50,9 +44,7 @@ fn given_a_stop_reason_that_differs_by_case_or_space_when_decoded_then_it_is_com
         let events = stopped_with(&format!(r#"{{"stop_reason":"{api}"}}"#));
         assert_eq!(
             events[0],
-            stop(StopReason::Other {
-                reason: api.to_owned()
-            }),
+            stop(ResponseEnding::unclassified(api).expect("an ending")),
             "{api:?}"
         );
     }
@@ -76,7 +68,7 @@ fn given_a_null_or_absent_stop_reason_when_decoded_then_the_recorded_one_stays()
     session.ok(r#"{"type":"message_delta","delta":{}}"#);
     assert_eq!(
         session.ok(r#"{"type":"message_stop"}"#),
-        vec![stop(StopReason::EndTurn), ProviderEvent::Complete]
+        vec![stop(ResponseEnding::finished()), ProviderEvent::Complete]
     );
 }
 
@@ -89,7 +81,10 @@ fn given_several_message_deltas_when_decoded_then_the_last_non_null_stop_reason_
     let events = session.ok(r#"{"type":"message_stop"}"#);
     assert_eq!(
         events,
-        vec![stop(StopReason::MaxTokens), ProviderEvent::Complete]
+        vec![
+            stop(ResponseEnding::output_exhaustion()),
+            ProviderEvent::Complete
+        ]
     );
 }
 
@@ -128,7 +123,7 @@ fn given_other_fields_of_the_delta_when_decoded_then_they_are_ignored() {
         stopped_with(r#"{"stop_reason":"end_turn","stop_sequence":"X","container":{"id":"c"}}"#);
     assert_eq!(
         events,
-        vec![stop(StopReason::EndTurn), ProviderEvent::Complete]
+        vec![stop(ResponseEnding::finished()), ProviderEvent::Complete]
     );
 }
 
@@ -140,4 +135,29 @@ fn given_a_stop_reason_in_message_start_when_decoded_then_it_is_not_recorded() {
         session.ok(r#"{"type":"message_stop"}"#),
         vec![ProviderEvent::Complete]
     );
+}
+
+#[test]
+fn given_a_stop_sequence_stop_with_its_matched_sequence_when_decoded_then_the_ending_has_no_matched_sequence()
+ {
+    for delta in [
+        r#"{"stop_reason":"stop_sequence","stop_sequence":"END"}"#,
+        r#"{"stop_reason":"stop_sequence","stop_sequence":null}"#,
+        r#"{"stop_reason":"stop_sequence"}"#,
+        r#"{"stop_reason":"stop_sequence","stop_sequence":5,"stop_details":{"a":1}}"#,
+    ] {
+        let events = stopped_with(delta);
+        assert_eq!(
+            events,
+            vec![
+                stop(ResponseEnding::stop_sequence()),
+                ProviderEvent::Complete
+            ],
+            "{delta}"
+        );
+        match &events[0] {
+            ProviderEvent::Stop(ending) => assert_eq!(ending.matched_sequence(), None),
+            other => panic!("not a stop: {other:?}"),
+        }
+    }
 }

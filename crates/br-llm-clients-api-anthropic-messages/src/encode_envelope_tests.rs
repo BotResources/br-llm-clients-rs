@@ -1,11 +1,8 @@
-use br_llm_clients_common_call::Dialect;
-use br_llm_clients_core::{
-    CacheRequirement, ClientRequest, OutputMode, ParameterKind, ReasoningLevel,
-};
-use br_llm_messages::ImageMime;
+use br_llm_clients_core::{CacheRequirement, OutputMode, ReasoningLevel};
 use serde_json::{Value, json};
 
 use crate::test_fixtures::*;
+use crate::test_shapes::every_request_shape;
 
 const ALLOWED_FIELDS: [&str; 9] = [
     "model",
@@ -32,52 +29,6 @@ const NEVER_SENT: [&str; 10] = [
     "betas",
 ];
 
-fn every_request_shape() -> Vec<ClientRequest> {
-    let weather = tool(
-        "weather",
-        "the weather",
-        vec![param("city", "", true, ParameterKind::String)],
-    );
-    vec![
-        request(vec![user("hello")]),
-        request_with(
-            Some("be brief"),
-            vec![user("hello")],
-            vec![],
-            OutputMode::Plain,
-        ),
-        request_with(
-            None,
-            vec![user("hello")],
-            vec![weather.clone()],
-            OutputMode::Plain,
-        ),
-        request_with(
-            None,
-            vec![user("hello")],
-            vec![],
-            structured(
-                Some("an answer"),
-                vec![param("v", "", true, ParameterKind::String)],
-            ),
-        ),
-        request(vec![
-            user("hello"),
-            assistant(vec![
-                thinking("hm", Some("sig")),
-                redacted("abc"),
-                tool_call("t1", "weather", json!({"city": "Paris"})),
-            ]),
-            user_blocks(vec![tool_result("t1", "weather", &["sunny"], false)]),
-        ]),
-        request(vec![
-            user_blocks(vec![image(ImageMime::Png, "AAAA"), user_text_block("look")]),
-            assistant_text("seen"),
-            relay(&["more"]),
-        ]),
-    ]
-}
-
 #[test]
 fn given_every_request_shape_when_encoded_then_the_body_holds_only_the_closed_field_list() {
     for level in [ReasoningLevel::Off, ReasoningLevel::Max] {
@@ -102,7 +53,7 @@ fn given_every_request_shape_when_encoded_then_the_body_holds_only_the_closed_fi
 #[test]
 fn given_every_request_shape_when_encoded_then_no_forbidden_field_is_sent() {
     for shape in every_request_shape() {
-        let text = String::from_utf8(dialect().encode(&shape).expect("encoded").body().to_vec())
+        let text = String::from_utf8(encode(&dialect(), &shape).expect("encoded").body().to_vec())
             .expect("utf8");
         for key in NEVER_SENT {
             assert!(!text.contains(&format!("\"{key}\"")), "{key} was sent");
@@ -115,9 +66,7 @@ fn given_every_request_shape_when_encoded_then_no_forbidden_field_is_sent() {
 
 #[test]
 fn given_a_request_when_encoded_then_the_headers_are_exactly_content_type_and_version() {
-    let encoded = dialect()
-        .encode(&request(vec![user("hello")]))
-        .expect("encoded");
+    let encoded = encode(&dialect(), &request(vec![user("hello")])).expect("encoded");
     assert_eq!(
         encoded.headers(),
         &[
@@ -130,7 +79,7 @@ fn given_a_request_when_encoded_then_the_headers_are_exactly_content_type_and_ve
 #[test]
 fn given_every_request_shape_when_encoded_then_no_credential_or_beta_header_is_returned() {
     for shape in every_request_shape() {
-        let encoded = dialect().encode(&shape).expect("encoded");
+        let encoded = encode(&dialect(), &shape).expect("encoded");
         for (name, _) in encoded.headers() {
             let name = name.to_ascii_lowercase();
             assert!(!["anthropic-beta", "x-api-key", "authorization"].contains(&name.as_str()));
@@ -182,17 +131,15 @@ fn given_the_same_request_when_encoded_twice_then_the_bytes_are_identical_and_th
  {
     let request = every_request_shape().remove(4);
     let before = request.clone();
-    let first = dialect().encode(&request).expect("first");
-    let second = dialect().encode(&request).expect("second");
+    let first = encode(&dialect(), &request).expect("first");
+    let second = encode(&dialect(), &request).expect("second");
     assert_eq!(first, second);
     assert_eq!(request, before);
 }
 
 #[test]
 fn given_a_body_when_read_then_it_is_compact_json_without_insignificant_whitespace() {
-    let encoded = dialect()
-        .encode(&request(vec![user("hello")]))
-        .expect("encoded");
+    let encoded = encode(&dialect(), &request(vec![user("hello")])).expect("encoded");
     let value: Value = serde_json::from_slice(encoded.body()).expect("json");
     assert_eq!(encoded.body(), value.to_string().as_bytes());
 }
