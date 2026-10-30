@@ -1,0 +1,20 @@
+[package]
+name = "br-llm-providers-omlx"
+version = "0.1.0"
+description = "the Client for one oMLX server: sends a call to its chat route, with an optional key and the capabilities the operator declares for the model"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+br-llm-clients-api-openai-chat-completions = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-api-openai-chat-completions/v0.2.0", version = "0.2.0" }
+br-llm-clients-common-call = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-common-call/v0.2.0", version = "0.2.0" }
+br-llm-clients-common-http = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-common-http/v0.2.0", version = "0.2.0" }
+br-llm-clients-core = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-core/v0.5.0", version = "0.5.0" }
+serde_json = "1"
+thiserror = "2"
+
+[dev-dependencies]
+br-llm-messages = { git = "https://github.com/BotResources/br-llm-messages-rs", tag = "br-llm-messages/v2.1.0", version = "2.1.0", features = ["mint"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
