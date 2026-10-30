@@ -1,6 +1,6 @@
 [package]
-name = "br-llm-providers-omlx"
-version = "0.1.0"
+name = "br-llm-clients-omlx"
+version = "0.1.1"
 description = "the Client for one oMLX server: sends a call to its chat route, with an optional key and the capabilities the operator declares for the model"
 edition.workspace = true
 rust-version.workspace = true

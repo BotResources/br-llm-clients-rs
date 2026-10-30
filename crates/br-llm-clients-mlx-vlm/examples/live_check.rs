@@ -7,8 +7,9 @@
 
 use std::process::ExitCode;
 
-use br_llm_clients_core::{CallOutcome, Client, ClientError, OutputMode};
-use br_llm_providers_omlx::Secret;
+use br_llm_clients_core::{Client, ClientError, OutputMode};
+use br_llm_clients_mlx_vlm::Secret;
+use br_llm_messages::ResponseEnding;
 
 #[path = "live_check_support/cache.rs"]
 mod cache;
@@ -33,8 +34,9 @@ mod weather;
 
 type Failure = Box<dyn std::error::Error>;
 
-const WRONG_KEY: &str = "omlx-live-check-wrong-key-0000";
-const UNKNOWN_MODEL: &str = "br-live-check-unknown-model";
+const WRONG_KEY: &str = "mlx-vlm-live-check-wrong-key-0000";
+const SHORT_LIMIT: u32 = 8;
+const LONG_ANSWER: &str = "Describe the history of Paris in at least ten sentences.";
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -47,30 +49,24 @@ async fn main() -> ExitCode {
     }
 }
 
-fn flag(name: &str) -> bool {
-    env::optional(name).is_some_and(|value| value == "1")
-}
-
 async fn live_check() -> Result<(), Failure> {
     let target = target::Target::from_env()?;
     let client = target.client(target.shape())?;
     println!("client: {client:?}");
     let answer = checks::answer(&client).await?;
+    println!(
+        "[1 plain answer] request id (mlx-vlm sets none on the chat route): {:?}",
+        answer.outcome.report().request_id()
+    );
     let mut verdicts = answer.verdicts;
     verdicts.push(checks::verdict(
         "4 tool call",
         weather::weather(&client).await?,
     ));
-    if flag("OMLX_STRUCTURED") {
-        verdicts.push(checks::verdict(
-            "5 structured output",
-            checks::structured(&client).await?,
-        ));
-    } else {
-        println!(
-            "5 structured output: skipped (set OMLX_STRUCTURED=1 for a server with omlx[grammar])"
-        );
-    }
+    verdicts.push(checks::verdict(
+        "5 structured output",
+        checks::structured(&client).await?,
+    ));
     if target.shape().key.is_some() {
         let wrong = target.client(target::Shape {
             key: Some(Secret::new(WRONG_KEY)?),
@@ -81,25 +77,17 @@ async fn live_check() -> Result<(), Failure> {
             checks::wrong_key(&wrong).await?,
         ));
     } else {
-        println!("6 error case: skipped (no OMLX_API_KEY)");
+        println!("6 error case: skipped (no MLX_VLM_API_KEY)");
     }
-    verdicts.push(checks::verdict("7 request id", request_id(&answer.outcome)));
+    let short = target.client(target::Shape {
+        max_output_tokens: SHORT_LIMIT,
+        ..target.shape()
+    })?;
+    verdicts.push(checks::verdict("7 token limit", token_limit(&short).await?));
     verdicts.push(checks::verdict(
         "8 prefix cache",
         checks::cache_reuse(&client, target::SERVER_OPTIONS).await?,
     ));
-    if flag("OMLX_MODEL_FALLBACK") {
-        println!("9 unknown model: skipped (the model fallback setting of the server is on)");
-    } else {
-        let unknown = target.client(target::Shape {
-            model: UNKNOWN_MODEL.to_owned(),
-            ..target.shape()
-        })?;
-        verdicts.push(checks::verdict(
-            "9 unknown model",
-            unknown_model(&unknown).await?,
-        ));
-    }
     let failed = verdicts.iter().filter(|passed| !**passed).count();
     if failed == 0 {
         println!("live check: every check passed");
@@ -109,16 +97,20 @@ async fn live_check() -> Result<(), Failure> {
     }
 }
 
-fn request_id(outcome: &CallOutcome) -> bool {
-    outcome
+async fn token_limit(client: &dyn Client) -> Result<bool, Failure> {
+    let request = thread::Thread::new(LONG_ANSWER)?.request(None, Vec::new(), OutputMode::Plain)?;
+    let (outcome, _) = checks::call(client, "7 token limit", &request).await;
+    let ended_on_length = match outcome.result() {
+        Ok(response) => matches!(response.ending(), ResponseEnding::OutputExhaustion { .. }),
+        Err(ClientError::ReplyUnusable { ending }) => {
+            matches!(ending, ResponseEnding::OutputExhaustion { .. })
+        }
+        Err(_) => false,
+    };
+    let within = outcome
         .report()
-        .request_id()
-        .is_some_and(|id| !id.is_empty())
-}
-
-async fn unknown_model(client: &dyn Client) -> Result<bool, Failure> {
-    let request =
-        thread::Thread::new("Say hello.")?.request(None, Vec::new(), OutputMode::Plain)?;
-    let (outcome, _) = checks::call(client, "9 unknown model", &request).await;
-    Ok(matches!(outcome.result(), Err(ClientError::ModelNotFound)))
+        .usage()
+        .and_then(|usage| usage.output_tokens())
+        .is_none_or(|tokens| tokens <= u64::from(SHORT_LIMIT));
+    Ok(ended_on_length && within)
 }
