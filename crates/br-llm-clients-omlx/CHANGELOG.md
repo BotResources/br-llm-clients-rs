@@ -1,13 +1,22 @@
 # Changelog
 
-All notable changes to `br-llm-providers-omlx` are documented here. The git tag
-`br-llm-providers-omlx/v{version}` releases the crate; this crate is versioned
+All notable changes to `br-llm-clients-omlx` are documented here. The git tag
+`br-llm-clients-omlx/v{version}` releases the crate; this crate is versioned
 separately from the other crates of the repository. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow semver.
 Release headings are plain `## X.Y.Z` — the release pipeline greps that exact
 form to decide whether a version ships.
 
 ## Unreleased
+
+## 0.1.1
+
+### Changed
+
+- The crate is renamed from `br-llm-providers-omlx` to `br-llm-clients-omlx`, to match the
+  names of the family. The code and the public API do not change. The tag
+  `br-llm-providers-omlx/v0.1.0` keeps the old name; a project that pinned it moves
+  to `br-llm-clients-omlx` at `br-llm-clients-omlx/v0.1.1`.
 
 ## 0.1.0
 

@@ -54,7 +54,18 @@ if [[ -n "$BASELINE_TAG" ]]; then
         echo "::error::registry prepare: the baseline tag ${BASELINE_TAG} named by the registry is not in this clone." >&2
         exit 1
     fi
-    (cd "$SRC" && cargo public-api -p "$CRATE" --color never diff "${BASELINE_TAG}..${COMMIT}") >"$OUT/diff.txt"
+    BASELINE_CRATE="${BASELINE_TAG%/v*}"
+    if [[ "$BASELINE_CRATE" == "$CRATE" ]]; then
+        (cd "$SRC" && cargo public-api -p "$CRATE" --color never diff "${BASELINE_TAG}..${COMMIT}") >"$OUT/diff.txt"
+    else
+        BASE="$WORK/baseline"
+        git worktree add --detach "$BASE" "$BASELINE_TAG" >/dev/null
+        (cd "$BASE" && cargo public-api -p "$BASELINE_CRATE" --color never) >"$WORK/baseline-listing.txt"
+        git worktree remove --force "$BASE"
+        sed -e "s/${BASELINE_CRATE//-/_}::/${CRATE//-/_}::/g" -e "s/${BASELINE_CRATE//-/_}\$/${CRATE//-/_}/" "$WORK/baseline-listing.txt" >"$WORK/baseline-renamed.txt"
+        diff -u --label "${BASELINE_TAG} (as ${CRATE})" --label "${COMMIT}" \
+            "$WORK/baseline-renamed.txt" "$OUT/listing.txt" >"$OUT/diff.txt" || [[ $? -eq 1 ]]
+    fi
 fi
 
 (cd "$SRC" && cargo metadata --format-version 1 --locked --all-features) >"$WORK/metadata.json"
