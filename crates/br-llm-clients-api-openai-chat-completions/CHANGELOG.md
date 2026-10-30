@@ -9,6 +9,101 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.2.0
+
+Built on `br-llm-clients-common-call` 0.2, `br-llm-clients-core` 0.5 and `br-llm-messages` 2.1.
+The `Dialect` it implements is the one of common-call 0.2, not the one of 0.1, so a provider
+library built on 0.1.0 does not compile against it. With the six new options at their defaults,
+`encode` gives the same body bytes as 0.1.0 for a history whose rendering holds the same
+messages; a test encodes six requests and compares the bytes with bodies made by the tag
+`br-llm-clients-api-openai-chat-completions/v0.1.0`. The decoding and the errors are those of
+0.1.0, except for the ending, the response id, the four new quota codes, and a `Usage` that is
+now given when one of `prompt_tokens` and `completion_tokens` is present, where 0.1.0 needed
+both; all are described below.
+
+### Changed
+
+- Breaking: `encode` takes the `RenderedHistory` that `run` of common-call made with
+  `render_history` of the core, beside the request, and encodes it. The dialect no longer builds
+  the history itself. A `User` message becomes one `tool` message per tool result, in the order
+  of the parts, then one `user` message for its text and image parts when it has any. An
+  `Assistant` message becomes one `assistant` message; its text parts and the text of its text
+  blocks are its content, its tool calls are `tool_calls` with the wire id of the rendering.
+- Thinking, thinking that has replay material and redacted thinking are dropped. The replay
+  material and the item reference of a text block or a tool call are not sent. This dialect
+  chooses no format of replay material, sends none, and never gives `SignatureDelta` or
+  `RedactedThinkingData`.
+- A message that holds no part after the drops is omitted, and its neighbours of the same role
+  are merged into one message before they are written. This follows the Thinking rule of
+  "Rendering of a history" in core 0.5: a `Block` part that the client library drops counts
+  as absent, merges the neighbours of the same role again and never sends an empty message.
+  The thinking of an omitted message is dropped and never moved to another message.
+- `InvalidMessages` when the last message that the dialect sends is an `assistant` message,
+  when nothing is left to send, and, with a reason that names it, for an image in an
+  `Assistant` message or in a tool result, for a block other than thinking, redacted thinking
+  or text (for example a provider tool block), and for a kind of part, block or image source
+  that this version does not know.
+- Breaking: `ProviderEvent::Stop` carries a `ResponseEnding`: `stop` is `finished`, `length` is
+  `output_exhaustion`, `tool_calls` is `tool_use`, `content_filter` is `filtering`, any other
+  non-empty finish reason, `function_call` included, is `unclassified` with the reason as
+  received, and `finished` after a refusal is `refusal`. The finish reason `error` still gives
+  one `Error` event and no `Stop`.
+- A `Usage` event is given as soon as `prompt_tokens` or `completion_tokens` is present. The
+  cache counts come only with `prompt_tokens`, the thinking count only with
+  `completion_tokens`. `prompt_tokens_details.cache_write_tokens` is the cache creation count.
+- `refine_error` gives `QuotaExceeded`, with any status, for the codes `insufficient_quota`,
+  `credit_balance_exhausted`, `organization_spend_limit_exceeded`,
+  `project_spend_limit_exceeded` and `organization_usage_limit_exceeded`, and nothing else.
+- Re-exports: `Usage` stays; `ModelId` and `StopReason` are gone. Added from common-call
+  `DialectHooks` and `Layered`, from the core `RenderedHistory`, and from `br-llm-messages`
+  `ModelName` and `ResponseEnding`, so that a provider library can build and wrap the dialect.
+  The re-exported `Headers` is the type of `br-llm-clients-common-http` 0.2.
+- The extra body refuses the member `max_tokens` when `max_tokens_field` is `MaxTokens`, and
+  only then; an extra body that was valid in 0.1.0 is valid with the default options.
+- `OptionsError::OmitAboveOff` is given only while `omit_effort_above_off` is off, which is the
+  default.
+- The derived `Debug` of `ChatCompletionsOptions` shows the six new fields, and `PartialEq`
+  compares them.
+
+### Added
+
+- `ProviderEvent::ResponseId` with the `id` of a chunk when it is a non-empty string that
+  differs from the last one given.
+- `ChatCompletionsOptions::with_max_tokens_field(MaxTokensField)`: `MaxCompletionTokens` (the
+  default) writes `max_completion_tokens`, `MaxTokens` writes `max_tokens`; the dialect writes
+  that one member and never the other. With `MaxCompletionTokens`, a `max_tokens` member of
+  `extra_body` is still added, as every member of `extra_body` is.
+- `with_reasoning_carry_back_field(name)`: each `assistant` message of the turn in progress
+  gets that member, holding the texts of its thinking blocks that have no replay material,
+  joined in order with nothing between them, when that string is not empty. The thinking of an
+  omitted message is dropped. The option does not look at the reasoning level.
+- `with_tool_message_name(bool)`: when on, each `tool` message holds `name`, the tool name of
+  its result.
+- `with_omit_effort_above_off(bool)`: when on, the reasoning table may hold `Omit` for a level
+  above `Off`; the other checks of the table stay.
+- `with_tool_only_content(ToolOnlyContent)`: `Omitted` (the default) or `EmptyText`, which
+  writes `content` as the empty string on an `assistant` message that has a tool call and no
+  text.
+- `with_empty_tool_result_text(text)`: a tool result that holds no text is written with this
+  text in place of the empty string.
+- `MaxTokensField` and `ToolOnlyContent` are `Debug`, `Clone`, `Copy`, `PartialEq` and
+  `#[non_exhaustive]`.
+- `OptionsError` cases `BlankCarryBackField`, `ReservedCarryBackField { field }` and
+  `BlankEmptyToolResultText`.
+
+### Verified
+
+The eight recordings of 0.1.0 are served again to `run` of common-call 0.2, whole and cut in
+two at the start and the end of the body, at each line end and one byte on each side of it,
+and inside each multi-byte character, and every cut gives the same outcome; the response id of
+each stream is the `provider_response_id` of the reply. Splitting a body at every byte is pinned
+by the tests of `br-llm-clients-common-sse` and `br-llm-clients-common-call`; the decoder tests
+of this crate cut a payload at every byte, and a small stream is cut at every byte through
+`run`. The new options, the new quota codes, `cache_write_tokens`
+and the shapes of other hosts (`reasoning` and `reasoning_content` fields, a top-level
+`cached_tokens`, `max_tokens`, a nested extra body, a tool fragment with no `type` and no `id`)
+are tested from the documented shape only; no recording covers them.
+
 ## 0.1.0
 
 ### Added

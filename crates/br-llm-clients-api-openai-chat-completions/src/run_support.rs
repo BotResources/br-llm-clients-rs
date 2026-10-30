@@ -4,12 +4,16 @@ use std::time::Duration;
 use br_llm_clients_common_call::{CallSpec, Dialect, run};
 use br_llm_clients_common_http::{HttpClient, HttpConfig, NoAuthorizer};
 use br_llm_clients_core::{CallOutcome, ClientError, ClientRequest, OutputMode};
-use br_llm_messages::{Step, StreamEvent};
+use br_llm_messages::{
+    ContentBlock, DeltaOp, ModelResponse, ResponseDelta, RuntimeToolCall, ThinkingBlock,
+};
+use serde_json::Value;
 
 use crate::ChatCompletionsDialect;
 use crate::test_server::{TestServer, Wire, http};
 use crate::test_sink::RecordingSink;
-use crate::test_support::{dialect, hello};
+use crate::test_support::{dialect, hello, request_with};
+use crate::test_thread::user;
 
 const LONG: Duration = Duration::from_secs(3600);
 
@@ -37,19 +41,18 @@ pub(crate) fn spec_for(dialect: ChatCompletionsDialect, server: &TestServer) -> 
         server.endpoint("/v1/chat/completions"),
         Arc::new(NoAuthorizer),
         HttpClient::new(HttpConfig::new(LONG, LONG, LONG)).expect("client"),
-        br_llm_messages::ModelId::new("gpt-test").expect("model"),
     )
 }
 
 pub(crate) struct Called {
     pub(crate) outcome: CallOutcome,
-    pub(crate) events: Vec<StreamEvent>,
+    pub(crate) deltas: Vec<ResponseDelta>,
     pub(crate) server: TestServer,
 }
 
 impl Called {
-    pub(crate) fn step(&self) -> &Step {
-        self.outcome.result().expect("a step")
+    pub(crate) fn response(&self) -> &ModelResponse {
+        self.outcome.result().expect("a response")
     }
 
     pub(crate) fn error(&self) -> &ClientError {
@@ -68,7 +71,7 @@ pub(crate) async fn call_with(
     let outcome = run(&spec, request, &mut sink).await;
     Called {
         outcome,
-        events: sink.events,
+        deltas: sink.deltas,
         server,
     }
 }
@@ -80,12 +83,7 @@ pub(crate) async fn call_stream(chunks: &[String]) -> Called {
 
 pub(crate) async fn call_structured_stream(chunks: &[String], output: OutputMode) -> Called {
     let bytes = sse_with_sentinel(chunks);
-    let request = crate::test_support::request_with(
-        None,
-        vec![crate::test_support::user_text("go")],
-        Vec::new(),
-        output,
-    );
+    let request = request_with(None, vec![user("go")], Vec::new(), output);
     call_with(dialect(), &request, move |_| ok_stream(&bytes)).await
 }
 
@@ -104,4 +102,84 @@ pub(crate) async fn call_refused(status: &str, headers: &[(&str, &str)], body: &
         http(&status, &pairs, &body)
     })
     .await
+}
+
+pub(crate) fn texts_of(response: &ModelResponse) -> Vec<&str> {
+    response
+        .blocks()
+        .iter()
+        .filter_map(|block| match block {
+            ContentBlock::Text(text) => Some(text.text().as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
+pub(crate) fn thinking_of(response: &ModelResponse) -> Vec<&ThinkingBlock> {
+    response
+        .blocks()
+        .iter()
+        .filter_map(|block| match block {
+            ContentBlock::Thinking(thinking) => Some(thinking),
+            _ => None,
+        })
+        .collect()
+}
+
+pub(crate) fn structured_of(response: &ModelResponse) -> Vec<Value> {
+    response
+        .blocks()
+        .iter()
+        .filter_map(|block| match block {
+            ContentBlock::StructuredContent(structured) => Some(json_of(
+                &structured.value().to_json_string().expect("json text"),
+            )),
+            _ => None,
+        })
+        .collect()
+}
+
+pub(crate) fn calls_of(response: &ModelResponse) -> Vec<&RuntimeToolCall> {
+    response.runtime_calls().collect()
+}
+
+pub(crate) fn arguments_of(call: &RuntimeToolCall) -> Value {
+    json_of(&call.arguments().to_json_string().expect("json text"))
+}
+
+fn json_of(text: &str) -> Value {
+    serde_json::from_str(text).expect("json")
+}
+
+pub(crate) fn appended_text(deltas: &[ResponseDelta]) -> String {
+    deltas
+        .iter()
+        .filter_map(|delta| match delta.op() {
+            DeltaOp::TextAppended { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
+pub(crate) struct CountingIds {
+    next: std::sync::atomic::AtomicU64,
+}
+
+impl CountingIds {
+    pub(crate) fn new() -> Self {
+        Self {
+            next: std::sync::atomic::AtomicU64::new(0x9000_0000),
+        }
+    }
+}
+
+impl br_llm_clients_core::IdSource for CountingIds {
+    fn next_block_id(&self) -> br_llm_messages::BlockId {
+        let n = self.next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        br_llm_messages::BlockId::from_uuid(crate::test_thread::uuid_of(n)).expect("a block id")
+    }
+}
+
+pub(crate) fn counted_spec_for(dialect: ChatCompletionsDialect, server: &TestServer) -> CallSpec {
+    spec_for(dialect, server).with_id_source(Arc::new(CountingIds::new()))
 }

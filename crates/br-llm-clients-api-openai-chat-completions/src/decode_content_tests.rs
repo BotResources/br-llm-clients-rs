@@ -1,11 +1,11 @@
 use br_llm_clients_common_call::{End, Payload, PayloadDecoder, ProviderBlock, ProviderEvent};
 use br_llm_clients_core::OutputMode;
-use br_llm_messages::StopReason;
+use br_llm_messages::ResponseEnding;
 use serde_json::json;
 
 use crate::test_support::{
     chunk, content_chunk, decoder_for, end, feed, finish_chunk, options, plain_decoder, run_chunks,
-    shape, start, text_delta, without_model,
+    shape, start, text_delta, without_metadata,
 };
 use crate::{ChatCompletionsDialect, ReasoningLevel};
 use br_llm_clients_common_call::Dialect;
@@ -35,7 +35,7 @@ fn given_the_documented_text_stream_when_decoded_then_one_text_block_is_opened_f
             text_delta("text", "Hello"),
             text_delta("text", " world"),
             end("text"),
-            ProviderEvent::Stop(StopReason::EndTurn),
+            ProviderEvent::Stop(ResponseEnding::finished()),
         ]
     );
 }
@@ -68,7 +68,7 @@ fn given_any_event_name_when_decoded_then_the_name_is_ignored() {
     let data = content_chunk("x");
     for name in [None, Some("message"), Some("error"), Some("done")] {
         let payload = Payload::new(name.map(str::to_owned), data.clone());
-        let events = without_model(decoder.payload(payload).expect("chunk"));
+        let events = without_metadata(decoder.payload(payload).expect("chunk"));
         assert!(
             events
                 .iter()
@@ -109,7 +109,7 @@ fn given_the_structured_mode_when_content_arrives_then_it_is_a_structured_block(
         content_chunk("1}"),
         finish_chunk("stop"),
     ];
-    let events = without_model(crate::test_support::feed_all(decoder.as_mut(), &chunks));
+    let events = without_metadata(crate::test_support::feed_all(decoder.as_mut(), &chunks));
     assert_eq!(
         events,
         [
@@ -123,7 +123,7 @@ fn given_the_structured_mode_when_content_arrives_then_it_is_a_structured_block(
                 json: "1}".to_owned()
             },
             end("structured"),
-            ProviderEvent::Stop(StopReason::EndTurn),
+            ProviderEvent::Stop(ResponseEnding::finished()),
         ]
     );
 }
@@ -142,7 +142,7 @@ fn given_a_refusal_when_decoded_then_it_is_a_text_block_with_its_own_key() {
             text_delta("refusal", "I can't"),
             text_delta("refusal", " help"),
             end("refusal"),
-            ProviderEvent::Stop(StopReason::Refusal),
+            ProviderEvent::Stop(ResponseEnding::refusal()),
         ]
     );
 }
@@ -171,7 +171,7 @@ fn given_one_delta_with_every_field_when_decoded_then_they_are_read_in_the_docum
         "content": "c",
         "reasoning_content": "t"
     });
-    let events = without_model(feed(decoder.as_mut(), &chunk(delta, None)).expect("chunk"));
+    let events = without_metadata(feed(decoder.as_mut(), &chunk(delta, None)).expect("chunk"));
     assert_eq!(
         events,
         [
@@ -204,7 +204,7 @@ fn given_the_metadata_of_the_documentation_when_decoded_then_it_is_ignored() {
     })
     .to_string();
     let mut decoder = plain_decoder();
-    let events = without_model(feed(decoder.as_mut(), &data).expect("chunk"));
+    let events = without_metadata(feed(decoder.as_mut(), &data).expect("chunk"));
     assert_eq!(
         events,
         [

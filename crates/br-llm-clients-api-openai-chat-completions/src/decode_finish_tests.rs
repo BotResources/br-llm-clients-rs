@@ -1,5 +1,5 @@
 use br_llm_clients_common_call::{End, ProviderBlock, ProviderEvent};
-use br_llm_messages::StopReason;
+use br_llm_messages::ResponseEnding;
 use serde_json::json;
 
 use crate::test_support::{
@@ -7,7 +7,7 @@ use crate::test_support::{
     start, text_delta, tool_chunk, usage_chunk,
 };
 
-fn stop_of(reason: &str, with_refusal: bool) -> StopReason {
+fn stop_of(reason: &str, with_refusal: bool) -> ResponseEnding {
     let mut chunks = Vec::new();
     if with_refusal {
         chunks.push(chunk(json!({"refusal": "no"}), None));
@@ -22,19 +22,17 @@ fn stop_of(reason: &str, with_refusal: bool) -> StopReason {
         .expect("a stop")
 }
 
-fn other(text: &str) -> StopReason {
-    StopReason::Other {
-        reason: text.to_owned(),
-    }
+fn other(text: &str) -> ResponseEnding {
+    ResponseEnding::unclassified(text).expect("an unclassified ending")
 }
 
 #[test]
 fn given_each_finish_reason_when_decoded_then_the_stop_reason_follows_the_table() {
     let table = [
-        ("stop", StopReason::EndTurn),
-        ("length", StopReason::MaxTokens),
-        ("tool_calls", StopReason::AwaitingToolResults),
-        ("content_filter", StopReason::ContentFilter),
+        ("stop", ResponseEnding::finished()),
+        ("length", ResponseEnding::output_exhaustion()),
+        ("tool_calls", ResponseEnding::tool_use()),
+        ("content_filter", ResponseEnding::filtering()),
         ("function_call", other("function_call")),
         ("model_length", other("model_length")),
         ("STOP", other("STOP")),
@@ -47,14 +45,14 @@ fn given_each_finish_reason_when_decoded_then_the_stop_reason_follows_the_table(
 
 #[test]
 fn given_a_refusal_and_an_end_turn_when_decoded_then_the_stop_reason_is_refusal() {
-    assert_eq!(stop_of("stop", true), StopReason::Refusal);
+    assert_eq!(stop_of("stop", true), ResponseEnding::refusal());
 }
 
 #[test]
 fn given_a_refusal_and_another_reason_when_decoded_then_the_reason_is_unchanged() {
-    assert_eq!(stop_of("length", true), StopReason::MaxTokens);
-    assert_eq!(stop_of("content_filter", true), StopReason::ContentFilter);
-    assert_eq!(stop_of("tool_calls", true), StopReason::AwaitingToolResults);
+    assert_eq!(stop_of("length", true), ResponseEnding::output_exhaustion());
+    assert_eq!(stop_of("content_filter", true), ResponseEnding::filtering());
+    assert_eq!(stop_of("tool_calls", true), ResponseEnding::tool_use());
     assert_eq!(stop_of("odd", true), other("odd"));
 }
 
@@ -63,14 +61,14 @@ fn given_a_blank_refusal_when_decoded_then_it_still_counts_as_a_refusal() {
     let events = run_chunks(&[chunk(json!({"refusal": "  "}), None), finish_chunk("stop")]);
     assert_eq!(
         events.last(),
-        Some(&ProviderEvent::Stop(StopReason::Refusal))
+        Some(&ProviderEvent::Stop(ResponseEnding::refusal()))
     );
 }
 
 #[test]
 fn given_an_empty_refusal_when_decoded_then_it_is_not_a_refusal() {
     let events = run_chunks(&[chunk(json!({"refusal": ""}), None), finish_chunk("stop")]);
-    assert_eq!(events, [ProviderEvent::Stop(StopReason::EndTurn)]);
+    assert_eq!(events, [ProviderEvent::Stop(ResponseEnding::finished())]);
 }
 
 #[test]
@@ -82,7 +80,7 @@ fn given_a_finish_with_open_blocks_when_decoded_then_the_closing_events_come_bef
             start("text", ProviderBlock::Text),
             text_delta("text", "a"),
             end("text"),
-            ProviderEvent::Stop(StopReason::EndTurn),
+            ProviderEvent::Stop(ResponseEnding::finished()),
         ]
     );
 }
@@ -97,7 +95,7 @@ fn given_a_delta_and_a_finish_in_one_chunk_when_decoded_then_the_delta_is_read_f
             start("text", ProviderBlock::Text),
             text_delta("text", "last words"),
             end("text"),
-            ProviderEvent::Stop(StopReason::EndTurn),
+            ProviderEvent::Stop(ResponseEnding::finished()),
         ]
     );
 }

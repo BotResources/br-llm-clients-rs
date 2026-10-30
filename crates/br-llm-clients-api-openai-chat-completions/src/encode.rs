@@ -1,8 +1,8 @@
 use br_llm_clients_common_call::EncodedRequest;
-use br_llm_clients_core::{ClientError, ClientRequest, ClientSettings};
+use br_llm_clients_core::{ClientError, ClientRequest, ClientSettings, RenderedHistory};
 use serde_json::{Map, Value, json};
 
-use crate::encode_messages::{check_ends_with_user, messages};
+use crate::encode_messages::messages;
 use crate::encode_output::response_format;
 use crate::encode_tools::tools;
 use crate::options::ChatCompletionsOptions;
@@ -13,10 +13,10 @@ pub(crate) fn encode(
     settings: &ClientSettings,
     options: &ChatCompletionsOptions,
     request: &ClientRequest,
+    history: &RenderedHistory,
 ) -> Result<EncodedRequest, ClientError> {
     let effort = reasoning_effort(settings, options)?;
-    check_ends_with_user(request)?;
-    let messages = messages(request)?;
+    let messages = messages(request, history, options)?;
     let tools = tools(request.tools())?;
     let response_format = response_format(request.output())?;
 
@@ -26,7 +26,7 @@ pub(crate) fn encode(
     body.insert("stream".to_owned(), Value::Bool(true));
     body.insert("stream_options".to_owned(), json!({"include_usage": true}));
     body.insert(
-        "max_completion_tokens".to_owned(),
+        options.max_tokens_field().member().to_owned(),
         Value::from(settings.max_output_tokens().get()),
     );
     if let Some(effort) = effort {

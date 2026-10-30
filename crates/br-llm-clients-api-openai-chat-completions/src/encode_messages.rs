@@ -1,41 +1,57 @@
-use br_llm_clients_core::{ClientError, ClientRequest};
-use br_llm_messages::WireMessage;
+use br_llm_clients_core::{ClientError, ClientRequest, RenderedHistory, RenderedRole};
 use serde_json::Value;
 
-use crate::encode_assistant::assistant_message;
-use crate::encode_parts::{message, text_part};
-use crate::encode_user::user_messages;
+use crate::encode_assistant::{assistant_message, plan_assistant};
+use crate::encode_parts::{invalid, message};
+use crate::encode_plan::{Planned, push_merged};
+use crate::encode_user::{plan_user, user_messages};
+use crate::options::ChatCompletionsOptions;
 
-pub(crate) fn check_ends_with_user(request: &ClientRequest) -> Result<(), ClientError> {
-    match request.messages().last() {
-        Some(WireMessage::Assistant { .. }) => Err(ClientError::InvalidMessages {
-            reason: "the last message is an assistant message and this dialect sends no prefill"
-                .to_owned(),
-        }),
-        _ => Ok(()),
+pub(crate) fn messages(
+    request: &ClientRequest,
+    history: &RenderedHistory,
+    options: &ChatCompletionsOptions,
+) -> Result<Vec<Value>, ClientError> {
+    let plans = plan(history, options)?;
+    match plans.last() {
+        None => {
+            return Err(invalid(
+                "the history holds no message that this dialect sends",
+            ));
+        }
+        Some(Planned::Assistant(_)) => {
+            return Err(invalid(
+                "the last message is an assistant message and this dialect sends no prefill",
+            ));
+        }
+        Some(Planned::User(_)) => {}
     }
-}
-
-pub(crate) fn messages(request: &ClientRequest) -> Result<Vec<Value>, ClientError> {
     let mut encoded = Vec::new();
     if let Some(system) = request.system() {
         let mut system_message = message("system");
         system_message.insert("content".to_owned(), Value::from(system.as_str()));
         encoded.push(Value::Object(system_message));
     }
-    for wire in request.messages() {
-        match wire {
-            WireMessage::User { content } => encoded.extend(user_messages(content)?),
-            WireMessage::Assistant { content } => encoded.extend(assistant_message(content)?),
-            WireMessage::Relay { content } => encoded.push(relay_message(content)),
+    for planned in plans {
+        match planned {
+            Planned::User(user) => encoded.extend(user_messages(user)),
+            Planned::Assistant(assistant) => encoded.push(assistant_message(assistant, options)),
         }
     }
     Ok(encoded)
 }
 
-fn relay_message(texts: &[br_llm_messages::Text]) -> Value {
-    let parts = texts.iter().map(|text| text_part(text.as_str())).collect();
-    let mut relay = message("user");
-    relay.insert("content".to_owned(), Value::Array(parts));
-    Value::Object(relay)
+fn plan(
+    history: &RenderedHistory,
+    options: &ChatCompletionsOptions,
+) -> Result<Vec<Planned>, ClientError> {
+    let mut plans = Vec::new();
+    for rendered in history.messages() {
+        let planned = match rendered.role() {
+            RenderedRole::User => Planned::User(plan_user(rendered.parts(), options)?),
+            RenderedRole::Assistant => Planned::Assistant(plan_assistant(rendered.parts())?),
+        };
+        push_merged(&mut plans, planned);
+    }
+    Ok(plans)
 }

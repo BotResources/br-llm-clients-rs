@@ -4,7 +4,8 @@ use br_llm_clients_common_call::{Dialect, PayloadDecoder};
 use br_llm_clients_core::OutputMode;
 use serde_json::json;
 
-use crate::test_support::{dialect, encoded_body, feed, hello, request_of, user_text};
+use crate::test_support::{dialect, encode, encoded_body, feed, hello, request_of};
+use crate::test_thread::user;
 use crate::{
     ChatCompletionsDialect, ChatCompletionsOptions, OptionsError, ReasoningEffort, ReasoningRule,
     ReasoningTable,
@@ -23,7 +24,7 @@ fn given_the_public_types_when_checked_then_the_dialect_is_send_and_sync_and_usa
     is_send_and_sync::<OptionsError>();
     is_send::<Box<dyn PayloadDecoder>>();
     let shared: Arc<dyn Dialect> = Arc::new(dialect());
-    assert!(shared.encode(&hello()).is_ok());
+    assert!(encode(shared.as_ref(), &hello()).is_ok());
 }
 
 #[test]
@@ -45,8 +46,8 @@ async fn given_one_dialect_when_many_calls_use_it_at_once_then_each_gets_its_own
     for number in 0..16 {
         let dialect = Arc::clone(&shared);
         tasks.push(tokio::spawn(async move {
-            let request = request_of(vec![user_text(&format!("message {number}"))]);
-            let body = encoded_body(&dialect, &request);
+            let request = request_of(vec![user(&format!("message {number}"))]);
+            let body = encoded_body(dialect.as_ref(), &request);
             let mut decoder = dialect.decoder(&OutputMode::Plain);
             let data =
                 json!({"choices": [{"delta": {"content": format!("reply {number}")}}]}).to_string();

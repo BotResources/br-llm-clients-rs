@@ -1,9 +1,11 @@
-use br_llm_messages::{StopReason, StreamEvent, Usage};
+use br_llm_clients_core::ClientError;
+use br_llm_messages::{DeltaOp, ResponseEnding, Usage};
 use serde_json::{Value, json};
 
 use crate::ReasoningLevel;
 use crate::run_support::{
-    call_stream, call_structured_stream, call_with, ok_stream, sse_with_sentinel,
+    appended_text, call_stream, call_structured_stream, call_with, ok_stream, sse_with_sentinel,
+    structured_of, texts_of, thinking_of,
 };
 use crate::test_support::{
     chunk, content_chunk, dialect_for, finish_chunk, hello, options, shape, usage_chunk,
@@ -25,54 +27,49 @@ fn documented_stream() -> Vec<String> {
 }
 
 #[tokio::test]
-async fn given_the_documented_text_stream_when_called_then_the_step_holds_the_text_stop_usage_and_model()
+async fn given_the_documented_text_stream_when_called_then_the_response_holds_the_text_ending_usage_model_and_id()
  {
     let called = call_stream(&documented_stream()).await;
-    let step = called.step();
-    let texts: Vec<&str> = step.text().map(|text| text.as_str()).collect();
-    assert_eq!(texts, ["Hello"]);
-    assert_eq!(step.stop_reason(), &StopReason::EndTurn);
+    let response = called.response();
+    assert_eq!(texts_of(response), ["Hello"]);
+    assert_eq!(response.ending(), &ResponseEnding::finished());
     assert_eq!(
-        step.usage(),
-        Some(&Usage {
-            input_tokens: 9,
-            output_tokens: 12,
-            cache_read_tokens: Some(4),
-            cache_write_tokens: None,
-            thinking_tokens: Some(3),
-        })
+        response.usage(),
+        Some(
+            &Usage::of_input_tokens(9)
+                .with_output_tokens(12)
+                .with_cache_read_input_tokens(4)
+                .with_thinking_tokens(3)
+        )
     );
     assert_eq!(
-        step.model().map(|model| model.as_str()),
+        response.model().map(|model| model.as_str()),
         Some("gpt-6-astra")
+    );
+    assert_eq!(
+        response.provider_response_id().map(|id| id.as_str()),
+        Some("chatcmpl-123")
     );
     assert_eq!(
         called.outcome.report().model().map(|model| model.as_str()),
         Some("gpt-6-astra")
     );
-    assert_eq!(called.outcome.report().usage(), step.usage());
+    assert_eq!(called.outcome.report().usage(), response.usage());
 }
 
 #[tokio::test]
-async fn given_the_documented_text_stream_when_called_then_the_sink_gets_one_text_block_in_order() {
+async fn given_the_documented_text_stream_when_called_then_the_sink_gets_the_text_between_start_and_completion()
+ {
     let called = call_stream(&documented_stream()).await;
     assert!(matches!(
-        called.events.first(),
-        Some(StreamEvent::BlockStart { index: 0, .. })
+        called.deltas.first().map(|delta| delta.op()),
+        Some(DeltaOp::ResponseStarted { .. })
     ));
     assert!(matches!(
-        called.events.last(),
-        Some(StreamEvent::Finish { .. })
+        called.deltas.last().map(|delta| delta.op()),
+        Some(DeltaOp::ResponseCompleted { .. })
     ));
-    let text: String = called
-        .events
-        .iter()
-        .filter_map(|event| match event {
-            StreamEvent::TextDelta { text, .. } => Some(text.as_str()),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(text, "Hello");
+    assert_eq!(appended_text(&called.deltas), "Hello");
 }
 
 #[tokio::test]
@@ -105,7 +102,7 @@ async fn given_a_call_when_sent_then_the_request_on_the_wire_is_the_encoded_body
 }
 
 #[tokio::test]
-async fn given_a_refusal_with_a_stop_when_called_then_the_step_is_a_refusal_with_the_text() {
+async fn given_a_refusal_with_a_stop_when_called_then_the_response_is_a_refusal_with_the_text() {
     let called = call_stream(&[
         chunk(json!({"role": "assistant", "refusal": ""}), None),
         chunk(json!({"refusal": "I can't help with that."}), None),
@@ -113,10 +110,9 @@ async fn given_a_refusal_with_a_stop_when_called_then_the_step_is_a_refusal_with
         usage_chunk(json!({"prompt_tokens": 5, "completion_tokens": 6})),
     ])
     .await;
-    let step = called.step();
-    assert_eq!(step.stop_reason(), &StopReason::Refusal);
-    let texts: Vec<&str> = step.text().map(|text| text.as_str()).collect();
-    assert_eq!(texts, ["I can't help with that."]);
+    let response = called.response();
+    assert_eq!(response.ending(), &ResponseEnding::refusal());
+    assert_eq!(texts_of(response), ["I can't help with that."]);
 }
 
 #[tokio::test]
@@ -127,8 +123,7 @@ async fn given_a_blank_leading_text_when_called_then_the_holdback_of_common_call
         finish_chunk("stop"),
     ])
     .await;
-    let texts: Vec<&str> = called.step().text().map(|text| text.as_str()).collect();
-    assert_eq!(texts, ["\n\nAnswer"]);
+    assert_eq!(texts_of(called.response()), ["\n\nAnswer"]);
 }
 
 #[tokio::test]
@@ -137,14 +132,15 @@ async fn given_a_reply_with_only_blank_text_when_called_then_the_reply_is_unusab
     let called = call_stream(&[content_chunk("  "), finish_chunk("stop")]).await;
     assert_eq!(
         called.error(),
-        &br_llm_clients_core::ClientError::ReplyUnusable {
-            stop_reason: StopReason::EndTurn
+        &ClientError::ReplyUnusable {
+            ending: ResponseEnding::finished()
         }
     );
 }
 
 #[tokio::test]
-async fn given_a_reasoning_field_when_called_then_the_step_holds_thinking_without_a_signature() {
+async fn given_a_reasoning_field_when_called_then_the_response_holds_thinking_without_replay_material()
+ {
     let configured = options().with_reasoning_field("reasoning_content");
     let chunks = [
         chunk(json!({"reasoning_content": "weighing"}), None),
@@ -159,22 +155,22 @@ async fn given_a_reasoning_field_when_called_then_the_step_holds_thinking_withou
         move |_| ok_stream(&bytes),
     )
     .await;
-    let step = called.step();
-    let thinking: Vec<_> = step.thinking().collect();
+    let thinking = thinking_of(called.response());
     assert_eq!(thinking.len(), 1);
     assert_eq!(
-        thinking.first().map(|block| block.text.as_str()),
+        thinking.first().map(|block| block.text()),
         Some("weighing options")
     );
     assert!(
         thinking
             .first()
-            .is_some_and(|block| block.signature.is_none())
+            .is_some_and(|block| block.replay().is_none())
     );
+    assert_eq!(texts_of(called.response()), ["Done"]);
 }
 
 #[tokio::test]
-async fn given_no_reasoning_field_when_a_host_sends_reasoning_then_the_step_holds_no_thinking_and_no_error()
+async fn given_no_reasoning_field_when_a_host_sends_reasoning_then_the_response_holds_no_thinking_and_no_error()
  {
     let called = call_stream(&[
         chunk(json!({"reasoning_content": "private"}), None),
@@ -182,11 +178,11 @@ async fn given_no_reasoning_field_when_a_host_sends_reasoning_then_the_step_hold
         finish_chunk("stop"),
     ])
     .await;
-    assert_eq!(called.step().thinking().count(), 0);
+    assert!(thinking_of(called.response()).is_empty());
 }
 
 #[tokio::test]
-async fn given_a_structured_reply_when_called_then_the_step_holds_the_structured_value() {
+async fn given_a_structured_reply_when_called_then_the_response_holds_the_structured_value() {
     let output = shape("answer", None, Vec::new());
     let called = call_structured_stream(
         &[
@@ -197,29 +193,45 @@ async fn given_a_structured_reply_when_called_then_the_step_holds_the_structured
         output,
     )
     .await;
-    let values: Vec<&Value> = called.step().structured().collect();
-    assert_eq!(values, [&json!({"value": 42})]);
+    assert_eq!(structured_of(called.response()), [json!({"value": 42})]);
 }
 
 #[tokio::test]
-async fn given_a_cut_off_reply_when_called_then_the_max_tokens_stop_is_kept_for_text() {
+async fn given_a_cut_off_reply_when_called_then_the_output_exhaustion_ending_is_kept_for_text() {
     let called = call_stream(&[content_chunk("Once upon"), finish_chunk("length")]).await;
-    assert_eq!(called.step().stop_reason(), &StopReason::MaxTokens);
+    assert_eq!(
+        called.response().ending(),
+        &ResponseEnding::output_exhaustion()
+    );
 }
 
 #[tokio::test]
-async fn given_a_content_filter_finish_when_called_then_the_stop_reason_is_content_filter() {
+async fn given_a_content_filter_finish_when_called_then_the_ending_is_filtering() {
     let called = call_stream(&[content_chunk("Partial"), finish_chunk("content_filter")]).await;
-    assert_eq!(called.step().stop_reason(), &StopReason::ContentFilter);
-    let texts: Vec<&str> = called.step().text().map(|text| text.as_str()).collect();
-    assert_eq!(texts, ["Partial"]);
+    assert_eq!(called.response().ending(), &ResponseEnding::filtering());
+    assert_eq!(texts_of(called.response()), ["Partial"]);
 }
 
 #[tokio::test]
 async fn given_a_content_filter_finish_with_no_content_when_called_then_the_content_is_blocked() {
     let called = call_stream(&[finish_chunk("content_filter")]).await;
+    assert_eq!(called.error(), &ClientError::ContentBlocked);
+}
+
+#[tokio::test]
+async fn given_an_unclassified_finish_reason_when_called_then_the_ending_carries_it_as_received() {
+    let called = call_stream(&[content_chunk("Hi"), finish_chunk("model_paused")]).await;
     assert_eq!(
-        called.error(),
-        &br_llm_clients_core::ClientError::ContentBlocked
+        called.response().ending(),
+        &ResponseEnding::unclassified("model_paused").expect("an ending")
+    );
+}
+
+#[tokio::test]
+async fn given_a_function_call_finish_with_text_when_called_then_the_ending_is_unclassified() {
+    let called = call_stream(&[content_chunk("Hi"), finish_chunk("function_call")]).await;
+    assert_eq!(
+        called.response().ending(),
+        &ResponseEnding::unclassified("function_call").expect("an ending")
     );
 }
