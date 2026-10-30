@@ -313,6 +313,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "br-llm-providers-mlx-vlm"
+version = "0.1.0"
+dependencies = [
+ "br-llm-clients-api-openai-chat-completions 0.2.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-api-openai-chat-completions%2Fv0.2.0)",
+ "br-llm-clients-common-call 0.2.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-common-call%2Fv0.2.0)",
+ "br-llm-clients-common-http 0.2.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-common-http%2Fv0.2.0)",
+ "br-llm-clients-core 0.5.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-core%2Fv0.5.0)",
+ "br-llm-messages",
+ "serde_json",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "br-llm-providers-omlx"
 version = "0.1.0"
 dependencies = [
