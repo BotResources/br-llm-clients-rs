@@ -53,7 +53,7 @@ fn named_places() -> Vec<Place> {
             Box::new(|value| json!({"choices": [{"delta": {"tool_calls": value}}]})),
         ),
         (
-            "tool_calls[]",
+            "choices[].delta.tool_calls[]",
             Box::new(|value| json!({"choices": [{"delta": {"tool_calls": [value]}}]})),
         ),
         (

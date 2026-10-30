@@ -81,6 +81,13 @@ fn begin_call() -> String {
     )
 }
 
+fn bare_begin_call() -> String {
+    json!({"choices": [{"index": 0, "delta": {"tool_calls": [
+        {"index": 0, "id": "c1", "type": "function", "function": {"name": "f", "arguments": "{}"}}
+    ]}}]})
+    .to_string()
+}
+
 #[tokio::test(start_paused = true)]
 async fn given_text_before_a_pause_when_called_then_the_text_reaches_the_sink_before_the_stream_ends()
  {
@@ -93,10 +100,10 @@ async fn given_text_before_a_pause_when_called_then_the_text_reaches_the_sink_be
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_tool_call_before_a_pause_when_called_then_nothing_reaches_the_sink_before_the_finish()
+async fn given_a_tool_call_alone_before_a_pause_when_called_then_nothing_reaches_the_sink_before_the_finish()
  {
     let _busy = Busy::keep();
-    let first = sse(&[begin_call()]);
+    let first = sse(&[bare_begin_call()]);
     let rest = sse_with_sentinel(&[finish_chunk("tool_calls")]);
     let report = timed(first, rest, None).await;
     assert_eq!(report.time_to_first_event(), Some(WAIT));

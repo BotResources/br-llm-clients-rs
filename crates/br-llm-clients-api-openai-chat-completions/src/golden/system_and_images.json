@@ -1,0 +1,1 @@
+{"max_completion_tokens":1024,"messages":[{"content":"be brief","role":"system"},{"content":[{"text":"look","type":"text"},{"image_url":{"url":"data:image/png;base64,QUJD"},"type":"image_url"},{"text":"and this","type":"text"}],"role":"user"}],"model":"gpt-test","reasoning_effort":"medium","stream":true,"stream_options":{"include_usage":true}}

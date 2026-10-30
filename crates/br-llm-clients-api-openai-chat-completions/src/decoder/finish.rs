@@ -1,40 +1,41 @@
 use br_llm_clients_common_call::{PayloadError, ProviderBlock, ProviderEvent};
 
-use crate::decoder::ChatCompletionsDecoder;
-use crate::stop_reason::stop_reason;
+use super::ChatCompletionsDecoder;
+use crate::ending::{Ended, Finish};
 use crate::stream_error::finish_error_info;
 use crate::tool_fragments::HeldCall;
 
-const ERROR_REASON: &str = "error";
-const LENGTH_REASON: &str = "length";
 const EMPTY_ARGUMENTS: &str = "{}";
 
 impl ChatCompletionsDecoder {
-    pub(crate) fn read_finish(
+    pub(super) fn read_finish(
         &mut self,
-        finish_reason: Option<&str>,
+        finish: Option<Finish>,
         events: &mut Vec<ProviderEvent>,
     ) -> Result<(), PayloadError> {
-        let Some(reason) = finish_reason else {
+        let Some(finish) = finish else {
             return Ok(());
         };
         if self.finished {
             return Err(PayloadError::new("the stream holds a second finish reason"));
         }
         self.finished = true;
-        if reason == ERROR_REASON {
-            events.push(ProviderEvent::Error(finish_error_info()));
-            return Ok(());
-        }
+        let ended = match finish {
+            Finish::Error => {
+                events.push(ProviderEvent::Error(finish_error_info()));
+                return Ok(());
+            }
+            Finish::Ended(ended) => ended,
+        };
         self.close_open_block(events);
-        self.emit_held_calls(reason, events)?;
-        events.push(ProviderEvent::Stop(stop_reason(reason, self.refusal_seen)));
+        self.emit_held_calls(&ended, events)?;
+        events.push(ProviderEvent::Stop(ended.ending(self.refusal_seen)));
         Ok(())
     }
 
     fn emit_held_calls(
         &mut self,
-        reason: &str,
+        ended: &Ended,
         events: &mut Vec<ProviderEvent>,
     ) -> Result<(), PayloadError> {
         for (index, call) in std::mem::take(&mut self.held) {
@@ -53,7 +54,7 @@ impl ChatCompletionsDecoder {
                 key: key.clone(),
                 block: ProviderBlock::ToolCall { name, id },
             });
-            if let Some(json) = arguments_text(arguments, reason) {
+            if let Some(json) = arguments_text(arguments, ended) {
                 events.push(ProviderEvent::ToolArgumentsDelta {
                     key: key.clone(),
                     json,
@@ -65,11 +66,11 @@ impl ChatCompletionsDecoder {
     }
 }
 
-fn arguments_text(arguments: String, reason: &str) -> Option<String> {
+fn arguments_text(arguments: String, ended: &Ended) -> Option<String> {
     if !arguments.trim().is_empty() {
         return Some(arguments);
     }
-    if reason == LENGTH_REASON {
+    if ended.is_length() {
         return None;
     }
     Some(EMPTY_ARGUMENTS.to_owned())

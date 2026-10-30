@@ -51,8 +51,8 @@ changed.
 
 ### Changed
 
-- Breaking: the dependencies are `br-llm-clients-common-call` 0.2,
-  `br-llm-clients-core` 0.5 (tag `br-llm-clients-core/v0.5.0`) and
+- Breaking: the dependencies are `br-llm-clients-common-call` 0.2 (tag
+  `br-llm-clients-common-call/v0.2.0`), `br-llm-clients-core` 0.5 (tag `br-llm-clients-core/v0.5.0`) and
   `br-llm-messages` 2.1 (tag `br-llm-messages/v2.1.0`), the pins of
   common-call 0.2. The test-only dependencies are `br-llm-clients-common-http`
   0.2 and `br-llm-clients-common-sse` 0.1 on their release tags.

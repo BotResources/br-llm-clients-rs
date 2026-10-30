@@ -1,16 +1,16 @@
-use br_llm_clients_common_call::Dialect;
 use br_llm_clients_core::{
     CacheRequirement, ClientError, ClientSettings, MaxOutputTokens, ParameterKind,
 };
 use serde_json::{Value, json};
 
 use crate::test_support::{
-    dialect, dialect_for, encoded_body, hello, options, parameter, request_of, request_with, shape,
-    tool, user_text,
+    dialect, dialect_for, encode, encoded_body, hello, options, parameter, request_of,
+    request_with, shape, tool,
 };
+use crate::test_thread::user;
 use crate::{
-    ChatCompletionsDialect, ChatCompletionsOptions, ModelId, ReasoningEffort, ReasoningLevel,
-    ReasoningRule, ReasoningTable,
+    ChatCompletionsDialect, ChatCompletionsOptions, ReasoningEffort, ReasoningLevel, ReasoningRule,
+    ReasoningTable,
 };
 
 fn members(body: &Value) -> Vec<String> {
@@ -39,7 +39,7 @@ fn given_a_plain_request_when_encoded_then_the_body_is_exactly_the_documented_me
 fn given_a_system_prompt_when_encoded_then_it_is_the_first_message_with_a_plain_string() {
     let request = request_with(
         Some("be brief"),
-        vec![user_text("hello")],
+        vec![user("hello")],
         Vec::new(),
         br_llm_clients_core::OutputMode::Plain,
     );
@@ -73,7 +73,7 @@ fn given_tools_a_shape_and_an_extra_body_when_encoded_then_no_member_is_written_
     let dialect = dialect_for(ReasoningLevel::High, configured);
     let request = request_with(
         Some("system"),
-        vec![user_text("hello")],
+        vec![user("hello")],
         vec![tool("lookup", "", Vec::new())],
         shape("answer", None, Vec::new()),
     );
@@ -115,7 +115,7 @@ fn given_an_extra_body_when_encoded_then_its_members_sit_at_the_top_level_with_t
 #[test]
 fn given_the_settings_when_encoded_then_the_model_and_the_token_limit_come_from_them() {
     let settings = ClientSettings::new(
-        ModelId::new("o3-mini").expect("model"),
+        crate::ModelName::new("o3-mini").expect("model"),
         ReasoningLevel::Off,
         CacheRequirement::NotRequired,
         MaxOutputTokens::new(4_000_000_000).expect("tokens"),
@@ -129,7 +129,7 @@ fn given_the_settings_when_encoded_then_the_model_and_the_token_limit_come_from_
 
 #[test]
 fn given_a_request_when_encoded_then_the_only_header_is_the_json_content_type() {
-    let encoded = dialect().encode(&hello()).expect("encoded");
+    let encoded = encode(&dialect(), &hello()).expect("encoded");
     assert_eq!(
         encoded.headers(),
         [("Content-Type".to_owned(), "application/json".to_owned())]
@@ -141,13 +141,13 @@ fn given_either_cache_requirement_when_encoded_then_nothing_is_written_and_nothi
     let mut bodies = Vec::new();
     for cache in [CacheRequirement::Required, CacheRequirement::NotRequired] {
         let settings = ClientSettings::new(
-            ModelId::new("gpt-test").expect("model"),
+            crate::ModelName::new("gpt-test").expect("model"),
             ReasoningLevel::Off,
             cache,
             MaxOutputTokens::new(1024).expect("tokens"),
         );
         let dialect = ChatCompletionsDialect::new(settings, options()).expect("dialect");
-        let encoded = dialect.encode(&hello()).expect("not refused");
+        let encoded = encode(&dialect, &hello()).expect("not refused");
         bodies.push(encoded.body().to_vec());
     }
     assert_eq!(bodies.first(), bodies.get(1));
@@ -159,7 +159,7 @@ fn given_either_cache_requirement_when_encoded_then_nothing_is_written_and_nothi
 fn given_the_same_request_when_encoded_twice_then_the_bytes_are_equal() {
     let request = request_with(
         Some("s"),
-        vec![user_text("hello")],
+        vec![user("hello")],
         vec![tool(
             "lookup",
             "finds",
@@ -171,7 +171,7 @@ fn given_the_same_request_when_encoded_twice_then_the_bytes_are_equal() {
         shape("answer", Some("d"), Vec::new()),
     );
     let dialect = dialect();
-    assert_eq!(dialect.encode(&request), dialect.encode(&request));
+    assert_eq!(encode(&dialect, &request), encode(&dialect, &request));
 }
 
 #[test]
@@ -194,7 +194,7 @@ fn given_the_effort_table_when_each_level_is_encoded_then_the_documented_effort_
 fn given_the_table_without_none_when_each_level_is_encoded_then_off_is_refused_and_the_top_is_high()
 {
     let table = || ChatCompletionsOptions::new(ReasoningTable::openai_effort_without_none());
-    let refused = dialect_for(ReasoningLevel::Off, table()).encode(&hello());
+    let refused = encode(&dialect_for(ReasoningLevel::Off, table()), &hello());
     assert!(matches!(
         refused,
         Err(ClientError::ReasoningNotSupported {
@@ -252,17 +252,17 @@ fn given_a_minimal_effort_rule_when_encoded_then_minimal_is_sent_as_text() {
 #[test]
 fn given_two_requests_when_encoded_in_turn_then_the_dialect_holds_no_per_call_state() {
     let dialect = dialect();
-    let first = dialect.encode(&hello()).expect("first");
-    let other = request_of(vec![user_text("different")]);
-    let _ = dialect.encode(&other).expect("other");
-    assert_eq!(dialect.encode(&hello()).expect("again"), first);
+    let first = encode(&dialect, &hello()).expect("first");
+    let other = request_of(vec![user("different")]);
+    let _ = encode(&dialect, &other).expect("other");
+    assert_eq!(encode(&dialect, &hello()).expect("again"), first);
 }
 
 #[test]
 fn given_different_token_limits_when_encoded_then_the_reasoning_effort_does_not_change() {
     for limit in [1, 1024, u32::MAX] {
         let settings = ClientSettings::new(
-            ModelId::new("gpt-test").expect("model"),
+            crate::ModelName::new("gpt-test").expect("model"),
             ReasoningLevel::High,
             CacheRequirement::NotRequired,
             MaxOutputTokens::new(limit).expect("tokens"),
