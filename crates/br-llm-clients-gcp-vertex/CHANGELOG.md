@@ -14,11 +14,12 @@ form to decide whether a version ships.
 Built on `br-llm-clients-core` 0.5, `br-llm-clients-common-call` 0.2,
 `br-llm-clients-api-anthropic-messages` 0.2, `br-llm-clients-common-auth` 0.1 and
 `br-llm-clients-common-http` 0.2. Written from the documentation of Google Cloud and
-Anthropic read on 2026-10-29; not verified against the real service. Unverified in
-particular: the SSE framing and events of `streamRawPredict`, the two error body
-shapes (Google for the platform, Anthropic for the model), the request id header
-(`request-id` is assumed from the dialect), the top-level `cache_control` on
-Vertex, and `retry-after` on a 429.
+Anthropic read on 2026-10-29. Checked against the real service on 2026-11-02 with
+`examples/live_check.rs` in the location `eu`, with `claude-haiku-5-5` and
+`claude-sonnet-5-5`: a plain answer, streaming, a tool call, usage, the
+`request-id` header, and the Google error body of an unknown model (a 404 as a JSON
+array, status `NOT_FOUND`). Still unverified: the Anthropic error body of the model,
+the top-level `cache_control` on Vertex, and `retry-after` on a 429.
 
 ### Added
 
@@ -81,8 +82,9 @@ Vertex, and `retry-after` on a 429.
   of them.
 - The error code of a refusal is the one of the dialect (`error.type` of an
   Anthropic body) and, when there is none, `error.status` of a Google body
-  (`{"error":{"code","message","status"}}`), such as `RESOURCE_EXHAUSTED`, when it
-  is 1 to 64 bytes of uppercase ASCII letters and `_`. A 404 whose code is the
+  (`{"error":{"code","message","status"}}`, or a JSON array whose first element
+  has that shape, as `streamRawPredict` answers), such as `RESOURCE_EXHAUSTED`,
+  when it is 1 to 64 bytes of uppercase ASCII letters and `_`. A 404 whose code is the
   Google status `NOT_FOUND` is `ModelNotFound`; an Anthropic body is left to the
   dialect. Every other hook keeps the behaviour of the dialect and of common-call.
 - The declared capabilities: `claude-fable-5-1`, `claude-opus-5-5` and

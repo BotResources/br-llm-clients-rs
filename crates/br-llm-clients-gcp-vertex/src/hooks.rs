@@ -37,7 +37,15 @@ impl DialectHooks for VertexHooks {
 
 fn google_status(body: &str) -> Option<String> {
     let parsed = serde_json::from_str::<Value>(body).ok()?;
-    let status = parsed.get("error")?.as_object()?.get("status")?.as_str()?;
+    let envelope = match &parsed {
+        Value::Array(items) => items.first()?,
+        other => other,
+    };
+    let status = envelope
+        .get("error")?
+        .as_object()?
+        .get("status")?
+        .as_str()?;
     is_status(status).then(|| status.to_owned())
 }
 
