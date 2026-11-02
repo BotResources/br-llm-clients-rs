@@ -9,6 +9,13 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.1.1
+
+### Changed
+
+- Depends on `br-llm-clients-core` 0.4.1 instead of 0.4.0. Core 0.4.1 is additive
+  (the capabilities contract), so the public API of this crate does not change.
+
 ## 0.1.0
 
 ### Added
