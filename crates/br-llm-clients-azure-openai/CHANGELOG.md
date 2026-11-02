@@ -9,12 +9,14 @@ form to decide whether a version ships.
 
 ## 0.1.0
 
-Dated 2026-10-29. First release. The library is built on
-`br-llm-clients-common-call` 0.2, `br-llm-clients-api-openai-chat-completions`
-0.2 and `br-llm-clients-api-openai-responses` 0.2 (all by path),
-`br-llm-clients-core` 0.5 (tag `br-llm-clients-core/v0.5.0`) and
-`br-llm-clients-common-http` 0.2 (tag `br-llm-clients-common-http/v0.2.0`), the
-pins of common-call 0.2.
+Dated 2026-11-02. First release. The library is built on
+`br-llm-clients-common-call` 0.2 (tag `br-llm-clients-common-call/v0.2.0`),
+`br-llm-clients-api-openai-chat-completions` 0.2 (tag
+`br-llm-clients-api-openai-chat-completions/v0.2.0`),
+`br-llm-clients-api-openai-responses` 0.2 (tag
+`br-llm-clients-api-openai-responses/v0.2.0`), `br-llm-clients-core` 0.5 (tag
+`br-llm-clients-core/v0.5.0`) and `br-llm-clients-common-http` 0.2 (tag
+`br-llm-clients-common-http/v0.2.0`), the pins of common-call 0.2.
 
 ### Added
 
@@ -112,7 +114,13 @@ pins of common-call 0.2.
 
 ### Known gaps
 
-- The library has no test of its own: the `live_check` example is compiled, and
-  was not run against a real resource for this release.
+- The library has no test of its own. The `live_check` example passed on
+  2026-11-02 against a Sweden Central resource on its `openai.azure.com` host,
+  on both routes, in the v1 form and in the dated form `2025-04-01-preview`.
+  That resource is a Foundry resource: a classic Azure OpenAI resource was not
+  tried.
 - The paths, headers and error codes come from the documentation of Microsoft,
-  read on 2026-10-29, and are not verified against the real service.
+  read on 2026-10-29. The live check observed the paths, the `api-key` header,
+  `apim-request-id` and the 404 `DeploymentNotFound`. The content filter
+  refusal, `content_policy_violation`, `context_length_exceeded`, `no_capacity`
+  and a 429 with `retry-after-ms` are not verified against the real service.
