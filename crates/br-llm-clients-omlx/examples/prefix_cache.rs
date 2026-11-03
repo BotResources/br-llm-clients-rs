@@ -8,8 +8,8 @@
 use std::process::ExitCode;
 
 use br_llm_clients_core::{Client, OutputMode};
+use br_llm_clients_omlx::ReasoningLevel;
 use br_llm_messages::TurnEntry;
-use br_llm_providers_omlx::ReasoningLevel;
 
 #[path = "live_check_support/cache.rs"]
 mod cache;

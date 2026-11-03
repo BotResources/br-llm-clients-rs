@@ -2,16 +2,16 @@ use std::time::Duration;
 
 use br_llm_clients_common_http::HttpConfig;
 use br_llm_clients_core::{CacheRequirement, ClientSettings, MaxOutputTokens};
-use br_llm_messages::ModelName;
-use br_llm_providers_mlx_vlm::{
-    Capabilities, Endpoint, HttpClient, MlxVlmBuildError, MlxVlmClient, MlxVlmConfig,
-    ReasoningLevel, ReasoningTable, Secret,
+use br_llm_clients_omlx::{
+    Capabilities, Endpoint, HttpClient, OmlxBuildError, OmlxClient, OmlxConfig, ReasoningLevel,
+    ReasoningTable, Secret,
 };
+use br_llm_messages::ModelName;
 
 use crate::Failure;
 use crate::env::{base_endpoint, key, optional, required};
 
-pub const SERVER_OPTIONS: &str = "mlx-vlm reuses its prefix cache only when: APC_ENABLED=1 (or apc_enabled through PATCH /v1/settings); APC_NUM_BLOCKS is large enough for the prompts; APC_HASH=sha256 when the reuse must survive a restart; the server serves one model; the calls share one tenant (the same X-APC-Tenant header, or none).";
+pub const SERVER_OPTIONS: &str = "oMLX reuses its prefix cache only when: the cache is on (no --no-cache); the SSD tier has room (--paged-ssd-cache-dir, --paged-ssd-cache-max-size); the model keeps one name (same alias, same model behind it); the model fallback setting is off.";
 const MAX_OUTPUT_TOKENS: u32 = 1024;
 
 pub struct Target {
@@ -31,12 +31,12 @@ pub struct Shape {
 
 impl Target {
     pub fn from_env() -> Result<Self, Failure> {
-        let [base, model] = required(["MLX_VLM_BASE_URL", "MLX_VLM_MODEL"])?;
-        let key = optional("MLX_VLM_API_KEY")
-            .map(|text| key("MLX_VLM_API_KEY", text))
+        let [base, model] = required(["OMLX_BASE_URL", "OMLX_MODEL"])?;
+        let key = optional("OMLX_API_KEY")
+            .map(|text| key("OMLX_API_KEY", text))
             .transpose()?;
         Ok(Self {
-            base: base_endpoint("MLX_VLM_BASE_URL", &base)?,
+            base: base_endpoint("OMLX_BASE_URL", &base)?,
             model,
             key,
             http: http()?,
@@ -53,14 +53,14 @@ impl Target {
         }
     }
 
-    pub fn client(&self, shape: Shape) -> Result<MlxVlmClient, Failure> {
+    pub fn client(&self, shape: Shape) -> Result<OmlxClient, Failure> {
         let settings = ClientSettings::new(
             ModelName::new(shape.model.as_str())?,
             shape.reasoning,
             CacheRequirement::NotRequired,
             MaxOutputTokens::new(shape.max_output_tokens)?,
         );
-        let config = MlxVlmConfig::new(
+        let config = OmlxConfig::new(
             self.base.clone(),
             ReasoningTable::openai_effort(),
             Capabilities::everything(),
@@ -70,9 +70,9 @@ impl Target {
             Some(key) => config.with_key(key),
             None => config,
         };
-        MlxVlmClient::new(settings, config, self.http.clone()).map_err(|error| match error {
-            MlxVlmBuildError::InvalidCredential { .. } => {
-                format!("MLX_VLM_API_KEY is refused: {error}").into()
+        OmlxClient::new(settings, config, self.http.clone()).map_err(|error| match error {
+            OmlxBuildError::InvalidCredential { .. } => {
+                format!("OMLX_API_KEY is refused: {error}").into()
             }
             other => other.into(),
         })
