@@ -20,7 +20,7 @@ Provider clients for LLM calls: send a system prompt, tools and a chat history f
 - `br-llm-clients-omlx` — the `Client` for one oMLX server: sends a call to its chat route, with an optional key and the capabilities the operator declares for the model.
 - `br-llm-clients-mlx-vlm` — the `Client` for one mlx-vlm server: sends a call to its chat route, with an optional key and the capabilities the operator declares for the model.
 
-**Status:** `br-llm-clients-core` is at `0.5.0`, `br-llm-clients-mock` is at `0.6.0`, `br-llm-clients-common-http`, `br-llm-clients-common-call`, `br-llm-clients-api-anthropic-messages`, `br-llm-clients-api-openai-responses` and `br-llm-clients-api-openai-chat-completions` are at `0.2.0`, and `br-llm-clients-common-sse`, `br-llm-clients-common-auth`, `br-llm-clients-openai`, `br-llm-clients-anthropic`, `br-llm-clients-litellm`, `br-llm-clients-aws-bedrock`, `br-llm-clients-azure-openai` and `br-llm-clients-gcp-vertex` are at `0.1.0`, and `br-llm-clients-omlx` and `br-llm-clients-mlx-vlm` are at `0.1.1`; the other crates are not written yet.
+**Status:** `br-llm-clients-core` is at `0.5.0`, `br-llm-clients-mock` is at `0.6.0`, `br-llm-clients-common-http`, `br-llm-clients-common-call`, `br-llm-clients-api-anthropic-messages`, `br-llm-clients-api-openai-responses` and `br-llm-clients-api-openai-chat-completions` are at `0.2.0`, and `br-llm-clients-common-sse`, `br-llm-clients-common-auth`, `br-llm-clients-openai`, `br-llm-clients-anthropic`, `br-llm-clients-litellm`, `br-llm-clients-azure-openai` and `br-llm-clients-gcp-vertex` are at `0.1.0`, and `br-llm-clients-aws-bedrock`, `br-llm-clients-omlx` and `br-llm-clients-mlx-vlm` are at `0.1.1`; the other crates are not written yet.
 
 Not on crates.io; pin the git tag with the matching `version` beside it (a tag-only git dependency carries a `*` version requirement, which `cargo-deny` rejects):
 
@@ -37,7 +37,7 @@ br-llm-clients-common-auth = { git = "https://github.com/BotResources/br-llm-cli
 br-llm-clients-openai = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-openai", tag = "br-llm-clients-openai/v0.1.0", version = "0.1.0" }
 br-llm-clients-anthropic = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-anthropic", tag = "br-llm-clients-anthropic/v0.1.0", version = "0.1.0" }
 br-llm-clients-litellm = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-litellm", tag = "br-llm-clients-litellm/v0.1.0", version = "0.1.0" }
-br-llm-clients-aws-bedrock = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-aws-bedrock", tag = "br-llm-clients-aws-bedrock/v0.1.0", version = "0.1.0" }
+br-llm-clients-aws-bedrock = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-aws-bedrock", tag = "br-llm-clients-aws-bedrock/v0.1.1", version = "0.1.1" }
 br-llm-clients-azure-openai = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-azure-openai", tag = "br-llm-clients-azure-openai/v0.1.0", version = "0.1.0" }
 br-llm-clients-gcp-vertex = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-gcp-vertex", tag = "br-llm-clients-gcp-vertex/v0.1.0", version = "0.1.0" }
 br-llm-clients-omlx = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-omlx", tag = "br-llm-clients-omlx/v0.1.1", version = "0.1.1" }
