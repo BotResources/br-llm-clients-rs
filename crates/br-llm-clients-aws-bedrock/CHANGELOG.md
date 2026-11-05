@@ -9,6 +9,19 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.1.1
+
+### Changed
+
+- `aws-sigv4` moves from `~1.3` to `~1.6.2` and `aws-credential-types` from `~1.2`
+  to `~1.3.1`. `aws-smithy-http` 0.64.2 and `aws-smithy-types` 1.9 under them no
+  longer depend on `pin-utils`, which RUSTSEC-2026-0441 flags as unmaintained, so
+  the advisory leaves the dependency tree of this crate. The signed headers are
+  unchanged: the same request, credentials and time give the same `authorization`,
+  `x-amz-date` and `x-amz-security-token` on 1.3.8 and 1.6.4.
+- The minimum supported Rust version of this crate rises from 1.89 to 1.94.1, the
+  one of `aws-sigv4` 1.6. The other crates of the repository stay on 1.89.
+
 ## 0.1.0
 
 Built on `br-llm-clients-core` 0.5, `br-llm-clients-common-call` 0.2,

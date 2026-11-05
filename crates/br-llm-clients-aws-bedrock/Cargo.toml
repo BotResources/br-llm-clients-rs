@@ -1,15 +1,16 @@
 [package]
 name = "br-llm-clients-aws-bedrock"
-version = "0.1.0"
+version = "0.1.1"
 description = "the Amazon Bedrock client for Claude: a Client of br-llm-clients-core over the Anthropic Messages API of the Bedrock runtime host of a region, signed with AWS Signature Version 4 or sent with a Bedrock API key"
 edition.workspace = true
-rust-version.workspace = true
+# aws-sigv4 1.6 and the aws-smithy crates under it need Rust 1.94.1.
+rust-version = "1.94.1"
 license.workspace = true
 repository.workspace = true
 
 [dependencies]
-aws-credential-types = { version = "~1.2", default-features = false }
-aws-sigv4 = { version = "~1.3", default-features = false, features = ["http1", "sign-http"] }
+aws-credential-types = { version = "~1.3.1", default-features = false }
+aws-sigv4 = { version = "~1.6.2", default-features = false, features = ["http1", "sign-http"] }
 br-llm-clients-api-anthropic-messages = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-api-anthropic-messages/v0.2.0", version = "0.2.0" }
 br-llm-clients-common-call = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-common-call/v0.2.0", version = "0.2.0" }
 br-llm-clients-common-http = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-common-http/v0.2.0", version = "0.2.0" }

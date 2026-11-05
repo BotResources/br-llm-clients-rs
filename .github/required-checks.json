@@ -2,6 +2,7 @@
   "required": [
     "cargo fmt + clippy + test",
     "MSRV 1.89 build",
+    "MSRV 1.94.1 build (aws-bedrock)",
     "cargo-deny check",
     "cargo-machete (unused deps)",
     "cargo semver-checks",
