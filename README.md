@@ -1,5 +1,24 @@
 # br-llm-clients
 
+> [!IMPORTANT]
+> **This repository is maintained for BotResources and its authorized clients.**
+> It is published under Apache-2.0 and made available read-only for visibility and
+> reuse. The Apache-2.0 license governs your rights to use, modify, and fork the code;
+> the rest of this notice describes our operational stance, not a legal
+> restriction.
+>
+> **We do not accept external pull requests, issues, or support requests.**
+> Issues and Discussions are disabled. PRs from accounts that are not on the
+> internal contributor allowlist will be closed without review. Forks are
+> permitted by Apache-2.0 and we do not (and cannot) prevent them; we simply do not
+> monitor, support, or accept contributions from forks outside the BR
+> commercial relationship.
+>
+> - Clients with a commercial relationship: contact your BR account manager.
+> - Security reports: see [SECURITY.md](SECURITY.md) (private email channel).
+> - This is not a community-supported project. No support is provided through
+>   GitHub.
+
 Provider clients for LLM calls: send a system prompt, tools and a chat history from `br-llm-messages`, get the reply. Provider clients are separate crates, versioned separately, each released by its own git tag `{crate}/v{version}`:
 
 - `br-llm-clients-common-http` — sends one HTTP POST and gives back the status, the headers and a stream of byte chunks, with every failure told apart; it is used by the provider clients `br-llm-clients-openai`, `br-llm-clients-anthropic`, `br-llm-clients-litellm`, `br-llm-clients-aws-bedrock`, `br-llm-clients-azure-openai`, `br-llm-clients-gcp-vertex`, `br-llm-clients-omlx` and `br-llm-clients-mlx-vlm`.
