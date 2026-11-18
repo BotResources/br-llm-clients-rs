@@ -11,6 +11,8 @@
 
 mod api_family;
 mod build_error;
+mod call_options;
+mod call_outcome;
 mod check_key;
 mod client;
 mod config;
@@ -22,6 +24,16 @@ mod key_placement;
 mod refine;
 mod route;
 mod secrets;
+mod session_id;
+
+#[cfg(test)]
+mod session_id_tests;
+#[cfg(test)]
+mod session_tests;
+#[cfg(test)]
+mod test_server;
+#[cfg(test)]
+mod test_support;
 
 pub use api_family::ApiFamily;
 pub use br_llm_clients_api_anthropic_messages::{
@@ -41,7 +53,10 @@ pub use br_llm_clients_core::{
     ReasoningLevel,
 };
 pub use build_error::LiteLlmBuildError;
+pub use call_options::LiteLlmCallOptions;
+pub use call_outcome::LiteLlmCallOutcome;
 pub use client::LiteLlmClient;
 pub use config::LiteLlmConfig;
 pub use key_placement::KeyPlacement;
 pub use serde_json::{Map, Value};
+pub use session_id::{SessionId, SessionIdError};
