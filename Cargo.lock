@@ -456,7 +456,7 @@ dependencies = [
 
 [[package]]
 name = "br-llm-clients-litellm"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "br-llm-clients-api-anthropic-messages 0.2.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-api-anthropic-messages%2Fv0.2.0)",
  "br-llm-clients-api-openai-chat-completions 0.2.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-api-openai-chat-completions%2Fv0.2.0)",

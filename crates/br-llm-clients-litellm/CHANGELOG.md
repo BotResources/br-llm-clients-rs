@@ -9,6 +9,39 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.2.0
+
+LiteLLM session affinity. The new minor opens the line 0.2: in major 0 a new
+minor is a new line, and this one adds public API and an intent change (a
+per-call value and a response header that 0.1 does not read).
+
+### Added
+
+- `LiteLlmClient::call_with(&request, &LiteLlmCallOptions, sink)`: one call
+  with per-call options. It gives a `LiteLlmCallOutcome`. One client serves
+  any number of sessions at once.
+- `LiteLlmCallOptions` (`new`, `Default`, `with_session_id`, `session_id`):
+  the per-call options. With a `SessionId`, the call sends the header
+  `x-litellm-session-id: <id>`, so a proxy group with `session_affinity`
+  sends every call of that session to the same deployment. A fixed extra
+  header of the same name (compared without regard to case) is replaced by
+  the session id for that call. With no session id, the headers are those of
+  `Client::call`.
+- `SessionId` (`new`, `as_str`, `Display`) and `SessionIdError`
+  (`#[non_exhaustive]`: `Empty`, `TooLong`, `OuterSpace`, `InvalidByte`). A
+  session id is 1 to 256 bytes from 0x20 to 0x7E, with no space at its start
+  or its end. No error text holds the value.
+- `LiteLlmCallOutcome` (`outcome`, `deployment_id`, `into_parts`): the
+  `CallOutcome` of the call, unchanged, and the deployment that served it:
+  the value of the response header `x-litellm-model-id` (the `model_info.id`
+  of the deployment), on a success and on an error reply. It is absent when
+  the header is absent, empty, not valid text, or holds a secret of the call.
+
+### Unchanged
+
+- `Client::call` is the call of 0.1.0: same `CallSpec`, same headers, no
+  session header, and the outcome unchanged.
+
 ## 0.1.0
 
 ### Added

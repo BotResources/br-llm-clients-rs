@@ -1,6 +1,6 @@
 [package]
 name = "br-llm-clients-litellm"
-version = "0.1.0"
+version = "0.2.0"
 description = "the Client for a LiteLLM proxy: sends a call to the proxy in the chat completions, responses or messages dialect, with a virtual key and the capabilities the operator declares for a name"
 edition.workspace = true
 rust-version.workspace = true
@@ -19,4 +19,4 @@ thiserror = "2"
 
 [dev-dependencies]
 br-llm-messages = { git = "https://github.com/BotResources/br-llm-messages-rs", tag = "br-llm-messages/v2.1.0", version = "2.1.0", features = ["mint"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread"] }
