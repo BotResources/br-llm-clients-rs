@@ -207,9 +207,9 @@ dependencies = [
 
 [[package]]
 name = "br-llm-clients-anthropic"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
- "br-llm-clients-api-anthropic-messages 0.2.0",
+ "br-llm-clients-api-anthropic-messages 0.2.1 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-api-anthropic-messages%2Fv0.2.1)",
  "br-llm-clients-common-call 0.2.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-common-call%2Fv0.2.0)",
  "br-llm-clients-common-http 0.2.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-common-http%2Fv0.2.0)",
  "br-llm-clients-core 0.5.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-core%2Fv0.5.0)",
@@ -239,6 +239,17 @@ dependencies = [
  "br-llm-messages",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "br-llm-clients-api-anthropic-messages"
+version = "0.2.1"
+source = "git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-api-anthropic-messages%2Fv0.2.1#47f82d28a1925d54a33f1ab8dff3147868093575"
+dependencies = [
+ "br-llm-clients-common-call 0.2.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-common-call%2Fv0.2.0)",
+ "br-llm-clients-core 0.5.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-core%2Fv0.5.0)",
+ "br-llm-messages",
+ "serde_json",
 ]
 
 [[package]]
@@ -290,11 +301,11 @@ dependencies = [
 
 [[package]]
 name = "br-llm-clients-aws-bedrock"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "aws-credential-types",
  "aws-sigv4",
- "br-llm-clients-api-anthropic-messages 0.2.0",
+ "br-llm-clients-api-anthropic-messages 0.2.1 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-api-anthropic-messages%2Fv0.2.1)",
  "br-llm-clients-common-call 0.2.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-common-call%2Fv0.2.0)",
  "br-llm-clients-common-http 0.2.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-common-http%2Fv0.2.0)",
  "br-llm-clients-core 0.5.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-core%2Fv0.5.0)",
@@ -438,10 +449,10 @@ dependencies = [
 
 [[package]]
 name = "br-llm-clients-gcp-vertex"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "base64",
- "br-llm-clients-api-anthropic-messages 0.2.0",
+ "br-llm-clients-api-anthropic-messages 0.2.1 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-api-anthropic-messages%2Fv0.2.1)",
  "br-llm-clients-common-auth 0.1.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-common-auth%2Fv0.1.0)",
  "br-llm-clients-common-call 0.2.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-common-call%2Fv0.2.0)",
  "br-llm-clients-common-http 0.2.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-common-http%2Fv0.2.0)",

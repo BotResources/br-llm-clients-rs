@@ -9,6 +9,14 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.1.1
+
+### Changed
+
+- Pins `br-llm-clients-api-anthropic-messages` 0.2.1: every adaptive `thinking` is sent with
+  `"display": "summarized"`, so the models whose default omits the thinking text answer with a
+  summary of their thinking.
+
 ## 0.1.0
 
 Built on `br-llm-clients-core` 0.5, `br-llm-clients-common-call` 0.2,
