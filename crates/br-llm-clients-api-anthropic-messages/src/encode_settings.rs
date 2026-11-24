@@ -50,7 +50,7 @@ pub(crate) struct Thinking {
 
 pub(crate) fn thinking(level: ReasoningLevel) -> Result<Thinking, ClientError> {
     let adaptive = |effort| Thinking {
-        field: json!({"type": "adaptive"}),
+        field: json!({"type": "adaptive", "display": "summarized"}),
         effort: Some(effort),
     };
     match level {

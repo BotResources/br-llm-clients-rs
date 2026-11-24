@@ -10,27 +10,27 @@ fn given_each_level_when_encoded_then_thinking_and_effort_follow_the_table() {
         (ReasoningLevel::Off, json!({"type": "disabled"}), None),
         (
             ReasoningLevel::Low,
-            json!({"type": "adaptive"}),
+            json!({"type": "adaptive", "display": "summarized"}),
             Some("low"),
         ),
         (
             ReasoningLevel::Medium,
-            json!({"type": "adaptive"}),
+            json!({"type": "adaptive", "display": "summarized"}),
             Some("medium"),
         ),
         (
             ReasoningLevel::High,
-            json!({"type": "adaptive"}),
+            json!({"type": "adaptive", "display": "summarized"}),
             Some("high"),
         ),
         (
             ReasoningLevel::Extra,
-            json!({"type": "adaptive"}),
+            json!({"type": "adaptive", "display": "summarized"}),
             Some("xhigh"),
         ),
         (
             ReasoningLevel::Max,
-            json!({"type": "adaptive"}),
+            json!({"type": "adaptive", "display": "summarized"}),
             Some("max"),
         ),
     ];
@@ -87,7 +87,10 @@ fn given_any_max_tokens_when_encoded_then_the_reasoning_fields_do_not_change() {
             max_tokens,
         ));
         let body = body_of(&dialect, &request(vec![user("hello")]));
-        assert_eq!(body["thinking"], json!({"type": "adaptive"}));
+        assert_eq!(
+            body["thinking"],
+            json!({"type": "adaptive", "display": "summarized"})
+        );
         assert_eq!(body["output_config"], json!({"effort": "high"}));
         assert_eq!(body["max_tokens"], json!(max_tokens));
     }

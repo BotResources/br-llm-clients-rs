@@ -48,7 +48,7 @@ br-llm-clients-core = { git = "https://github.com/BotResources/br-llm-clients-rs
 br-llm-clients-mock = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-mock", tag = "br-llm-clients-mock/v0.6.0", version = "0.6.0" }
 br-llm-clients-common-sse = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-common-sse", tag = "br-llm-clients-common-sse/v0.1.0", version = "0.1.0" }
 br-llm-clients-common-call = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-common-call", tag = "br-llm-clients-common-call/v0.2.0", version = "0.2.0" }
-br-llm-clients-api-anthropic-messages = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-api-anthropic-messages", tag = "br-llm-clients-api-anthropic-messages/v0.2.0", version = "0.2.0" }
+br-llm-clients-api-anthropic-messages = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-api-anthropic-messages", tag = "br-llm-clients-api-anthropic-messages/v0.2.1", version = "0.2.1" }
 br-llm-clients-api-openai-responses = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-api-openai-responses", tag = "br-llm-clients-api-openai-responses/v0.2.0", version = "0.2.0" }
 br-llm-clients-api-openai-chat-completions = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-api-openai-chat-completions", tag = "br-llm-clients-api-openai-chat-completions/v0.2.0", version = "0.2.0" }
 br-llm-clients-common-http = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-common-http", tag = "br-llm-clients-common-http/v0.2.0", version = "0.2.0" }

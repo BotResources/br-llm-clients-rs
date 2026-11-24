@@ -178,27 +178,27 @@ fn given_each_reasoning_level_and_cache_when_encoded_with_default_options_then_t
         (ReasoningLevel::Off, json!({"type": "disabled"}), None),
         (
             ReasoningLevel::Low,
-            json!({"type": "adaptive"}),
+            json!({"type": "adaptive", "display": "summarized"}),
             Some("low"),
         ),
         (
             ReasoningLevel::Medium,
-            json!({"type": "adaptive"}),
+            json!({"type": "adaptive", "display": "summarized"}),
             Some("medium"),
         ),
         (
             ReasoningLevel::High,
-            json!({"type": "adaptive"}),
+            json!({"type": "adaptive", "display": "summarized"}),
             Some("high"),
         ),
         (
             ReasoningLevel::Extra,
-            json!({"type": "adaptive"}),
+            json!({"type": "adaptive", "display": "summarized"}),
             Some("xhigh"),
         ),
         (
             ReasoningLevel::Max,
-            json!({"type": "adaptive"}),
+            json!({"type": "adaptive", "display": "summarized"}),
             Some("max"),
         ),
     ];
