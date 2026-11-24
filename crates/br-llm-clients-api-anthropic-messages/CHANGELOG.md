@@ -9,6 +9,14 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.2.1
+
+### Fixed
+
+- Every adaptive `thinking` (levels `Low` to `Max`) is sent with `"display": "summarized"`. The
+  field was left out, and the models whose default omits the thinking text (Claude Opus 4.7 and
+  later, Claude Sonnet 5 and later) answered with empty thinking blocks. `Off` is unchanged.
+
 ## 0.2.0
 
 ### Added
