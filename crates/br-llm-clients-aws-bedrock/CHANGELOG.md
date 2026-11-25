@@ -45,7 +45,6 @@ change, so a request that 0.1 accepted may be refused before sending, and the re
   than 4096 tokens is sent twice with `CacheRequirement::Required`, and the check passes
   when the second call reports a cache read above zero. For a model whose Cache is no, it
   passes when the call is refused before sending with `CacheNotSupported`.
-- Unit tests of the table.
 
 ## 0.1.2
 
