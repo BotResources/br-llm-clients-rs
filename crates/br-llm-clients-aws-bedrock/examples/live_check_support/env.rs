@@ -14,6 +14,14 @@ const MAX_OUTPUT_TOKENS: u32 = 4096;
 const PROFILE_PREFIXES: [&str; 7] = ["global.", "us.", "eu.", "au.", "jp.", "apac.", "us-gov."];
 const PROVIDER_PREFIX: &str = "anthropic.";
 const ALWAYS_THINKING: [&str; 3] = ["claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5"];
+const CACHED: [&str; 6] = [
+    "claude-opus-5-5",
+    "claude-sonnet-5-5",
+    "claude-haiku-5-5",
+    "claude-opus-4-8",
+    "claude-opus-4-7",
+    "claude-haiku-4-5-20251001-v1:0",
+];
 const API_KEY: &str = "AWS_BEARER_TOKEN_BEDROCK";
 const ACCESS_KEY_ID: &str = "AWS_ACCESS_KEY_ID";
 const SECRET_ACCESS_KEY: &str = "AWS_SECRET_ACCESS_KEY";
@@ -36,12 +44,13 @@ impl Setup {
         &self,
         path: &Path,
         model: &str,
+        cache: CacheRequirement,
         http: &HttpClient,
     ) -> Result<BedrockClient, String> {
         let settings = ClientSettings::new(
             ModelName::new(model.to_owned()).map_err(fail)?,
             reasoning(model),
-            CacheRequirement::NotRequired,
+            cache,
             MaxOutputTokens::new(MAX_OUTPUT_TOKENS).map_err(fail)?,
         );
         let config = BedrockConfig::new(self.region.clone(), path.credential.clone());
@@ -61,6 +70,10 @@ fn base_name(model: &str) -> &str {
     unprefixed
         .strip_prefix(PROVIDER_PREFIX)
         .unwrap_or(unprefixed)
+}
+
+pub fn caches(model: &str) -> bool {
+    CACHED.contains(&base_name(model))
 }
 
 fn reasoning(model: &str) -> ReasoningLevel {

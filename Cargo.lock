@@ -301,7 +301,7 @@ dependencies = [
 
 [[package]]
 name = "br-llm-clients-aws-bedrock"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "aws-credential-types",
  "aws-sigv4",

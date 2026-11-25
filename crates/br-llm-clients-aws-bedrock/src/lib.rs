@@ -12,6 +12,8 @@
 mod aws_credentials;
 mod build_error;
 mod capabilities;
+#[cfg(test)]
+mod capabilities_tests;
 mod client;
 mod config;
 mod credential;
