@@ -2,18 +2,20 @@ use std::num::NonZeroU32;
 
 use br_llm_clients_core::{Accepted, Capabilities, CapabilitiesSpec, ReasoningLevel};
 
-const MAX_OUTPUT_TOKENS: NonZeroU32 = match NonZeroU32::new(128_000) {
+const TOKENS_128_000: NonZeroU32 = match NonZeroU32::new(128_000) {
     Some(limit) => limit,
     None => panic!("128000 is not zero"),
+};
+
+const TOKENS_64_000: NonZeroU32 = match NonZeroU32::new(64_000) {
+    Some(limit) => limit,
+    None => panic!("64000 is not zero"),
 };
 
 const PROFILE_PREFIXES: [&str; 7] = ["global.", "us.", "eu.", "au.", "jp.", "apac.", "us-gov."];
 const PROVIDER_PREFIX: &str = "anthropic.";
 
-const THINKING_ONLY: [&str; 3] = ["claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5"];
-const THINKING_OPTIONAL: &str = "claude-haiku-5-5";
-
-const THINKING_LEVELS: [ReasoningLevel; 5] = [
+const FROM_LOW_TO_MAX: [ReasoningLevel; 5] = [
     ReasoningLevel::Low,
     ReasoningLevel::Medium,
     ReasoningLevel::High,
@@ -21,19 +23,77 @@ const THINKING_LEVELS: [ReasoningLevel; 5] = [
     ReasoningLevel::Max,
 ];
 
+const FROM_OFF_TO_MAX: [ReasoningLevel; 6] = [
+    ReasoningLevel::Off,
+    ReasoningLevel::Low,
+    ReasoningLevel::Medium,
+    ReasoningLevel::High,
+    ReasoningLevel::Extra,
+    ReasoningLevel::Max,
+];
+
+const OFF_ONLY: [ReasoningLevel; 1] = [ReasoningLevel::Off];
+
+struct Row {
+    base_name: &'static str,
+    levels: &'static [ReasoningLevel],
+    max_output_tokens: NonZeroU32,
+    caching: bool,
+}
+
+const TABLE: [Row; 7] = [
+    Row {
+        base_name: "claude-fable-5-1",
+        levels: &FROM_LOW_TO_MAX,
+        max_output_tokens: TOKENS_128_000,
+        caching: false,
+    },
+    Row {
+        base_name: "claude-opus-5-5",
+        levels: &FROM_LOW_TO_MAX,
+        max_output_tokens: TOKENS_128_000,
+        caching: true,
+    },
+    Row {
+        base_name: "claude-sonnet-5-5",
+        levels: &FROM_LOW_TO_MAX,
+        max_output_tokens: TOKENS_128_000,
+        caching: true,
+    },
+    Row {
+        base_name: "claude-haiku-5-5",
+        levels: &FROM_OFF_TO_MAX,
+        max_output_tokens: TOKENS_128_000,
+        caching: true,
+    },
+    Row {
+        base_name: "claude-opus-4-8",
+        levels: &FROM_OFF_TO_MAX,
+        max_output_tokens: TOKENS_128_000,
+        caching: true,
+    },
+    Row {
+        base_name: "claude-opus-4-7",
+        levels: &FROM_OFF_TO_MAX,
+        max_output_tokens: TOKENS_128_000,
+        caching: true,
+    },
+    Row {
+        base_name: "claude-haiku-4-5-20251001-v1:0",
+        levels: &OFF_ONLY,
+        max_output_tokens: TOKENS_64_000,
+        caching: true,
+    },
+];
+
 pub(crate) fn of_model(model: &str) -> Capabilities {
     let base = base_name(model);
-    if THINKING_ONLY.contains(&base) {
-        current(THINKING_LEVELS.to_vec())
-    } else if base == THINKING_OPTIONAL {
-        let mut levels = vec![ReasoningLevel::Off];
-        levels.extend(THINKING_LEVELS);
-        current(levels)
-    } else {
-        Capabilities::normalized(CapabilitiesSpec {
+    match TABLE.iter().find(|row| row.base_name == base) {
+        Some(row) => row.capabilities(),
+        None => Capabilities::normalized(CapabilitiesSpec {
             caching: false,
             ..CapabilitiesSpec::everything()
-        })
+        }),
     }
 }
 
@@ -47,12 +107,14 @@ fn base_name(model: &str) -> &str {
         .unwrap_or(unprefixed)
 }
 
-fn current(levels: Vec<ReasoningLevel>) -> Capabilities {
-    Capabilities::normalized(CapabilitiesSpec {
-        reasoning_levels: Accepted::Only(levels),
-        max_output_tokens: CapabilitiesSpec::max_output_tokens_of(MAX_OUTPUT_TOKENS),
-        structured_output_with_tools: false,
-        caching: false,
-        ..CapabilitiesSpec::everything()
-    })
+impl Row {
+    fn capabilities(&self) -> Capabilities {
+        Capabilities::normalized(CapabilitiesSpec {
+            reasoning_levels: Accepted::Only(self.levels.to_vec()),
+            max_output_tokens: CapabilitiesSpec::max_output_tokens_of(self.max_output_tokens),
+            structured_output_with_tools: false,
+            caching: self.caching,
+            ..CapabilitiesSpec::everything()
+        })
+    }
 }

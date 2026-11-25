@@ -4,7 +4,10 @@ use std::time::Duration;
 
 use br_llm_clients_aws_bedrock::HttpClient;
 use br_llm_clients_common_http::HttpConfig;
+use br_llm_clients_core::CacheRequirement;
 
+#[path = "live_check_support/cache.rs"]
+mod cache;
 #[path = "live_check_support/checks.rs"]
 mod checks;
 #[path = "live_check_support/env.rs"]
@@ -71,8 +74,9 @@ async fn run_checks(setup: env::Setup) -> Result<bool, String> {
 }
 
 async fn run_path(setup: &env::Setup, path: &env::Path, http: &HttpClient) -> Result<bool, String> {
-    let bedrock = setup.client(path, &setup.model, http)?;
-    let missing = setup.client(path, MISSING_MODEL, http)?;
+    let bedrock = setup.client(path, &setup.model, CacheRequirement::NotRequired, http)?;
+    let cached = setup.client(path, &setup.model, CacheRequirement::Required, http)?;
+    let missing = setup.client(path, MISSING_MODEL, CacheRequirement::NotRequired, http)?;
     let label = path.label;
     println!("== {label}: {bedrock:?}");
     let verdicts = [
@@ -80,6 +84,11 @@ async fn run_path(setup: &env::Setup, path: &env::Path, http: &HttpClient) -> Re
         verdict(label, "streaming", checks::streaming(&bedrock).await),
         verdict(label, "tool call", tools::tool_call(&bedrock).await),
         verdict(label, "usage", checks::usage(&bedrock).await),
+        verdict(
+            label,
+            "cache read",
+            cache::cache_read(&cached, env::caches(&setup.model)).await,
+        ),
         verdict(label, "error case", checks::missing_model(&missing).await),
     ];
     Ok(verdicts.iter().all(|passed| *passed))

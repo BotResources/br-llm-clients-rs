@@ -1,6 +1,6 @@
 [package]
 name = "br-llm-clients-aws-bedrock"
-version = "0.1.2"
+version = "0.2.0"
 description = "the Amazon Bedrock client for Claude: a Client of br-llm-clients-core over the Anthropic Messages API of the Bedrock runtime host of a region, signed with AWS Signature Version 4 or sent with a Bedrock API key"
 edition.workspace = true
 # aws-sigv4 1.6 and the aws-smithy crates under it need Rust 1.94.1.

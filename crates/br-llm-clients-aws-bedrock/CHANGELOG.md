@@ -9,6 +9,43 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.2.0
+
+Opens the line 0.2. The public API is unchanged; the declared capabilities of the models
+change, so a request that 0.1 accepted may be refused before sending, and the reverse.
+
+### Changed
+
+- The declared capabilities are one explicit table, looked up by the base name of the
+  model id (one inference profile prefix and one `anthropic.` removed), with a row for each
+  of the seven models that `/anthropic/v1/messages` serves:
+
+  | Base name | Accepted levels | Largest output tokens | Cache |
+  | --- | --- | --- | --- |
+  | `claude-fable-5-1` | `Low` to `Max` | 128000 | no |
+  | `claude-opus-5-5` | `Low` to `Max` | 128000 | yes |
+  | `claude-sonnet-5-5` | `Low` to `Max` | 128000 | yes |
+  | `claude-haiku-5-5` | `Off` to `Max` | 128000 | yes |
+  | `claude-opus-4-8` | `Off` to `Max` | 128000 | yes |
+  | `claude-opus-4-7` | `Off` to `Max` | 128000 | yes |
+  | `claude-haiku-4-5-20251001-v1:0` | `Off` only | 64000 | yes |
+
+  No row accepts structured output with tools, because the dialect refuses that pair.
+  `claude-opus-4-8`, `claude-opus-4-7` and `claude-haiku-4-5-20251001-v1:0` were declared
+  with everything in 0.1; they now refuse a reasoning level, a largest output and
+  structured output with tools that they do not accept, before sending.
+- With Cache yes, `CacheRequirement::Required` is accepted, and the dialect sends the
+  top-level `cache_control`, so Bedrock caches the prompt for 5 minutes up to its last
+  block that can be cached. With Cache no, and for any id outside the table, it is still
+  refused before sending with `CacheNotSupported`.
+
+### Added
+
+- `examples/live_check.rs` runs a sixth check, the cache read: the same request of more
+  than 4096 tokens is sent twice with `CacheRequirement::Required`, and the check passes
+  when the second call reports a cache read above zero. For a model whose Cache is no, it
+  passes when the call is refused before sending with `CacheNotSupported`.
+
 ## 0.1.2
 
 ### Changed
