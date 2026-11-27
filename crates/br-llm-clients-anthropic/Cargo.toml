@@ -8,7 +8,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-br-llm-clients-api-anthropic-messages = { path = "../br-llm-clients-api-anthropic-messages", version = "0.3.0" }
+br-llm-clients-api-anthropic-messages = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-api-anthropic-messages/v0.3.0", version = "0.3.0" }
 br-llm-clients-common-call = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-common-call/v0.2.0", version = "0.2.0" }
 br-llm-clients-common-http = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-common-http/v0.2.0", version = "0.2.0" }
 br-llm-clients-core = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-core/v0.5.0", version = "0.5.0" }

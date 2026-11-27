@@ -9,7 +9,7 @@ repository.workspace = true
 
 [dependencies]
 base64 = { version = "0.23", default-features = false, features = ["alloc"] }
-br-llm-clients-api-anthropic-messages = { path = "../br-llm-clients-api-anthropic-messages", version = "0.3.0" }
+br-llm-clients-api-anthropic-messages = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-api-anthropic-messages/v0.3.0", version = "0.3.0" }
 br-llm-clients-common-auth = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-common-auth/v0.1.0", version = "0.1.0" }
 br-llm-clients-common-call = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-common-call/v0.2.0", version = "0.2.0" }
 br-llm-clients-common-http = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-common-http/v0.2.0", version = "0.2.0" }
