@@ -1,0 +1,18 @@
+apiVersion: v2
+name: br-llm-clients-api-anthropic-messages-chart
+description: The cache options of the Anthropic Messages dialect of br-llm-clients-api-anthropic-messages, as an operator writes them, with one named template that renders their JSON object for the setting of a provider library. Named after its library; it has its own version line. It defines no environment variable.
+type: library
+version: 0.1.0
+home: https://github.com/BotResources/br-llm-clients-rs
+sources:
+  - https://github.com/BotResources/br-llm-clients-rs
+maintainers:
+  - name: BotResources
+    url: https://github.com/BotResources
+keywords:
+  - llm
+  - anthropic
+  - cache
+  - library
+annotations:
+  licenses: Apache-2.0

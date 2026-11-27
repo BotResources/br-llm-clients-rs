@@ -231,7 +231,7 @@ dependencies = [
 
 [[package]]
 name = "br-llm-clients-api-anthropic-messages"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "br-llm-clients-common-call 0.2.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-common-call%2Fv0.2.0)",
  "br-llm-clients-common-http 0.2.0 (git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-common-http%2Fv0.2.0)",

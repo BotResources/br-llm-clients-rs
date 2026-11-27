@@ -2,6 +2,7 @@ use std::fmt;
 
 use serde_json::{Map, Value};
 
+use crate::cache_ttl::CacheTtl;
 use crate::options_error::OptionsError;
 
 const RESERVED_MEMBERS: [&str; 10] = [
@@ -44,6 +45,7 @@ pub enum VersionPlacement {
 pub struct MessagesOptions {
     model: ModelPlacement,
     version: VersionPlacement,
+    cache_ttl: CacheTtl,
     extra_body: Map<String, Value>,
 }
 
@@ -52,6 +54,7 @@ impl MessagesOptions {
         Self {
             model: ModelPlacement::Body,
             version: VersionPlacement::Header,
+            cache_ttl: CacheTtl::FiveMinutes,
             extra_body: Map::new(),
         }
     }
@@ -63,6 +66,11 @@ impl MessagesOptions {
 
     pub fn with_version_placement(mut self, placement: VersionPlacement) -> Self {
         self.version = placement;
+        self
+    }
+
+    pub fn with_cache_ttl(mut self, ttl: CacheTtl) -> Self {
+        self.cache_ttl = ttl;
         self
     }
 
@@ -87,6 +95,10 @@ impl MessagesOptions {
         &self.version
     }
 
+    pub(crate) fn cache_ttl(&self) -> CacheTtl {
+        self.cache_ttl
+    }
+
     pub(crate) fn extra_body(&self) -> &Map<String, Value> {
         &self.extra_body
     }
@@ -103,6 +115,7 @@ impl fmt::Debug for MessagesOptions {
         f.debug_struct("MessagesOptions")
             .field("model", &self.model)
             .field("version", &self.version)
+            .field("cache_ttl", &self.cache_ttl)
             .field(
                 "extra_body_members",
                 &self.extra_body.keys().collect::<Vec<_>>(),

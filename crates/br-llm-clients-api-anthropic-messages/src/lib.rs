@@ -9,6 +9,8 @@
     )
 )]
 
+mod cache_options;
+mod cache_ttl;
 mod decode;
 mod decode_blocks;
 mod decode_envelope;
@@ -28,11 +30,17 @@ mod options;
 mod options_error;
 mod replay_formats;
 
+pub use cache_options::MessagesCacheOptions;
+pub use cache_ttl::CacheTtl;
 pub use dialect::AnthropicMessages;
 pub use options::{MessagesOptions, ModelPlacement, VersionPlacement};
 pub use options_error::OptionsError;
 pub use serde_json::{Map, Value};
 
+#[cfg(test)]
+mod cache_options_tests;
+#[cfg(test)]
+mod cache_ttl_tests;
 #[cfg(test)]
 mod decode_block_delta_tests;
 #[cfg(test)]
@@ -55,6 +63,8 @@ mod decode_usage_tests;
 mod decode_usage_thinking_tests;
 #[cfg(test)]
 mod encode_block_extras_tests;
+#[cfg(test)]
+mod encode_cache_tests;
 #[cfg(test)]
 mod encode_envelope_tests;
 #[cfg(test)]

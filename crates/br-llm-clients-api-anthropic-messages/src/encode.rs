@@ -16,7 +16,7 @@ pub(crate) fn encode(
     history: &RenderedHistory,
 ) -> Result<EncodedRequest, ClientError> {
     let thinking = thinking(settings.reasoning())?;
-    let cache = cache_control(settings.cache())?;
+    let cache = cache_control(settings.cache(), settings.options().cache_ttl())?;
     if matches!(request.output(), OutputMode::Structured(_)) && !request.tools().is_empty() {
         return Err(ClientError::StructuredOutputWithToolsNotSupported);
     }

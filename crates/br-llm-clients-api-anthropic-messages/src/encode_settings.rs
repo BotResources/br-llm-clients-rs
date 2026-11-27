@@ -1,6 +1,7 @@
 use br_llm_clients_core::{CacheRequirement, ClientError, ClientSettings, ReasoningLevel};
 use serde_json::{Value, json};
 
+use crate::cache_ttl::CacheTtl;
 use crate::options::MessagesOptions;
 
 pub(crate) struct EncodeSettings {
@@ -70,9 +71,15 @@ pub(crate) fn thinking(level: ReasoningLevel) -> Result<Thinking, ClientError> {
     }
 }
 
-pub(crate) fn cache_control(cache: CacheRequirement) -> Result<Option<Value>, ClientError> {
+pub(crate) fn cache_control(
+    cache: CacheRequirement,
+    ttl: CacheTtl,
+) -> Result<Option<Value>, ClientError> {
     match cache {
-        CacheRequirement::Required => Ok(Some(json!({"type": "ephemeral"}))),
+        CacheRequirement::Required => Ok(Some(match ttl {
+            CacheTtl::FiveMinutes => json!({"type": "ephemeral"}),
+            CacheTtl::OneHour => json!({"type": "ephemeral", "ttl": ttl.as_str()}),
+        })),
         CacheRequirement::NotRequired => Ok(None),
         _ => Err(ClientError::CacheNotSupported),
     }

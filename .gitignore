@@ -2,3 +2,7 @@
 **/.DS_Store
 *.swp
 .env
+/charts/*/charts
+/charts/*/Chart.lock
+/charts/*/ci/*/charts
+/charts/*/ci/*/Chart.lock

@@ -8,7 +8,7 @@ use crate::test_server::http;
 use crate::test_streams::{BASIC, MID_STREAM_ERROR, THINKING, TOOL_USE};
 use crate::test_streams_constructed::{REDACTED_THINKING, REFUSAL};
 use crate::test_thread::*;
-use crate::{MessagesOptions, ModelPlacement, VersionPlacement};
+use crate::{CacheTtl, MessagesOptions, ModelPlacement, VersionPlacement};
 
 fn every_option_set() -> Vec<MessagesOptions> {
     let version = VersionPlacement::Body("vertex-2023-10-16".to_owned());
@@ -23,9 +23,11 @@ fn every_option_set() -> Vec<MessagesOptions> {
         MessagesOptions::new()
             .with_extra_body(extra.clone())
             .expect("accepted"),
+        MessagesOptions::new().with_cache_ttl(CacheTtl::OneHour),
         MessagesOptions::new()
             .with_model_placement(ModelPlacement::Omitted)
             .with_version_placement(version)
+            .with_cache_ttl(CacheTtl::OneHour)
             .with_extra_body(extra)
             .expect("accepted"),
     ]
