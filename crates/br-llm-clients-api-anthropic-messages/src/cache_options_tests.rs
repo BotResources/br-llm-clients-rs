@@ -18,6 +18,21 @@ fn given_the_default_cache_options_when_read_then_the_ttl_is_five_minutes() {
 }
 
 #[test]
+fn given_each_ttl_when_given_to_new_then_the_options_hold_it() {
+    for ttl in [CacheTtl::FiveMinutes, CacheTtl::OneHour] {
+        assert_eq!(MessagesCacheOptions::new(ttl).ttl(), ttl);
+    }
+    assert_eq!(
+        MessagesCacheOptions::new(CacheTtl::FiveMinutes),
+        MessagesCacheOptions::default()
+    );
+    assert_eq!(
+        MessagesCacheOptions::new(CacheTtl::OneHour),
+        MessagesCacheOptions::from_json(&json!({"ttl": "1h"})).expect("accepted")
+    );
+}
+
+#[test]
 fn given_an_empty_object_when_read_from_json_then_it_gives_the_default() {
     let options = MessagesCacheOptions::from_json(&json!({})).expect("accepted");
     assert_eq!(options, MessagesCacheOptions::default());

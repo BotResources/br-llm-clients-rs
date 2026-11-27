@@ -27,7 +27,8 @@ one hour. With the default options, the headers, the body bytes and the errors a
   `cache_control`, whatever the lifetime. The `Debug` of the options shows the lifetime
   (`cache_ttl`).
 - `MessagesCacheOptions`: the cache options of the dialect as an operator writes them in the
-  setting of a provider library. `MessagesCacheOptions::from_json` takes a JSON object whose only
+  setting of a provider library. `MessagesCacheOptions::new` takes a `CacheTtl`.
+  `MessagesCacheOptions::from_json` takes a JSON object whose only
   member is `ttl`, optional, with the text `5m` or `1h`; an absent `ttl` gives the default.
   `ttl` gives the lifetime, which a provider library applies with `with_cache_ttl`. `Default`
   gives five minutes.

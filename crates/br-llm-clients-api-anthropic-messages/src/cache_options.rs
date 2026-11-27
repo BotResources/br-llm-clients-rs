@@ -11,6 +11,10 @@ pub struct MessagesCacheOptions {
 }
 
 impl MessagesCacheOptions {
+    pub fn new(ttl: CacheTtl) -> Self {
+        Self { ttl }
+    }
+
     pub fn from_json(value: &Value) -> Result<Self, OptionsError> {
         let Value::Object(members) = value else {
             return Err(OptionsError::InvalidCacheOption { member: None });
