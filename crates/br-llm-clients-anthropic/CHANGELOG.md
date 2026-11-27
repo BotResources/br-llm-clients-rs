@@ -9,6 +9,49 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.2.0
+
+Opens the line 0.2: an operator can choose the lifetime of the prompt cache, five minutes (the
+default, the behaviour of 0.1) or one hour. Built on `br-llm-clients-api-anthropic-messages` 0.3.
+
+### Added
+
+- `CACHE_ENV`, the text `ANTHROPIC_CACHE`: the name of the variable that holds the cache setting
+  of the client. The library reads no environment variable: the runner reads it when it starts
+  and gives its text to `AnthropicCache::parse`.
+- `AnthropicCache`: the cache options of the client. `AnthropicCache::new` takes a `MessagesCacheOptions`.
+  `AnthropicCache::parse` takes the text of the
+  variable, or nothing. Nothing, an empty text and a blank text give the default, five minutes,
+  the behaviour of the previous line. Any other text is a JSON object whose only member is
+  `messages`, optional, parsed by `MessagesCacheOptions::from_json` of the dialect; for example
+  `{"messages":{"ttl":"1h"}}`. An absent `messages` gives the default of the dialect.
+  `messages` gives the `MessagesCacheOptions`. `Default` gives five minutes.
+- `CacheTtl` and `MessagesCacheOptions` of the dialect are re-exported, the items of the
+  signatures of the cache type.
+- `AnthropicCacheError` (`#[non_exhaustive]`): `NotJson`, `NotAnObject`, `UnknownMember` with the
+  member, and `InvalidMessages` with the member of the section `messages` that the dialect
+  refused, when there is one. Its text names the variable and the member, and shows no value.
+- `AnthropicConfig::with_cache` takes an `AnthropicCache`. A config built without it holds the
+  default.
+  The `Debug` of the config shows the cache options.
+- `examples/live_check` runs a sixth check, (f) the cache read with the lifetime of one hour:
+  the same request of more than 4096 tokens is sent twice with `CacheRequirement::Required` and
+  a config built with `CacheTtl::OneHour`. It passes when the API accepts both
+  calls and the second reports a cache read above zero.
+- The Helm library chart `br-llm-clients-anthropic-chart` 0.1.0, in
+  `charts/br-llm-clients-anthropic-chart` of this repository. It depends on
+  `br-llm-clients-api-anthropic-messages-chart` 0.1.0 under the alias `messages`, and its named
+  template `br-llm-clients-anthropic-chart.env` renders the container env entry
+  `ANTHROPIC_CACHE` with the text `{"messages": …}`, or nothing when no value is set.
+
+### Changed
+
+- The dialect is `AnthropicMessages::with_options` with the default placements and the cache
+  lifetime of the config. `CacheRequirement::Required` asks for that lifetime: the top-level
+  `cache_control` is `{"type":"ephemeral","ttl":"1h"}` for one hour. With the default, every
+  request is the one of 0.1.
+- Depends on `br-llm-clients-api-anthropic-messages` 0.3 and on `serde_json` 1.
+
 ## 0.1.1
 
 ### Changed

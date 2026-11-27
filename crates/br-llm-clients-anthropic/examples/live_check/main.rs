@@ -15,6 +15,7 @@ macro_rules! say {
     };
 }
 
+mod cache;
 mod checks;
 mod out;
 mod report;
@@ -44,6 +45,10 @@ async fn main() -> ExitCode {
         (
             "unknown model",
             checks::unknown_model(setup.unknown_model_client()).await,
+        ),
+        (
+            "cache read of one hour",
+            cache::one_hour_cache_read(setup.one_hour_cache_client()).await,
         ),
     ];
     let mut failed = false;

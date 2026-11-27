@@ -1,0 +1,3 @@
+anthropic:
+  messages:
+    ttl: 1h

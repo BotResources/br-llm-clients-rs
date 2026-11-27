@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - "charts/br-llm-clients-api-anthropic-messages-chart/Chart.yaml"
+      - "charts/br-llm-clients-anthropic-chart/Chart.yaml"
+      - "charts/br-llm-clients-aws-bedrock-chart/Chart.yaml"
+      - "charts/br-llm-clients-gcp-vertex-chart/Chart.yaml"
   workflow_dispatch:
 
 permissions:
@@ -28,6 +31,9 @@ jobs:
       matrix:
         chart:
           - br-llm-clients-api-anthropic-messages-chart
+          - br-llm-clients-anthropic-chart
+          - br-llm-clients-aws-bedrock-chart
+          - br-llm-clients-gcp-vertex-chart
     env:
       CHART_NAME: ${{ matrix.chart }}
       CHART_DIR: charts/${{ matrix.chart }}

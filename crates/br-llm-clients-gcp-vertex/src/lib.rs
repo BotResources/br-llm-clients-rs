@@ -11,6 +11,7 @@
 
 mod assertion;
 mod build_error;
+mod cache;
 mod capabilities;
 mod client;
 mod config;
@@ -23,8 +24,10 @@ mod project;
 mod route;
 mod service_account_key;
 
+pub use br_llm_clients_api_anthropic_messages::{CacheTtl, MessagesCacheOptions};
 pub use br_llm_clients_common_call::{Endpoint, HttpClient};
 pub use build_error::VertexBuildError;
+pub use cache::{CACHE_ENV, VertexCache, VertexCacheError};
 pub use client::VertexClient;
 pub use config::VertexConfig;
 pub use credential::VertexCredential;

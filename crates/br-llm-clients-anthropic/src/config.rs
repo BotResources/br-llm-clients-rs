@@ -4,6 +4,8 @@ use std::sync::Arc;
 use br_llm_clients_common_http::{Endpoint, Secret};
 use br_llm_clients_core::IdSource;
 
+use crate::cache::AnthropicCache;
+
 #[derive(Clone, Copy)]
 pub(crate) enum KeyHeader {
     ApiKey,
@@ -24,6 +26,7 @@ pub struct AnthropicConfig {
     pub(crate) api_key: Secret,
     pub(crate) base: Option<Endpoint>,
     pub(crate) workspace_id: Option<String>,
+    pub(crate) cache: AnthropicCache,
     pub(crate) key_header: KeyHeader,
     pub(crate) id_source: Option<Arc<dyn IdSource>>,
 }
@@ -34,6 +37,7 @@ impl AnthropicConfig {
             api_key,
             base: None,
             workspace_id: None,
+            cache: AnthropicCache::default(),
             key_header: KeyHeader::ApiKey,
             id_source: None,
         }
@@ -58,6 +62,11 @@ impl AnthropicConfig {
         self.id_source = Some(id_source);
         self
     }
+
+    pub fn with_cache(mut self, cache: AnthropicCache) -> Self {
+        self.cache = cache;
+        self
+    }
 }
 
 impl fmt::Debug for AnthropicConfig {
@@ -65,6 +74,7 @@ impl fmt::Debug for AnthropicConfig {
         f.debug_struct("AnthropicConfig")
             .field("base", &self.base)
             .field("workspace_id", &self.workspace_id)
+            .field("cache", &self.cache)
             .field("key_header", &self.key_header.name())
             .field("id_source_set", &self.id_source.is_some())
             .finish_non_exhaustive()

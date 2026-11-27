@@ -1,6 +1,7 @@
 use br_llm_clients_core::{CacheRequirement, ClientSettings, MaxOutputTokens, ReasoningLevel};
 use br_llm_clients_gcp_vertex::{
-    HttpClient, ServiceAccountKey, VertexClient, VertexConfig, VertexCredential,
+    CacheTtl, HttpClient, MessagesCacheOptions, ServiceAccountKey, VertexCache, VertexClient,
+    VertexConfig, VertexCredential,
 };
 use br_llm_messages::ModelName;
 
@@ -22,17 +23,38 @@ pub struct Setup {
 
 impl Setup {
     pub fn client(&self, model: &str, http: &HttpClient) -> Result<VertexClient, String> {
+        self.client_with_cache(
+            model,
+            CacheRequirement::NotRequired,
+            VertexCache::default(),
+            http,
+        )
+    }
+
+    pub fn one_hour_cache_client(&self, http: &HttpClient) -> Result<VertexClient, String> {
+        let cache = VertexCache::new(MessagesCacheOptions::new(CacheTtl::OneHour));
+        self.client_with_cache(&self.model, CacheRequirement::Required, cache, http)
+    }
+
+    fn client_with_cache(
+        &self,
+        model: &str,
+        cache: CacheRequirement,
+        lifetime: VertexCache,
+        http: &HttpClient,
+    ) -> Result<VertexClient, String> {
         let settings = ClientSettings::new(
             ModelName::new(model.to_owned()).map_err(fail)?,
             reasoning(model),
-            CacheRequirement::NotRequired,
+            cache,
             MaxOutputTokens::new(MAX_OUTPUT_TOKENS).map_err(fail)?,
         );
         let config = VertexConfig::new(
             self.project.clone(),
             self.location.clone(),
             self.credential.clone(),
-        );
+        )
+        .with_cache(lifetime);
         VertexClient::new(settings, config, http.clone()).map_err(fail)
     }
 }

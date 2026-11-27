@@ -1,6 +1,6 @@
 [package]
 name = "br-llm-clients-gcp-vertex"
-version = "0.1.1"
+version = "0.2.0"
 description = "the Google Cloud Vertex AI client for Claude: a Client of br-llm-clients-core over the Anthropic Messages API that Vertex AI serves at streamRawPredict for a project and a location, authorized with the OAuth 2.0 access token of a service account key"
 edition.workspace = true
 rust-version.workspace = true
@@ -9,7 +9,7 @@ repository.workspace = true
 
 [dependencies]
 base64 = { version = "0.23", default-features = false, features = ["alloc"] }
-br-llm-clients-api-anthropic-messages = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-api-anthropic-messages/v0.2.1", version = "0.2.1" }
+br-llm-clients-api-anthropic-messages = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-api-anthropic-messages/v0.3.0", version = "0.3.0" }
 br-llm-clients-common-auth = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-common-auth/v0.1.0", version = "0.1.0" }
 br-llm-clients-common-call = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-common-call/v0.2.0", version = "0.2.0" }
 br-llm-clients-common-http = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-common-http/v0.2.0", version = "0.2.0" }

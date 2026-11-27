@@ -1,7 +1,10 @@
 use std::env::{self, VarError};
 use std::time::Duration;
 
-use br_llm_clients_anthropic::{AnthropicBuildError, AnthropicClient, AnthropicConfig};
+use br_llm_clients_anthropic::{
+    AnthropicBuildError, AnthropicCache, AnthropicClient, AnthropicConfig, CacheTtl,
+    MessagesCacheOptions,
+};
 use br_llm_clients_common_http::{Endpoint, HttpClient, HttpConfig, Secret};
 use br_llm_clients_core::{CacheRequirement, ClientSettings, MaxOutputTokens, ReasoningLevel};
 use br_llm_messages::ModelName;
@@ -18,6 +21,7 @@ const MAX_OUTPUT_TOKENS: u32 = 4096;
 pub(crate) struct Setup {
     client: AnthropicClient,
     unknown_model_client: AnthropicClient,
+    one_hour_cache_client: AnthropicClient,
     model: ModelName,
     bearer: bool,
     workspace: bool,
@@ -60,20 +64,24 @@ impl Setup {
             .with_total_timeout(Duration::from_secs(300)),
         )
         .map_err(|_| "the HTTP client cannot be built".to_owned())?;
-        let build = |model: ModelName| {
-            let settings = ClientSettings::new(
-                model,
-                ReasoningLevel::Low,
-                CacheRequirement::NotRequired,
-                max_output_tokens,
-            );
-            AnthropicClient::new(settings, config.clone(), http.clone()).map_err(named)
+        let one_hour = AnthropicCache::new(MessagesCacheOptions::new(CacheTtl::OneHour));
+        let build = |model: ModelName, cache: CacheRequirement, config: AnthropicConfig| {
+            let settings =
+                ClientSettings::new(model, ReasoningLevel::Low, cache, max_output_tokens);
+            AnthropicClient::new(settings, config, http.clone()).map_err(named)
         };
-        let client = build(model.clone())?;
-        let unknown_model_client = build(unknown_model)?;
+        let client = build(model.clone(), CacheRequirement::NotRequired, config.clone())?;
+        let unknown_model_client =
+            build(unknown_model, CacheRequirement::NotRequired, config.clone())?;
+        let one_hour_cache_client = build(
+            model.clone(),
+            CacheRequirement::Required,
+            config.with_cache(one_hour),
+        )?;
         Ok(Self {
             client,
             unknown_model_client,
+            one_hour_cache_client,
             model,
             bearer,
             workspace,
@@ -99,6 +107,10 @@ impl Setup {
 
     pub(crate) fn unknown_model_client(&self) -> &AnthropicClient {
         &self.unknown_model_client
+    }
+
+    pub(crate) fn one_hour_cache_client(&self) -> &AnthropicClient {
+        &self.one_hour_cache_client
     }
 }
 

@@ -76,6 +76,13 @@ async fn run_checks(setup: env::Setup) -> Result<bool, String> {
 async fn run_path(setup: &env::Setup, path: &env::Path, http: &HttpClient) -> Result<bool, String> {
     let bedrock = setup.client(path, &setup.model, CacheRequirement::NotRequired, http)?;
     let cached = setup.client(path, &setup.model, CacheRequirement::Required, http)?;
+    let cached_one_hour = setup.client_with_cache(
+        path,
+        &setup.model,
+        CacheRequirement::Required,
+        env::one_hour(),
+        http,
+    )?;
     let missing = setup.client(path, MISSING_MODEL, CacheRequirement::NotRequired, http)?;
     let label = path.label;
     println!("== {label}: {bedrock:?}");
@@ -88,6 +95,11 @@ async fn run_path(setup: &env::Setup, path: &env::Path, http: &HttpClient) -> Re
             label,
             "cache read",
             cache::cache_read(&cached, env::caches(&setup.model)).await,
+        ),
+        verdict(
+            label,
+            "cache read of one hour",
+            cache::cache_read(&cached_one_hour, env::caches(&setup.model)).await,
         ),
         verdict(label, "error case", checks::missing_model(&missing).await),
     ];
