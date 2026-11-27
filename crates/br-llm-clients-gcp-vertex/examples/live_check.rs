@@ -5,6 +5,8 @@ use std::time::Duration;
 use br_llm_clients_common_http::HttpConfig;
 use br_llm_clients_gcp_vertex::HttpClient;
 
+#[path = "live_check_support/cache.rs"]
+mod cache;
 #[path = "live_check_support/checks.rs"]
 mod checks;
 #[path = "live_check_support/env.rs"]
@@ -63,6 +65,7 @@ async fn run_checks(setup: env::Setup) -> Result<bool, String> {
     )
     .map_err(fail)?;
     let vertex = setup.client(&setup.model, &http)?;
+    let one_hour = setup.one_hour_cache_client(&http)?;
     let missing = setup.client(MISSING_MODEL, &http)?;
     println!("== {vertex:?}");
     let verdicts = [
@@ -70,6 +73,10 @@ async fn run_checks(setup: env::Setup) -> Result<bool, String> {
         verdict("streaming", checks::streaming(&vertex).await),
         verdict("tool call", tools::tool_call(&vertex).await),
         verdict("usage", checks::usage(&vertex).await),
+        verdict(
+            "cache of one hour, sent twice",
+            cache::one_hour_twice(&one_hour).await,
+        ),
         verdict("error case", checks::missing_model(&missing).await),
     ];
     let passed = verdicts.iter().all(|passed| *passed);

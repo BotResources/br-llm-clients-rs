@@ -1,0 +1,10 @@
+apiVersion: v2
+name: example
+description: CI fixture for br-llm-clients-aws-bedrock-chart.
+type: application
+version: 0.1.0
+dependencies:
+  - name: br-llm-clients-aws-bedrock-chart
+    version: "0.1.0"
+    alias: bedrock
+    repository: "file://../.."

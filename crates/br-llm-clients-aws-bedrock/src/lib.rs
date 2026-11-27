@@ -11,6 +11,7 @@
 
 mod aws_credentials;
 mod build_error;
+mod cache;
 mod capabilities;
 mod client;
 mod config;
@@ -22,9 +23,11 @@ mod sigv4;
 mod visible;
 
 pub use aws_credentials::{AwsCredentials, CredentialSource, StaticCredentials};
+pub use br_llm_clients_api_anthropic_messages::{CacheTtl, MessagesCacheOptions};
 pub use br_llm_clients_common_call::{Endpoint, HttpClient, Secret};
 pub use br_llm_clients_common_http::{AuthorizerError, BoxFuture};
 pub use build_error::BedrockBuildError;
+pub use cache::{BedrockCache, BedrockCacheError, CACHE_ENV};
 pub use client::BedrockClient;
 pub use config::BedrockConfig;
 pub use credential::BedrockCredential;

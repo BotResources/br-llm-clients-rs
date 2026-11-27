@@ -1,0 +1,23 @@
+apiVersion: v2
+name: br-llm-clients-gcp-vertex-chart
+description: The cache setting of br-llm-clients-gcp-vertex, the Google Cloud Vertex AI client for Claude, written once as one named template that renders the environment variable GCP_VERTEX_CACHE for the container of a runner. Named after its library; it has its own version line. With no value set, it renders nothing and the library gives its default.
+type: library
+version: 0.1.0
+home: https://github.com/BotResources/br-llm-clients-rs
+sources:
+  - https://github.com/BotResources/br-llm-clients-rs
+maintainers:
+  - name: BotResources
+    url: https://github.com/BotResources
+keywords:
+  - llm
+  - vertex
+  - cache
+  - library
+annotations:
+  licenses: Apache-2.0
+dependencies:
+  - name: br-llm-clients-api-anthropic-messages-chart
+    version: "0.1.0"
+    alias: messages
+    repository: "file://../br-llm-clients-api-anthropic-messages-chart"

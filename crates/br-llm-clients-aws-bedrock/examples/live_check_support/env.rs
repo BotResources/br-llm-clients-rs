@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use br_llm_clients_aws_bedrock::{
-    AwsCredentials, BedrockClient, BedrockConfig, BedrockCredential, Endpoint, HttpClient, Secret,
-    StaticCredentials,
+    AwsCredentials, BedrockCache, BedrockClient, BedrockConfig, BedrockCredential, CacheTtl,
+    Endpoint, HttpClient, MessagesCacheOptions, Secret, StaticCredentials,
 };
 use br_llm_clients_core::{CacheRequirement, ClientSettings, MaxOutputTokens, ReasoningLevel};
 use br_llm_messages::ModelName;
@@ -47,13 +47,25 @@ impl Setup {
         cache: CacheRequirement,
         http: &HttpClient,
     ) -> Result<BedrockClient, String> {
+        self.client_with_cache(path, model, cache, BedrockCache::default(), http)
+    }
+
+    pub fn client_with_cache(
+        &self,
+        path: &Path,
+        model: &str,
+        cache: CacheRequirement,
+        lifetime: BedrockCache,
+        http: &HttpClient,
+    ) -> Result<BedrockClient, String> {
         let settings = ClientSettings::new(
             ModelName::new(model.to_owned()).map_err(fail)?,
             reasoning(model),
             cache,
             MaxOutputTokens::new(MAX_OUTPUT_TOKENS).map_err(fail)?,
         );
-        let config = BedrockConfig::new(self.region.clone(), path.credential.clone());
+        let config =
+            BedrockConfig::new(self.region.clone(), path.credential.clone()).with_cache(lifetime);
         let config = match &self.base {
             Some(base) => config.with_base(base.clone()),
             None => config,
@@ -70,6 +82,10 @@ fn base_name(model: &str) -> &str {
     unprefixed
         .strip_prefix(PROVIDER_PREFIX)
         .unwrap_or(unprefixed)
+}
+
+pub fn one_hour() -> BedrockCache {
+    BedrockCache::new(MessagesCacheOptions::new(CacheTtl::OneHour))
 }
 
 pub fn caches(model: &str) -> bool {

@@ -11,6 +11,7 @@ use br_llm_clients_core::{
 };
 
 use crate::build_error::VertexBuildError;
+use crate::cache::VertexCache;
 use crate::capabilities;
 use crate::config::VertexConfig;
 use crate::credential::VertexCredential;
@@ -49,17 +50,18 @@ impl VertexClient {
             credential,
             base,
             id_source,
+            cache,
         } = config;
         project::check(&project)?;
         location::check(&location)?;
         let base_override = base.is_some();
         let endpoint = predict_endpoint(&project, &location, settings.model().as_str(), base)?;
         let authorization = authorization(credential, &http);
-        let options = MessagesOptions::new()
-            .with_model_placement(ModelPlacement::Omitted)
-            .with_version_placement(VersionPlacement::Body(VERTEX_VERSION.to_owned()));
         let dialect = Layered::new(
-            Arc::new(AnthropicMessages::with_options(&settings, options)),
+            Arc::new(AnthropicMessages::with_options(
+                &settings,
+                dialect_options(cache),
+            )),
             VertexHooks::new(
                 capabilities::of_model(settings.model().as_str()),
                 settings.clone(),
@@ -85,6 +87,13 @@ impl VertexClient {
             base_override,
         })
     }
+}
+
+pub(crate) fn dialect_options(cache: VertexCache) -> MessagesOptions {
+    MessagesOptions::new()
+        .with_model_placement(ModelPlacement::Omitted)
+        .with_version_placement(VersionPlacement::Body(VERTEX_VERSION.to_owned()))
+        .with_cache_ttl(cache.messages().ttl())
 }
 
 fn authorization(credential: VertexCredential, http: &HttpClient) -> Authorization {

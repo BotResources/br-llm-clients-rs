@@ -1,0 +1,10 @@
+apiVersion: v2
+name: example
+description: CI fixture for br-llm-clients-gcp-vertex-chart.
+type: application
+version: 0.1.0
+dependencies:
+  - name: br-llm-clients-gcp-vertex-chart
+    version: "0.1.0"
+    alias: vertex
+    repository: "file://../.."

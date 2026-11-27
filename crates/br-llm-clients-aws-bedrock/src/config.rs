@@ -4,6 +4,7 @@ use std::sync::Arc;
 use br_llm_clients_common_call::Endpoint;
 use br_llm_clients_core::IdSource;
 
+use crate::cache::BedrockCache;
 use crate::credential::BedrockCredential;
 
 #[derive(Clone)]
@@ -12,6 +13,7 @@ pub struct BedrockConfig {
     pub(crate) credential: BedrockCredential,
     pub(crate) base: Option<Endpoint>,
     pub(crate) id_source: Option<Arc<dyn IdSource>>,
+    pub(crate) cache: BedrockCache,
 }
 
 impl BedrockConfig {
@@ -21,6 +23,7 @@ impl BedrockConfig {
             credential,
             base: None,
             id_source: None,
+            cache: BedrockCache::default(),
         }
     }
 
@@ -33,6 +36,11 @@ impl BedrockConfig {
         self.id_source = Some(id_source);
         self
     }
+
+    pub fn with_cache(mut self, cache: BedrockCache) -> Self {
+        self.cache = cache;
+        self
+    }
 }
 
 impl fmt::Debug for BedrockConfig {
@@ -42,6 +50,7 @@ impl fmt::Debug for BedrockConfig {
             .field("credential", &self.credential)
             .field("base", &self.base)
             .field("id_source_set", &self.id_source.is_some())
+            .field("cache", &self.cache)
             .finish()
     }
 }

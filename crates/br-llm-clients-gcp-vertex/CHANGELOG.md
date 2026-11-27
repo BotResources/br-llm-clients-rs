@@ -9,6 +9,57 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.2.0
+
+Opens the line 0.2: an operator can choose the lifetime of the prompt cache, five minutes (the
+default, the behaviour of 0.1) or one hour. Built on `br-llm-clients-api-anthropic-messages` 0.3.
+
+### Added
+
+- `CACHE_ENV`, the text `GCP_VERTEX_CACHE`: the name of the variable that holds the cache setting
+  of the client. The library reads no environment variable: the runner reads it when it starts
+  and gives its text to `VertexCache::parse`.
+- `VertexCache`: the cache options of the client. `VertexCache::new` takes a `MessagesCacheOptions`.
+  `VertexCache::parse` takes the text of the
+  variable, or nothing. Nothing, an empty text and a blank text give the default, five minutes,
+  the behaviour of the previous line. Any other text is a JSON object whose only member is
+  `messages`, optional, parsed by `MessagesCacheOptions::from_json` of the dialect; for example
+  `{"messages":{"ttl":"1h"}}`. An absent `messages` gives the default of the dialect.
+  `messages` gives the `MessagesCacheOptions`. `Default` gives five minutes.
+- `CacheTtl` and `MessagesCacheOptions` of the dialect are re-exported, the items of the
+  signatures of the cache type.
+- `VertexCacheError` (`#[non_exhaustive]`): `NotJson`, `NotAnObject`, `UnknownMember` with the
+  member, and `InvalidMessages` with the member of the section `messages` that the dialect
+  refused, when there is one. Its text names the variable and the member, and shows no value.
+- `VertexConfig::with_cache` takes a `VertexCache`. A config built without it holds the default.
+  The `Debug` of the config shows the cache options and still never a credential.
+- `examples/live_check.rs` sends the same request of more than 4096 tokens twice with
+  `CacheRequirement::Required` and a config built with `CacheTtl::OneHour`, after the usage check. It passes when the API
+  accepts both calls, and prints the cache read of the second call without requiring it, because
+  cache hits on Vertex are not reliable (see Known limits).
+- The Helm library chart `br-llm-clients-gcp-vertex-chart` 0.1.0, in
+  `charts/br-llm-clients-gcp-vertex-chart` of this repository. It depends on
+  `br-llm-clients-api-anthropic-messages-chart` 0.1.0 under the alias `messages`, and its named
+  template `br-llm-clients-gcp-vertex-chart.env` renders the container env entry
+  `GCP_VERTEX_CACHE` with the text `{"messages": …}`, or nothing when no value is set.
+
+### Changed
+
+- The dialect gets the cache lifetime of the config beside its placements
+  (`ModelPlacement::Omitted`, `VersionPlacement::Body("vertex-2023-10-16")`).
+  `CacheRequirement::Required` asks for that lifetime: the top-level `cache_control` is
+  `{"type":"ephemeral","ttl":"1h"}` for one hour. With the default, every request is the one of
+  0.1.
+- Depends on `br-llm-clients-api-anthropic-messages` 0.3.
+
+### Known limits
+
+- Cache hits are not reliable. On 2026-11-27, with front-agent 0.7.0 on `claude-opus-5-5` in
+  the locations `eu` and `global`, 7 of 12 calls that should have read a prefix written by an
+  earlier call read nothing, while the same runs on the Anthropic API and on Bedrock read it
+  every time.
+- The known limits of 0.1.0 still hold.
+
 ## 0.1.1
 
 ### Changed

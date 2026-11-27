@@ -4,6 +4,7 @@ use std::sync::Arc;
 use br_llm_clients_common_call::Endpoint;
 use br_llm_clients_core::IdSource;
 
+use crate::cache::VertexCache;
 use crate::credential::VertexCredential;
 
 #[derive(Clone)]
@@ -13,6 +14,7 @@ pub struct VertexConfig {
     pub(crate) credential: VertexCredential,
     pub(crate) base: Option<Endpoint>,
     pub(crate) id_source: Option<Arc<dyn IdSource>>,
+    pub(crate) cache: VertexCache,
 }
 
 impl VertexConfig {
@@ -27,6 +29,7 @@ impl VertexConfig {
             credential,
             base: None,
             id_source: None,
+            cache: VertexCache::default(),
         }
     }
 
@@ -39,6 +42,11 @@ impl VertexConfig {
         self.id_source = Some(id_source);
         self
     }
+
+    pub fn with_cache(mut self, cache: VertexCache) -> Self {
+        self.cache = cache;
+        self
+    }
 }
 
 impl fmt::Debug for VertexConfig {
@@ -49,6 +57,7 @@ impl fmt::Debug for VertexConfig {
             .field("credential", &self.credential)
             .field("base", &self.base)
             .field("id_source_set", &self.id_source.is_some())
+            .field("cache", &self.cache)
             .finish()
     }
 }

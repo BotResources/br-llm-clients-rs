@@ -1,7 +1,7 @@
 use std::fmt;
 use std::sync::Arc;
 
-use br_llm_clients_api_anthropic_messages::AnthropicMessages;
+use br_llm_clients_api_anthropic_messages::{AnthropicMessages, MessagesOptions};
 use br_llm_clients_common_call::{CallSpec, Layered, run};
 use br_llm_clients_common_http::{Endpoint, HttpClient};
 use br_llm_clients_core::{
@@ -35,6 +35,7 @@ impl AnthropicClient {
             api_key,
             base,
             workspace_id,
+            cache,
             key_header,
             id_source,
         } = config;
@@ -44,7 +45,11 @@ impl AnthropicClient {
         let authorizer = authorizer(key_header, &api_key)?;
         let hooks =
             AnthropicHooks::new(settings.clone(), capabilities_of(settings.model().as_str()));
-        let dialect = Layered::new(Arc::new(AnthropicMessages::new(&settings)), hooks);
+        let options = MessagesOptions::new().with_cache_ttl(cache.messages().ttl());
+        let dialect = Layered::new(
+            Arc::new(AnthropicMessages::with_options(&settings, options)),
+            hooks,
+        );
         let extra_headers = workspace_id
             .map(|id| vec![(WORKSPACE_HEADER.to_owned(), id)])
             .unwrap_or_default();

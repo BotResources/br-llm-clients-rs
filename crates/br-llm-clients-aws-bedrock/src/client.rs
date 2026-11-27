@@ -1,7 +1,7 @@
 use std::fmt;
 use std::sync::Arc;
 
-use br_llm_clients_api_anthropic_messages::AnthropicMessages;
+use br_llm_clients_api_anthropic_messages::{AnthropicMessages, MessagesOptions};
 use br_llm_clients_common_call::{
     Authorizer, CallSpec, HttpClient, Layered, Secret, SecretLog, run,
 };
@@ -47,6 +47,7 @@ impl BedrockClient {
             credential,
             base,
             id_source,
+            cache,
         } = config;
         region::check(&region)?;
         check_credential(&credential)?;
@@ -54,7 +55,10 @@ impl BedrockClient {
         let endpoint = messages_endpoint(&region, base)?;
         let authorization = authorization(credential, &region)?;
         let dialect = Layered::new(
-            Arc::new(AnthropicMessages::new(&settings)),
+            Arc::new(AnthropicMessages::with_options(
+                &settings,
+                MessagesOptions::new().with_cache_ttl(cache.messages().ttl()),
+            )),
             BedrockHooks::new(
                 capabilities::of_model(settings.model().as_str()),
                 settings.clone(),
