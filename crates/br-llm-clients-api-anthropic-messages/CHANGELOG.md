@@ -9,6 +9,45 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.3.0
+
+Opens the line 0.3: an operator can choose the lifetime of the cache that
+`CacheRequirement::Required` asks for, five minutes (the default, the behaviour of 0.2) or
+one hour. With the default options, the headers, the body bytes and the errors are those of
+0.2.1.
+
+### Added
+
+- `CacheTtl` (`#[non_exhaustive]`, `Copy`, `Eq`, `Hash`): `FiveMinutes`, written `5m`, the
+  default and the lifetime of 0.2, and `OneHour`, written `1h`. `as_str` gives the written form;
+  `CacheTtl::parse` gives the `CacheTtl` whose written form is exactly the text, or nothing.
+- `MessagesOptions::with_cache_ttl` sets the lifetime. `Required` with `OneHour` sends the
+  top-level `cache_control` `{"type":"ephemeral","ttl":"1h"}`; with `FiveMinutes` it sends
+  `{"type":"ephemeral"}`, and the body is the body of 0.2, byte for byte. `NotRequired` sends no
+  `cache_control`, whatever the lifetime. The `Debug` of the options shows the lifetime
+  (`cache_ttl`).
+- `MessagesCacheOptions`: the cache options of the dialect as an operator writes them in the
+  setting of a provider library. `MessagesCacheOptions::new` takes a `CacheTtl`.
+  `MessagesCacheOptions::from_json` takes a JSON object whose only
+  member is `ttl`, optional, with the text `5m` or `1h`; an absent `ttl` gives the default.
+  `ttl` gives the lifetime, which a provider library applies with `with_cache_ttl`. `Default`
+  gives five minutes.
+- `OptionsError::InvalidCacheOption`, given by `from_json` for a value that is not an object
+  (no member), a member other than `ttl` (that member), and a `ttl` that is not one of the two
+  texts (`ttl`). Its text names the member and shows no value.
+- The Helm library chart `br-llm-clients-api-anthropic-messages-chart` 0.1.0, in
+  `charts/br-llm-clients-api-anthropic-messages-chart` of this repository: the named template
+  `br-llm-clients-api-anthropic-messages-chart.cache` renders the JSON object of the values of
+  a `MessagesCacheOptions`, and its `values.schema.json` accepts what `from_json` accepts, plus
+  the member `global` of Helm. It defines no environment variable.
+
+### Changed
+
+- `OptionsError` has two cases. It is `#[non_exhaustive]`, so an importer already matches it
+  with a fallback.
+- A cache of one hour is no longer outside the scope of the dialect. Explicit cache markers on a
+  block still are.
+
 ## 0.2.1
 
 ### Fixed

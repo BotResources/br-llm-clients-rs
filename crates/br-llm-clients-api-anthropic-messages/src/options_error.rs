@@ -4,6 +4,7 @@ use std::fmt;
 #[non_exhaustive]
 pub enum OptionsError {
     ReservedExtraBodyMember { member: String },
+    InvalidCacheOption { member: Option<String> },
 }
 
 impl fmt::Display for OptionsError {
@@ -11,6 +12,12 @@ impl fmt::Display for OptionsError {
         match self {
             Self::ReservedExtraBodyMember { member } => {
                 write!(f, "the extra body member `{member}` is reserved")
+            }
+            Self::InvalidCacheOption {
+                member: Some(member),
+            } => write!(f, "the cache option member `{member}` is refused"),
+            Self::InvalidCacheOption { member: None } => {
+                write!(f, "the cache options are not a JSON object")
             }
         }
     }

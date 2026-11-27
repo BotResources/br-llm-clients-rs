@@ -3,7 +3,9 @@ use serde_json::{Map, Value, json};
 
 use crate::test_fixtures::*;
 use crate::test_shapes::every_request_shape;
-use crate::{AnthropicMessages, MessagesOptions, ModelPlacement, OptionsError, VersionPlacement};
+use crate::{
+    AnthropicMessages, CacheTtl, MessagesOptions, ModelPlacement, OptionsError, VersionPlacement,
+};
 
 pub(crate) const RESERVED: [&str; 10] = [
     "model",
@@ -198,7 +200,9 @@ fn given_several_reserved_names_when_set_then_one_of_them_is_named() {
     let error = MessagesOptions::new()
         .with_extra_body(object(json!({"system": 1, "tools": 2, "metadata": 3})))
         .expect_err("refused");
-    let OptionsError::ReservedExtraBodyMember { member } = error;
+    let OptionsError::ReservedExtraBodyMember { member } = error else {
+        panic!("not a reserved member: {error:?}");
+    };
     assert!(["system", "tools"].contains(&member.as_str()));
 }
 
@@ -207,7 +211,8 @@ fn given_all_options_set_when_encoded_twice_then_the_bytes_are_equal_and_the_req
 {
     let options = extra(json!({"metadata": {"user_id": "u1"}, "temperature": 0.5}))
         .with_model_placement(ModelPlacement::Omitted)
-        .with_version_placement(vertex());
+        .with_version_placement(vertex())
+        .with_cache_ttl(CacheTtl::OneHour);
     let dialect = AnthropicMessages::with_options(
         &settings(ReasoningLevel::High, CacheRequirement::Required, 2048),
         options,

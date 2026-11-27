@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "ttl": {
+      "type": "string",
+      "enum": ["5m", "1h"],
+      "description": "The lifetime of the cache that CacheRequirement::Required asks for. Absent: 5m, the default of the library"
+    },
+    "global": {
+      "type": "object"
+    }
+  }
+}
